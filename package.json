@@ -1,0 +1,22 @@
+{
+  "name": "stroom-command-center",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "lint": "turbo lint",
+    "typecheck": "turbo typecheck",
+    "native": "cd apps/native && npx expo start",
+    "native:ios": "cd apps/native && npx expo start --ios",
+    "native:android": "cd apps/native && npx expo start --android"
+  },
+  "devDependencies": {
+    "turbo": "^2.4.0",
+    "typescript": "^5.7.0"
+  },
+  "packageManager": "npm@10.8.0"
+}

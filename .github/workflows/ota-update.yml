@@ -1,0 +1,29 @@
+name: OTA Update
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/native/**'
+      - 'packages/**'
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: OTA Update
+        working-directory: apps/native
+        run: npx eas update --branch preview --message "${{ github.event.head_commit.message }}" --non-interactive

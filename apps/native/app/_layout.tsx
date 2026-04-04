@@ -1,0 +1,120 @@
+import React, { useEffect, useState } from 'react';
+import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
+import { Slot, useRouter, useSegments } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
+import * as SplashScreen from 'expo-splash-screen';
+import * as Font from 'expo-font';
+import { LinearGradient } from 'expo-linear-gradient';
+import { AuthProvider, useAuth } from '../src/lib/auth';
+import { colors, fonts, gradient } from '../src/constants/brand';
+
+// Keep splash visible while loading
+SplashScreen.preventAutoHideAsync();
+
+function RouteGuard({ children }: { children: React.ReactNode }) {
+  const { session, loading, biometricPassed, checkBiometric } = useAuth();
+  const segments = useSegments();
+  const router = useRouter();
+  const [biometricChecked, setBiometricChecked] = useState(false);
+
+  useEffect(() => {
+    if (loading) return;
+
+    const inAuth = segments[0] === 'login';
+
+    if (!session && !inAuth) {
+      router.replace('/login');
+    } else if (session && inAuth) {
+      router.replace('/(tabs)');
+    }
+  }, [session, loading, segments]);
+
+  // Face ID gate after auth
+  useEffect(() => {
+    if (!session || biometricChecked) return;
+
+    checkBiometric().then(() => {
+      setBiometricChecked(true);
+    });
+  }, [session, biometricChecked]);
+
+  if (loading) {
+    return (
+      <LinearGradient
+        colors={[gradient.background[0], gradient.background[1]]}
+        style={styles.loading}
+      >
+        <ActivityIndicator color={colors.teal} size="large" />
+      </LinearGradient>
+    );
+  }
+
+  if (session && !biometricPassed && biometricChecked) {
+    return (
+      <LinearGradient
+        colors={[gradient.background[0], gradient.background[1]]}
+        style={styles.loading}
+      >
+        <Text style={styles.biometricText}>Authentication required</Text>
+      </LinearGradient>
+    );
+  }
+
+  return <>{children}</>;
+}
+
+export default function RootLayout() {
+  const [fontsLoaded, setFontsLoaded] = useState(false);
+
+  useEffect(() => {
+    async function loadFonts() {
+      try {
+        await Font.loadAsync({
+          // Archivo
+          Archivo_400Regular: require('../assets/fonts/Archivo-Regular.ttf'),
+          Archivo_500Medium: require('../assets/fonts/Archivo-Medium.ttf'),
+          Archivo_600SemiBold: require('../assets/fonts/Archivo-SemiBold.ttf'),
+          Archivo_700Bold: require('../assets/fonts/Archivo-Bold.ttf'),
+          Archivo_900Black: require('../assets/fonts/Archivo-Black.ttf'),
+          // IBM Plex Mono
+          IBMPlexMono_400Regular: require('../assets/fonts/IBMPlexMono-Regular.ttf'),
+          IBMPlexMono_500Medium: require('../assets/fonts/IBMPlexMono-Medium.ttf'),
+          IBMPlexMono_600SemiBold: require('../assets/fonts/IBMPlexMono-SemiBold.ttf'),
+        });
+      } catch (e) {
+        console.warn('Font loading failed, falling back to system fonts:', e);
+      } finally {
+        setFontsLoaded(true);
+        SplashScreen.hideAsync();
+      }
+    }
+
+    loadFonts();
+  }, []);
+
+  if (!fontsLoaded) {
+    return null;
+  }
+
+  return (
+    <AuthProvider>
+      <StatusBar style="light" />
+      <RouteGuard>
+        <Slot />
+      </RouteGuard>
+    </AuthProvider>
+  );
+}
+
+const styles = StyleSheet.create({
+  loading: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  biometricText: {
+    fontFamily: fonts.archivo.medium,
+    fontSize: 16,
+    color: colors.slate,
+  },
+});
