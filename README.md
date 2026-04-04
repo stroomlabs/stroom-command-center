@@ -55,7 +55,7 @@ Configured in `app.json` under `expo.scheme`.
 |---------|-----------|------------------------------------------|
 | Pulse   | ✅ Built  | Live dashboard — claims, entities, queue |
 | Queue   | ✅ Built  | Governance — approve/reject claims       |
-| Explore | 🔲 S3    | Entity & claim browser                   |
+| Explore | ✅ Built  | Entity & claim browser with source lineage |
 | More    | ✅ Built  | Settings, sign out                       |
 
 ## Realtime

@@ -286,4 +286,194 @@ export function subscribeToResearchQueue(
     .subscribe();
 }
 
+// ── Explore: search + detail fetchers ──
+
+export interface EntitySearchResult {
+  id: string;
+  canonical_name: string | null;
+  name: string | null;
+  entity_type: string | null;
+  entity_class: string | null;
+  domain: string | null;
+  description: string | null;
+  updated_at: string;
+}
+
+export async function searchEntities(
+  client: SupabaseClient,
+  query: string,
+  limit = 30
+): Promise<EntitySearchResult[]> {
+  let q = client
+    .from('entities')
+    .select('id, canonical_name, name, entity_type, entity_class, domain, description, updated_at')
+    .order('updated_at', { ascending: false })
+    .limit(limit);
+
+  const trimmed = query.trim();
+  if (trimmed.length > 0) {
+    // Escape %/_ and wildcard match on canonical_name OR name
+    const safe = trimmed.replace(/[%_]/g, (m) => `\\${m}`);
+    q = q.or(`canonical_name.ilike.%${safe}%,name.ilike.%${safe}%`);
+  }
+
+  const { data, error } = await q;
+  if (error) throw error;
+  return (data as EntitySearchResult[]) ?? [];
+}
+
+export async function fetchEntityById(
+  client: SupabaseClient,
+  id: string
+): Promise<Entity | null> {
+  const { data, error } = await client
+    .from('entities')
+    .select('*')
+    .eq('id', id)
+    .single();
+  if (error) {
+    if (error.code === 'PGRST116') return null;
+    throw error;
+  }
+  return data as Entity;
+}
+
+export interface EntityClaim {
+  id: string;
+  predicate: string | null;
+  value_jsonb: Record<string, unknown> | null;
+  object_entity_id: string | null;
+  confidence_score: number | null;
+  corroboration_score: number | null;
+  status: ClaimStatus;
+  created_at: string;
+  object_entity: { canonical_name: string } | null;
+  source: { source_name: string; trust_score: number } | null;
+}
+
+export async function fetchClaimsForEntity(
+  client: SupabaseClient,
+  entityId: string,
+  limit = 50,
+  offset = 0
+): Promise<EntityClaim[]> {
+  const { data, error } = await client
+    .from('claims')
+    .select(
+      `
+      id,
+      predicate,
+      value_jsonb,
+      object_entity_id,
+      confidence_score,
+      corroboration_score,
+      status,
+      created_at,
+      object_entity:entities!claims_object_entity_id_fkey(canonical_name),
+      source:sources!claims_asserted_source_id_fkey(source_name, trust_score)
+    `
+    )
+    .eq('subject_entity_id', entityId)
+    .order('created_at', { ascending: false })
+    .range(offset, offset + limit - 1);
+
+  if (error) throw error;
+  return ((data as unknown) as EntityClaim[]) ?? [];
+}
+
+export interface ClaimDetail {
+  id: string;
+  predicate: string | null;
+  value_jsonb: Record<string, unknown> | null;
+  status: ClaimStatus;
+  confidence_score: number | null;
+  corroboration_score: number | null;
+  claim_family: string | null;
+  scope_context: string | null;
+  scope_valid_from: string | null;
+  scope_valid_until: string | null;
+  extraction_method: string | null;
+  effective_at: string | null;
+  expires_at: string | null;
+  created_at: string;
+  subject_entity_id: string | null;
+  object_entity_id: string | null;
+  subject_entity: { id: string; canonical_name: string | null } | null;
+  object_entity: { id: string; canonical_name: string | null } | null;
+  source: { id: string; source_name: string; trust_score: number; source_url: string | null } | null;
+}
+
+export interface ClaimCorroborationDetail {
+  id: string;
+  source_id: string;
+  source_class: string | null;
+  citation_url: string | null;
+  confidence: number | null;
+  extraction_method: string | null;
+  extracted_at: string;
+  source: { source_name: string; trust_score: number } | null;
+}
+
+export async function fetchClaimDetail(
+  client: SupabaseClient,
+  claimId: string
+): Promise<{ claim: ClaimDetail; corroborations: ClaimCorroborationDetail[] } | null> {
+  const { data: claim, error } = await client
+    .from('claims')
+    .select(
+      `
+      id,
+      predicate,
+      value_jsonb,
+      status,
+      confidence_score,
+      corroboration_score,
+      claim_family,
+      scope_context,
+      scope_valid_from,
+      scope_valid_until,
+      extraction_method,
+      effective_at,
+      expires_at,
+      created_at,
+      subject_entity_id,
+      object_entity_id,
+      subject_entity:entities!claims_subject_entity_id_fkey(id, canonical_name),
+      object_entity:entities!claims_object_entity_id_fkey(id, canonical_name),
+      source:sources!claims_asserted_source_id_fkey(id, source_name, trust_score, source_url)
+    `
+    )
+    .eq('id', claimId)
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') return null;
+    throw error;
+  }
+
+  const { data: corrobs, error: corrobError } = await client
+    .from('claim_corroborations')
+    .select(
+      `
+      id,
+      source_id,
+      source_class,
+      citation_url,
+      confidence,
+      extraction_method,
+      extracted_at,
+      source:sources!claim_corroborations_source_id_fkey(source_name, trust_score)
+    `
+    )
+    .eq('claim_id', claimId)
+    .order('extracted_at', { ascending: false });
+
+  if (corrobError) throw corrobError;
+
+  return {
+    claim: (claim as unknown) as ClaimDetail,
+    corroborations: ((corrobs as unknown) as ClaimCorroborationDetail[]) ?? [],
+  };
+}
+
 export { SUPABASE_URL, SUPABASE_ANON_KEY };
