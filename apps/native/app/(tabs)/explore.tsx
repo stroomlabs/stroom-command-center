@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   Pressable,
   Keyboard,
+  ScrollView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -22,7 +23,29 @@ export default function ExploreScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const [query, setQuery] = useState('');
+  const [typeFilter, setTypeFilter] = useState<string | null>(null);
   const { results, loading, error } = useExploreSearch(query);
+
+  // Unique entity types present in the current result set
+  const availableTypes = useMemo(() => {
+    const set = new Set<string>();
+    for (const r of results) {
+      if (r.entity_type) set.add(r.entity_type);
+    }
+    return Array.from(set).sort();
+  }, [results]);
+
+  // Reset the filter when the selected type disappears from the result set
+  React.useEffect(() => {
+    if (typeFilter && !availableTypes.includes(typeFilter)) {
+      setTypeFilter(null);
+    }
+  }, [availableTypes, typeFilter]);
+
+  const filteredResults = useMemo(
+    () => (typeFilter ? results.filter((r) => r.entity_type === typeFilter) : results),
+    [results, typeFilter]
+  );
 
   const handleOpenEntity = useCallback(
     (id: string) => {
@@ -77,6 +100,29 @@ export default function ExploreScreen() {
             </Pressable>
           )}
         </View>
+
+        {/* Entity type filter chips */}
+        {availableTypes.length > 0 && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.filterRow}
+          >
+            <FilterChip
+              label="All"
+              active={typeFilter === null}
+              onPress={() => setTypeFilter(null)}
+            />
+            {availableTypes.map((t) => (
+              <FilterChip
+                key={t}
+                label={t}
+                active={typeFilter === t}
+                onPress={() => setTypeFilter(t)}
+              />
+            ))}
+          </ScrollView>
+        )}
       </View>
 
       {loading && results.length === 0 ? (
@@ -87,17 +133,19 @@ export default function ExploreScreen() {
         <View style={styles.emptyWrap}>
           <Text style={styles.errorText}>{error}</Text>
         </View>
-      ) : results.length === 0 ? (
+      ) : filteredResults.length === 0 ? (
         <View style={styles.emptyWrap}>
           <Ionicons name="search-outline" size={40} color={colors.slate} />
           <Text style={styles.emptyTitle}>No matches</Text>
           <Text style={styles.emptyBody}>
-            Try a different search term or part of an entity name.
+            {typeFilter
+              ? `No ${typeFilter} entities match "${trimmed}".`
+              : 'Try a different search term or part of an entity name.'}
           </Text>
         </View>
       ) : (
         <FlatList
-          data={results}
+          data={filteredResults}
           renderItem={renderItem}
           keyExtractor={keyExtractor}
           contentContainerStyle={styles.list}
@@ -106,6 +154,31 @@ export default function ExploreScreen() {
         />
       )}
     </LinearGradient>
+  );
+}
+
+function FilterChip({
+  label,
+  active,
+  onPress,
+}: {
+  label: string;
+  active: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.filterPill,
+        active && styles.filterPillActive,
+        pressed && { opacity: 0.7 },
+      ]}
+    >
+      <Text style={[styles.filterText, active && styles.filterTextActive]}>
+        {label}
+      </Text>
+    </Pressable>
   );
 }
 
@@ -145,6 +218,33 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: colors.alabaster,
     paddingVertical: 0,
+  },
+  filterRow: {
+    gap: spacing.xs,
+    paddingTop: spacing.sm + 2,
+    paddingBottom: spacing.xs,
+    paddingRight: spacing.lg,
+  },
+  filterPill: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: 6,
+    borderRadius: radius.full,
+    backgroundColor: colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+  },
+  filterPillActive: {
+    backgroundColor: colors.tealDim,
+    borderColor: colors.teal,
+  },
+  filterText: {
+    fontFamily: fonts.archivo.medium,
+    fontSize: 12,
+    color: colors.silver,
+    textTransform: 'capitalize',
+  },
+  filterTextActive: {
+    color: colors.teal,
   },
   list: {
     paddingHorizontal: spacing.lg,

@@ -19,17 +19,31 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import * as Clipboard from 'expo-clipboard';
 import { useCommandChat, type ChatMessage } from '../../src/hooks/useCommandChat';
+import { useSessionHistory } from '../../src/hooks/useSessionHistory';
 import { ActionSheet, type ActionSheetAction } from '../../src/components/ActionSheet';
+import { SessionHistorySheet } from '../../src/components/SessionHistorySheet';
+import type { CommandSession } from '@stroom/types';
 import { colors, fonts, spacing, radius, gradient } from '../../src/constants/brand';
 
 export default function CommandScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const params = useLocalSearchParams<{ prompt?: string }>();
-  const { messages, sending, error, send, resetSession, deleteMessage, retryFrom } =
-    useCommandChat();
+  const {
+    messages,
+    sending,
+    error,
+    sessionId,
+    send,
+    resetSession,
+    loadSession,
+    deleteMessage,
+    retryFrom,
+  } = useCommandChat();
+  const history = useSessionHistory();
   const [input, setInput] = useState('');
   const [menuTarget, setMenuTarget] = useState<ChatMessage | null>(null);
+  const [historyVisible, setHistoryVisible] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
   const consumedPromptRef = useRef<string | null>(null);
 
@@ -59,6 +73,29 @@ export default function CommandScreen() {
     setInput('');
     send(text);
   }, [input, sending, send]);
+
+  const openHistory = useCallback(() => {
+    Keyboard.dismiss();
+    Haptics.selectionAsync();
+    history.refresh();
+    setHistoryVisible(true);
+  }, [history]);
+
+  const handleLoadSession = useCallback(
+    (session: CommandSession) => {
+      const raw = Array.isArray(session.messages) ? session.messages : [];
+      const normalized = raw
+        .filter((m: any) => m && typeof m.content === 'string' && (m.role === 'user' || m.role === 'assistant'))
+        .map((m: any) => ({
+          role: m.role as 'user' | 'assistant',
+          content: m.content as string,
+          timestamp: (m.timestamp as string) ?? session.updated_at,
+        }));
+      loadSession(session.id, normalized);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    },
+    [loadSession]
+  );
 
   const handleReset = useCallback(() => {
     Keyboard.dismiss();
@@ -150,6 +187,13 @@ export default function CommandScreen() {
             <Text style={styles.subtitle}>Query the knowledge graph</Text>
           </View>
           <View style={styles.headerActions}>
+            <Pressable
+              onPress={openHistory}
+              style={({ pressed }) => [styles.iconBtn, pressed && { opacity: 0.6 }]}
+              hitSlop={8}
+            >
+              <Ionicons name="time-outline" size={20} color={colors.silver} />
+            </Pressable>
             <Pressable
               onPress={handleReset}
               style={({ pressed }) => [styles.iconBtn, pressed && { opacity: 0.6 }]}
@@ -245,6 +289,16 @@ export default function CommandScreen() {
         subtitle={menuTarget?.role === 'assistant' ? 'Assistant reply' : 'Your message'}
         actions={menuActions}
         onDismiss={() => setMenuTarget(null)}
+      />
+
+      <SessionHistorySheet
+        visible={historyVisible}
+        sessions={history.sessions}
+        loading={history.loading}
+        error={history.error}
+        currentSessionId={sessionId}
+        onSelect={handleLoadSession}
+        onDismiss={() => setHistoryVisible(false)}
       />
     </LinearGradient>
   );

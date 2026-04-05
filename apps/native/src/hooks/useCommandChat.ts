@@ -53,6 +53,27 @@ export function useCommandChat() {
     setSending(false);
   }, []);
 
+  // Load a previously persisted session (from intel.command_sessions).
+  const loadSession = useCallback(
+    async (loadedSessionId: string, loadedMessages: Array<{ role: ChatRole; content: string; timestamp?: string }>) => {
+      xhrRef.current?.abort();
+      xhrRef.current = null;
+      await AsyncStorage.setItem(SESSION_KEY, loadedSessionId);
+      setSessionId(loadedSessionId);
+      setMessages(
+        loadedMessages.map((m) => ({
+          id: makeId(),
+          role: m.role,
+          content: m.content,
+          timestamp: m.timestamp ?? new Date().toISOString(),
+        }))
+      );
+      setError(null);
+      setSending(false);
+    },
+    []
+  );
+
   const runRequest = useCallback(
     async (convo: ChatMessage[], sid: string) => {
       setError(null);
@@ -218,6 +239,7 @@ export function useCommandChat() {
     send,
     cancel,
     resetSession,
+    loadSession,
     deleteMessage,
     retryFrom,
   };
