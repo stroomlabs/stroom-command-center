@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import type { PulseData } from '@stroom/types';
 import supabase from '../lib/supabase';
+import { writeWidgetPayload } from '../lib/widgetSync';
 
 interface ExtendedPulse extends PulseData {
   claimsToday: number;
@@ -34,6 +35,12 @@ export function usePulseData() {
         statusBreakdown: pulse.status_breakdown ?? {},
       });
       setLastUpdatedAt(new Date());
+      // Mirror to widget storage so the iOS WidgetKit extension can read
+      // the latest snapshot on its 15-minute refresh timeline.
+      writeWidgetPayload({
+        queueDepth: pulse.queue_depth ?? 0,
+        claimsToday: pulse.claims_today ?? 0,
+      });
       setError(null);
     } catch (e: any) {
       setError(e.message ?? 'Failed to load pulse data');
@@ -51,8 +58,13 @@ export function usePulseData() {
       .on('broadcast', { event: 'changes' }, () => refresh())
       .subscribe();
 
+    // Widget timeline refresh — every 15 minutes, independent of realtime
+    // so the home-screen widget data stays fresh even if no broadcasts fire.
+    const widgetInterval = setInterval(() => refresh(), 15 * 60 * 1000);
+
     return () => {
       supabase.removeChannel(channel);
+      clearInterval(widgetInterval);
     };
   }, [refresh]);
 

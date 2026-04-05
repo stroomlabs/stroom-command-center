@@ -43,6 +43,26 @@ export default function OpsScreen() {
   const { alert } = useBrandAlert();
   const [refreshing, setRefreshing] = React.useState(false);
   const [sweeping, setSweeping] = React.useState(false);
+  const [autoApprovedToday, setAutoApprovedToday] = React.useState(0);
+
+  // Count of audit_log rows today where an agent/system actor approved a claim.
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const start = new Date();
+      start.setHours(0, 0, 0, 0);
+      const { data } = await supabase
+        .from('audit_log')
+        .select('id', { count: 'exact', head: false })
+        .in('actor', ['agent', 'system'])
+        .eq('action_type', 'approve')
+        .gte('created_at', start.toISOString());
+      if (!cancelled) setAutoApprovedToday((data as any[] | null)?.length ?? 0);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [sweeping]);
 
   const handleSweep = async () => {
     if (sweeping) return;
@@ -214,6 +234,43 @@ export default function OpsScreen() {
           />
         }
       >
+        {/* Dashboard summary — 2×2 mini metrics */}
+        <View style={styles.summaryGrid}>
+          <SummaryCell
+            label="Queue Depth"
+            value={pulse?.queueDepth ?? 0}
+            tone={
+              (pulse?.queueDepth ?? 0) > 50
+                ? 'alert'
+                : (pulse?.queueDepth ?? 0) > 10
+                ? 'warn'
+                : 'ok'
+            }
+          />
+          <SummaryCell
+            label="Issues Detected"
+            value={issueCount}
+            tone={issueCount >= 4 ? 'alert' : issueCount > 0 ? 'warn' : 'ok'}
+          />
+          <SummaryCell
+            label="Sources Stale"
+            value={unhealthy.filter((u) => u.issue === 'stale').length}
+            tone={
+              unhealthy.filter((u) => u.issue === 'stale').length > 3
+                ? 'alert'
+                : unhealthy.filter((u) => u.issue === 'stale').length > 0
+                ? 'warn'
+                : 'ok'
+            }
+          />
+          <SummaryCell
+            label="Auto-Approved"
+            sublabel="today"
+            value={autoApprovedToday}
+            tone="ok"
+          />
+        </View>
+
         {/* Primary action — Run Sweep */}
         <Pressable
           onPress={handleSweep}
@@ -291,6 +348,39 @@ export default function OpsScreen() {
         )}
       </ScrollView>
     </LinearGradient>
+  );
+}
+
+type SummaryTone = 'ok' | 'warn' | 'alert';
+
+function SummaryCell({
+  label,
+  value,
+  sublabel,
+  tone,
+}: {
+  label: string;
+  value: number;
+  sublabel?: string;
+  tone: SummaryTone;
+}) {
+  const dotColor =
+    tone === 'alert'
+      ? colors.statusReject
+      : tone === 'warn'
+      ? colors.statusPending
+      : colors.statusApprove;
+  return (
+    <View style={styles.summaryCell}>
+      <View style={styles.summaryHeader}>
+        <View style={[styles.summaryDot, { backgroundColor: dotColor }]} />
+        <Text style={styles.summaryLabel} numberOfLines={1}>
+          {label}
+        </Text>
+      </View>
+      <Text style={styles.summaryValue}>{value.toLocaleString()}</Text>
+      {sublabel && <Text style={styles.summarySublabel}>{sublabel}</Text>}
+    </View>
   );
 }
 
@@ -379,6 +469,55 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.xxl,
     gap: spacing.sm,
+  },
+  summaryGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  summaryCell: {
+    flexBasis: '48%',
+    flexGrow: 1,
+    backgroundColor: colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    borderRadius: radius.md,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    gap: 4,
+  },
+  summaryHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  summaryDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+  },
+  summaryLabel: {
+    flex: 1,
+    fontFamily: fonts.archivo.medium,
+    fontSize: 10,
+    color: colors.slate,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+  },
+  summaryValue: {
+    fontFamily: fonts.mono.semibold,
+    fontSize: 22,
+    color: colors.alabaster,
+    fontVariant: ['tabular-nums'],
+    marginTop: 2,
+  },
+  summarySublabel: {
+    fontFamily: fonts.mono.regular,
+    fontSize: 9,
+    color: colors.slate,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
   },
   sweepBtn: {
     flexDirection: 'row',

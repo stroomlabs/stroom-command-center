@@ -41,6 +41,7 @@ export default function EntityDetailScreen() {
     entity?.canonical_name ?? entity?.name
   );
   const [compareId, setCompareId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'list' | 'timeline'>('list');
   const [filter, setFilter] = useState<StatusFilter>('all');
   const [refreshing, setRefreshing] = useState(false);
 
@@ -55,19 +56,35 @@ export default function EntityDetailScreen() {
       ? claims
       : claims.filter((c) => c.status === (filter as ClaimStatus));
 
+  // Sorted by created_at descending for the timeline view
+  const timelineOrdered = React.useMemo(
+    () =>
+      [...filtered].sort(
+        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      ),
+    [filtered]
+  );
+
   const renderItem = useCallback(
-    ({ item }: { item: EntityClaim }) => (
-      <ClaimListItem
-        claim={item}
-        onPress={() =>
-          router.push({
-            pathname: '/claim/[id]',
-            params: { id: item.id },
-          } as any)
-        }
-      />
-    ),
-    [router]
+    ({ item, index }: { item: EntityClaim; index: number }) => {
+      const handlePress = () =>
+        router.push({
+          pathname: '/claim/[id]',
+          params: { id: item.id },
+        } as any);
+      if (viewMode === 'timeline') {
+        return (
+          <TimelineRow
+            claim={item}
+            onPress={handlePress}
+            isFirst={index === 0}
+            isLast={index === timelineOrdered.length - 1}
+          />
+        );
+      }
+      return <ClaimListItem claim={item} onPress={handlePress} />;
+    },
+    [router, viewMode, timelineOrdered.length]
   );
 
   const keyExtractor = useCallback((item: EntityClaim) => item.id, []);
@@ -105,7 +122,7 @@ export default function EntityDetailScreen() {
         </View>
       ) : (
         <FlatList
-          data={filtered}
+          data={viewMode === 'timeline' ? timelineOrdered : filtered}
           renderItem={renderItem}
           keyExtractor={keyExtractor}
           contentContainerStyle={styles.list}
@@ -217,39 +234,88 @@ export default function EntityDetailScreen() {
                 </View>
               </View>
 
-              {/* Filter pills */}
-              <FlatList
-                data={FILTERS}
-                keyExtractor={(f) => f.key}
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.filterRow}
-                renderItem={({ item }) => {
-                  const active = filter === item.key;
-                  return (
-                    <Pressable
-                      onPress={() => setFilter(item.key)}
-                      style={({ pressed }) => [
-                        styles.filterPill,
-                        active && styles.filterPillActive,
-                        pressed && { opacity: 0.7 },
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.filterText,
-                          active && styles.filterTextActive,
+              {/* View toggle */}
+              <View style={styles.viewToggle}>
+                <Pressable
+                  onPress={() => setViewMode('list')}
+                  style={[
+                    styles.viewToggleBtn,
+                    viewMode === 'list' && styles.viewToggleBtnActive,
+                  ]}
+                >
+                  <Ionicons
+                    name="list-outline"
+                    size={14}
+                    color={viewMode === 'list' ? colors.teal : colors.slate}
+                  />
+                  <Text
+                    style={[
+                      styles.viewToggleText,
+                      viewMode === 'list' && styles.viewToggleTextActive,
+                    ]}
+                  >
+                    List
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => setViewMode('timeline')}
+                  style={[
+                    styles.viewToggleBtn,
+                    viewMode === 'timeline' && styles.viewToggleBtnActive,
+                  ]}
+                >
+                  <Ionicons
+                    name="time-outline"
+                    size={14}
+                    color={viewMode === 'timeline' ? colors.teal : colors.slate}
+                  />
+                  <Text
+                    style={[
+                      styles.viewToggleText,
+                      viewMode === 'timeline' && styles.viewToggleTextActive,
+                    ]}
+                  >
+                    Timeline
+                  </Text>
+                </Pressable>
+              </View>
+
+              {/* Filter pills (list mode only) */}
+              {viewMode === 'list' && (
+                <FlatList
+                  data={FILTERS}
+                  keyExtractor={(f) => f.key}
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.filterRow}
+                  renderItem={({ item }) => {
+                    const active = filter === item.key;
+                    return (
+                      <Pressable
+                        onPress={() => setFilter(item.key)}
+                        style={({ pressed }) => [
+                          styles.filterPill,
+                          active && styles.filterPillActive,
+                          pressed && { opacity: 0.7 },
                         ]}
                       >
-                        {item.label}
-                      </Text>
-                    </Pressable>
-                  );
-                }}
-              />
+                        <Text
+                          style={[
+                            styles.filterText,
+                            active && styles.filterTextActive,
+                          ]}
+                        >
+                          {item.label}
+                        </Text>
+                      </Pressable>
+                    );
+                  }}
+                />
+              )}
 
               <Text style={styles.sectionHeader}>
-                {filtered.length} {filtered.length === 1 ? 'claim' : 'claims'}
+                {(viewMode === 'timeline' ? timelineOrdered : filtered).length}{' '}
+                {viewMode === 'timeline' ? 'events' : 'claims'}
               </Text>
             </View>
           }
@@ -292,6 +358,71 @@ export default function EntityDetailScreen() {
         }
       />
     </LinearGradient>
+  );
+}
+
+function TimelineRow({
+  claim,
+  onPress,
+  isFirst,
+  isLast,
+}: {
+  claim: EntityClaim;
+  onPress: () => void;
+  isFirst: boolean;
+  isLast: boolean;
+}) {
+  const date = new Date(claim.created_at);
+  const predicate = (claim.predicate ?? 'unknown').split('.').pop() ?? 'unknown';
+  const predicateLabel = predicate.replace(/_/g, ' ');
+  const value =
+    claim.object_entity?.canonical_name ??
+    (claim.value_jsonb && typeof claim.value_jsonb === 'object'
+      ? (() => {
+          const jsonb = claim.value_jsonb as Record<string, unknown>;
+          if ('value' in jsonb && typeof jsonb.value !== 'object') return String(jsonb.value);
+          if ('name' in jsonb) return String(jsonb.name);
+          return null;
+        })()
+      : null);
+
+  return (
+    <View style={styles.timelineRow}>
+      <View style={styles.timelineRail}>
+        <View
+          style={[
+            styles.timelineRailLine,
+            { top: 0, height: isFirst ? '50%' : '100%' },
+            isFirst && { top: '50%' },
+          ]}
+        />
+        <View style={styles.timelineDot} />
+        {!isLast && <View style={styles.timelineRailLineBottom} />}
+      </View>
+      <Pressable
+        onPress={onPress}
+        style={({ pressed }) => [
+          styles.timelineCard,
+          pressed && { opacity: 0.75 },
+        ]}
+      >
+        <Text style={styles.timelineDate}>
+          {date.toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+          })}
+        </Text>
+        <Text style={styles.timelinePredicate} numberOfLines={1}>
+          {predicateLabel}
+        </Text>
+        {value && (
+          <Text style={styles.timelineValue} numberOfLines={2}>
+            {value}
+          </Text>
+        )}
+      </Pressable>
+    </View>
   );
 }
 
@@ -494,6 +625,101 @@ const styles = StyleSheet.create({
     fontFamily: fonts.archivo.semibold,
     fontSize: 14,
     color: colors.teal,
+  },
+  viewToggle: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+    backgroundColor: colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    borderRadius: radius.md,
+    padding: 3,
+    marginTop: spacing.sm,
+    marginBottom: spacing.sm,
+    alignSelf: 'flex-start',
+  },
+  viewToggleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 6,
+    borderRadius: radius.sm,
+  },
+  viewToggleBtnActive: {
+    backgroundColor: colors.tealDim,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 161, 155, 0.35)',
+  },
+  viewToggleText: {
+    fontFamily: fonts.archivo.semibold,
+    fontSize: 11,
+    color: colors.slate,
+    letterSpacing: 0.3,
+  },
+  viewToggleTextActive: {
+    color: colors.teal,
+  },
+  timelineRow: {
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  timelineRail: {
+    width: 14,
+    alignItems: 'center',
+    position: 'relative',
+  },
+  timelineRailLine: {
+    position: 'absolute',
+    width: 2,
+    backgroundColor: colors.glassBorder,
+  },
+  timelineRailLineBottom: {
+    position: 'absolute',
+    top: 16,
+    bottom: -spacing.md,
+    width: 2,
+    backgroundColor: colors.glassBorder,
+  },
+  timelineDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: colors.teal,
+    borderWidth: 2,
+    borderColor: colors.obsidian,
+    marginTop: 8,
+  },
+  timelineCard: {
+    flex: 1,
+    backgroundColor: colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    borderRadius: radius.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.sm,
+    gap: 2,
+  },
+  timelineDate: {
+    fontFamily: fonts.mono.semibold,
+    fontSize: 10,
+    color: colors.teal,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  timelinePredicate: {
+    fontFamily: fonts.archivo.semibold,
+    fontSize: 13,
+    color: colors.alabaster,
+    textTransform: 'capitalize',
+    marginTop: 2,
+  },
+  timelineValue: {
+    fontFamily: fonts.archivo.regular,
+    fontSize: 12,
+    color: colors.silver,
+    lineHeight: 16,
   },
   duplicatesCard: {
     backgroundColor: colors.surfaceElevated,
