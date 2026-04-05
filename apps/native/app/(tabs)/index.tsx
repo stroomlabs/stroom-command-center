@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useNavigation, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import Animated, {
@@ -46,9 +46,23 @@ function formatLastUpdated(at: Date, _tick: number): string {
 export default function PulseScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const navigation = useNavigation();
+  const scrollRef = React.useRef<ScrollView>(null);
   const { data, loading, error, refresh, lastUpdatedAt } = usePulseData();
   const [refreshing, setRefreshing] = React.useState(false);
   const [nowTick, setNowTick] = React.useState(0);
+
+  // Tap-active-tab scroll-to-top — the Tabs navigator fires `tabPress` on
+  // the focused screen even when it's already active, so we just listen and
+  // snap back to the top.
+  React.useEffect(() => {
+    const unsub = (navigation as any).addListener?.('tabPress', () => {
+      if ((navigation as any).isFocused?.()) {
+        scrollRef.current?.scrollTo({ y: 0, animated: true });
+      }
+    });
+    return unsub;
+  }, [navigation]);
 
   usePushNotifications();
 
@@ -117,6 +131,7 @@ export default function PulseScreen() {
       <GlowSpot size={360} opacity={0.06} top={insets.top + 480} right={-100} breathe />
 
       <ScrollView
+        ref={scrollRef}
         contentContainerStyle={[
           styles.scroll,
           { paddingTop: insets.top + spacing.lg },

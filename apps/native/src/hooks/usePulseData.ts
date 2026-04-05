@@ -1,7 +1,12 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
+import { AppState, type AppStateStatus } from 'react-native';
 import type { PulseData } from '@stroom/types';
 import supabase from '../lib/supabase';
 import { writeWidgetPayload } from '../lib/widgetSync';
+
+// Minimum gap between foreground-triggered silent refreshes. Prevents rapid
+// foreground/background cycles from hammering get_command_pulse.
+const FOREGROUND_REFRESH_DEBOUNCE_MS = 30_000;
 
 interface ExtendedPulse extends PulseData {
   claimsToday: number;
@@ -49,8 +54,24 @@ export function usePulseData() {
     }
   }, []);
 
+  // Track the last successful refresh timestamp so the AppState listener
+  // can debounce foreground-triggered refetches. A ref (not state) avoids
+  // re-subscribing the listener on every tick.
+  const lastRefreshAtRef = useRef<number>(0);
+  const appStateRef = useRef<AppStateStatus>(AppState.currentState);
+
+  const silentRefresh = useCallback(async () => {
+    const now = Date.now();
+    if (now - lastRefreshAtRef.current < FOREGROUND_REFRESH_DEBOUNCE_MS) {
+      return;
+    }
+    lastRefreshAtRef.current = now;
+    await refresh();
+  }, [refresh]);
+
   useEffect(() => {
     refresh();
+    lastRefreshAtRef.current = Date.now();
 
     // Re-fetch on any claim change via Realtime
     const channel = supabase
@@ -62,11 +83,27 @@ export function usePulseData() {
     // so the home-screen widget data stays fresh even if no broadcasts fire.
     const widgetInterval = setInterval(() => refresh(), 15 * 60 * 1000);
 
+    // AppState listener: silently refetch when the app returns to the
+    // foreground, subject to the 30s debounce so rapid background/foreground
+    // cycles don't spam the server. No loading indicator — the existing
+    // data stays on screen until the new snapshot arrives.
+    const appSub = AppState.addEventListener(
+      'change',
+      (next: AppStateStatus) => {
+        const prev = appStateRef.current;
+        appStateRef.current = next;
+        if (prev.match(/inactive|background/) && next === 'active') {
+          void silentRefresh();
+        }
+      }
+    );
+
     return () => {
       supabase.removeChannel(channel);
       clearInterval(widgetInterval);
+      appSub.remove();
     };
-  }, [refresh]);
+  }, [refresh, silentRefresh]);
 
   return { data, loading, error, refresh, lastUpdatedAt };
 }

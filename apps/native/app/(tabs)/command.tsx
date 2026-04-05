@@ -14,7 +14,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useNavigation, useRouter, useLocalSearchParams } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import * as Clipboard from 'expo-clipboard';
 import { useCommandChat, type ChatMessage } from '../../src/hooks/useCommandChat';
@@ -46,7 +46,18 @@ import { colors, fonts, spacing, radius, gradient } from '../../src/constants/br
 export default function CommandScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const navigation = useNavigation();
   const params = useLocalSearchParams<{ prompt?: string }>();
+
+  React.useEffect(() => {
+    const unsub = (navigation as any).addListener?.('tabPress', () => {
+      if ((navigation as any).isFocused?.()) {
+        scrollRef.current?.scrollTo({ y: 0, animated: true });
+      }
+    });
+    return unsub;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [navigation]);
   const {
     messages,
     sending,
@@ -88,13 +99,49 @@ export default function CommandScreen() {
     }
   }, [params.prompt, router]);
 
-  // Auto-scroll to bottom on new messages
+  // Scroll pin tracking — the list stays pinned to the bottom while the
+  // user is within ~100px of the end. As soon as they scroll further up we
+  // stop auto-scrolling and surface a "New messages" pill so incoming
+  // assistant content doesn't yank the viewport away from them.
+  const [isPinned, setIsPinned] = React.useState(true);
+  const contentHeightRef = React.useRef(0);
+  const scrollViewHeightRef = React.useRef(0);
+
+  const handleScroll = useCallback(
+    (e: { nativeEvent: { contentOffset: { y: number } } }) => {
+      const y = e.nativeEvent.contentOffset.y;
+      const distanceFromBottom =
+        contentHeightRef.current - (y + scrollViewHeightRef.current);
+      const nowPinned = distanceFromBottom < 100;
+      setIsPinned((prev) => (prev === nowPinned ? prev : nowPinned));
+    },
+    []
+  );
+
+  const scrollToBottom = useCallback((animated = true) => {
+    scrollRef.current?.scrollToEnd({ animated });
+    setIsPinned(true);
+  }, []);
+
+  // Auto-scroll to bottom on new messages, but only when the list is
+  // currently pinned to the end — otherwise respect the operator's scroll.
   useEffect(() => {
+    if (!isPinned) return;
     const t = setTimeout(() => {
       scrollRef.current?.scrollToEnd({ animated: true });
     }, 50);
     return () => clearTimeout(t);
-  }, [messages.length, messages[messages.length - 1]?.content]);
+  }, [messages.length, messages[messages.length - 1]?.content, isPinned]);
+
+  // When the keyboard opens, always drop back to the bottom so the input
+  // field sits directly above the latest message.
+  useEffect(() => {
+    const sub = Keyboard.addListener('keyboardDidShow', () => {
+      scrollRef.current?.scrollToEnd({ animated: true });
+      setIsPinned(true);
+    });
+    return () => sub.remove();
+  }, []);
 
   const handleSend = useCallback(() => {
     const text = input.trim();
@@ -106,6 +153,10 @@ export default function CommandScreen() {
     Haptics.selectionAsync();
     setInput('');
     send(text);
+    // Always snap to bottom when the operator submits — overrides any
+    // prior scroll-up state.
+    setIsPinned(true);
+    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
   }, [input, sending, send, runSlashCommand]);
 
   // --- Slash commands ---
@@ -436,6 +487,17 @@ export default function CommandScreen() {
           contentContainerStyle={styles.messagesContent}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          onScroll={handleScroll}
+          scrollEventThrottle={32}
+          onContentSizeChange={(_w, h) => {
+            contentHeightRef.current = h;
+            if (isPinned) {
+              scrollRef.current?.scrollToEnd({ animated: true });
+            }
+          }}
+          onLayout={(e) => {
+            scrollViewHeightRef.current = e.nativeEvent.layout.height;
+          }}
         >
           {/* Pinned context */}
           {pinned.length > 0 && (
@@ -556,6 +618,10 @@ export default function CommandScreen() {
             </View>
           )}
         </ScrollView>
+
+        {/* "New messages" pill — visible when the user has scrolled up
+            while a message arrives. Tap to snap to bottom. */}
+        <NewMessagesPill visible={!isPinned} onPress={() => scrollToBottom(true)} />
 
         {/* Slash command suggestions */}
         {slashMatches && (
@@ -695,6 +761,64 @@ function Suggestion({
       <Ionicons name="arrow-forward" size={12} color={colors.teal} />
       <Text style={styles.suggestionText}>{text}</Text>
     </Pressable>
+  );
+}
+
+// Floating "↓ New messages" pill shown above the composer when the user
+// has scrolled up while new content is arriving. Fades in/out over 150ms.
+function NewMessagesPill({
+  visible,
+  onPress,
+}: {
+  visible: boolean;
+  onPress: () => void;
+}) {
+  const opacity = useSharedValue(0);
+  const [mounted, setMounted] = React.useState(visible);
+
+  React.useEffect(() => {
+    if (visible) {
+      setMounted(true);
+      opacity.value = withTiming(1, {
+        duration: 150,
+        easing: Easing.out(Easing.ease),
+      });
+    } else {
+      opacity.value = withTiming(
+        0,
+        { duration: 150, easing: Easing.in(Easing.ease) },
+        (done) => {
+          if (done) runOnJS(setMounted)(false);
+        }
+      );
+    }
+  }, [visible, opacity]);
+
+  const style = useAnimatedStyle(() => ({ opacity: opacity.value }));
+
+  if (!mounted) return null;
+
+  return (
+    <Animated.View
+      pointerEvents={visible ? 'auto' : 'none'}
+      style={[styles.newMessagesPillWrap, style]}
+    >
+      <Pressable
+        onPress={() => {
+          Haptics.selectionAsync();
+          onPress();
+        }}
+        style={({ pressed }) => [
+          styles.newMessagesPill,
+          pressed && { opacity: 0.85, transform: [{ scale: 0.97 }] },
+        ]}
+        accessibilityRole="button"
+        accessibilityLabel="Scroll to latest messages"
+      >
+        <Ionicons name="arrow-down" size={13} color={colors.alabaster} />
+        <Text style={styles.newMessagesPillText}>New messages</Text>
+      </Pressable>
+    </Animated.View>
   );
 }
 
@@ -1389,6 +1513,32 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.statusReject,
     flex: 1,
+  },
+  newMessagesPillWrap: {
+    position: 'absolute',
+    bottom: 120,
+    alignSelf: 'center',
+    zIndex: 10,
+  },
+  newMessagesPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: colors.teal,
+    shadowColor: colors.teal,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+  newMessagesPillText: {
+    fontFamily: fonts.archivo.semibold,
+    fontSize: 12,
+    color: colors.alabaster,
+    letterSpacing: 0.2,
   },
   slashMenu: {
     marginHorizontal: spacing.lg,

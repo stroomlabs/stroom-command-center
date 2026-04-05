@@ -8,9 +8,10 @@ import { colors, fonts, spacing, radius } from '../constants/brand';
 interface EntityRowProps {
   entity: EntitySearchResult;
   onPress: () => void;
+  onLongPress?: () => void;
 }
 
-function EntityRowImpl({ entity, onPress }: EntityRowProps) {
+function EntityRowImpl({ entity, onPress, onLongPress }: EntityRowProps) {
   const name = entity.canonical_name || entity.name || 'Unnamed entity';
   const type = entity.entity_type || entity.entity_class || 'entity';
   const domain = entity.domain;
@@ -20,6 +21,8 @@ function EntityRowImpl({ entity, onPress }: EntityRowProps) {
       accessibilityRole="button"
       accessibilityLabel={`${name}, ${type}${domain ? `, ${domain}` : ''}. Open entity.`}
       onPress={onPress}
+      onLongPress={onLongPress}
+      delayLongPress={350}
       style={styles.row}
     >
       <View style={styles.body}>

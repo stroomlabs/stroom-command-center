@@ -43,6 +43,7 @@ interface ClaimCardProps {
   claim: QueueClaim;
   onApprove: () => void;
   onReject: () => void;
+  onLongPress?: () => void;
   selectMode?: boolean;
   selected?: boolean;
   onToggleSelect?: () => void;
@@ -52,6 +53,7 @@ function ClaimCardImpl({
   claim,
   onApprove,
   onReject,
+  onLongPress,
   selectMode = false,
   selected = false,
   onToggleSelect,
@@ -207,6 +209,8 @@ function ClaimCardImpl({
                 } as any);
               }
             }}
+            onLongPress={selectMode ? undefined : onLongPress}
+            delayLongPress={350}
             style={({ pressed }) => [
               selectMode && selected && styles.selectedCardWrap,
               pressed && !selectMode && {

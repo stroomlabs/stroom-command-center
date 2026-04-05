@@ -25,6 +25,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQueueClaims } from '../../src/hooks/useQueueClaims';
 import supabase from '../../src/lib/supabase';
+import { useNavigation, useRouter } from 'expo-router';
+import * as Clipboard from 'expo-clipboard';
 import { ClaimCard } from '../../src/components/ClaimCard';
 import { RejectSheet } from '../../src/components/RejectSheet';
 import { SkeletonClaimCard } from '../../src/components/Skeleton';
@@ -58,8 +60,20 @@ const FILTERS: { key: StatusFilter; label: string }[] = [
 
 export default function QueueScreen() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
+  const navigation = useNavigation();
+  const flatListRef = React.useRef<FlatList>(null);
   const { claims, loading, error, refresh, approve, reject, batchApprove } =
     useQueueClaims();
+
+  React.useEffect(() => {
+    const unsub = (navigation as any).addListener?.('tabPress', () => {
+      if ((navigation as any).isFocused?.()) {
+        flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+      }
+    });
+    return unsub;
+  }, [navigation]);
   const [refreshing, setRefreshing] = useState(false);
   const [rejectTarget, setRejectTarget] = useState<string | null>(null);
   const [filter, setFilter] = useState<StatusFilter>('all');
@@ -245,12 +259,18 @@ export default function QueueScreen() {
     exitSelectMode();
   }, [selectedIds, batchApprove, exitSelectMode]);
 
+  const [menuClaim, setMenuClaim] = useState<QueueClaim | null>(null);
+
   const renderItem = useCallback(
     ({ item }: { item: QueueClaim }) => (
       <ClaimCard
         claim={item}
         onApprove={() => approve(item.id)}
         onReject={() => setRejectTarget(item.id)}
+        onLongPress={() => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+          setMenuClaim(item);
+        }}
         selectMode={selectMode}
         selected={selectedIds.has(item.id)}
         onToggleSelect={() => toggleSelect(item.id)}
@@ -258,6 +278,57 @@ export default function QueueScreen() {
     ),
     [approve, selectMode, selectedIds, toggleSelect]
   );
+
+  const claimMenuActions: ActionSheetAction[] = React.useMemo(() => {
+    if (!menuClaim) return [];
+    const claimText = [
+      menuClaim.subject_entity?.canonical_name ?? 'Unknown entity',
+      menuClaim.predicate ?? '',
+      menuClaim.object_entity?.canonical_name ??
+        JSON.stringify(menuClaim.value_jsonb ?? {}),
+    ]
+      .filter(Boolean)
+      .join(' · ');
+    return [
+      {
+        label: 'Approve',
+        icon: 'checkmark-circle-outline',
+        tone: 'accent',
+        onPress: () => {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          approve(menuClaim.id);
+        },
+      },
+      {
+        label: 'Reject',
+        icon: 'close-circle-outline',
+        tone: 'destructive',
+        onPress: () => {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+          setRejectTarget(menuClaim.id);
+        },
+      },
+      {
+        label: 'View Full Claim',
+        icon: 'open-outline',
+        onPress: () => {
+          Haptics.selectionAsync();
+          router.push({
+            pathname: '/claim/[id]',
+            params: { id: menuClaim.id },
+          } as any);
+        },
+      },
+      {
+        label: 'Copy Claim Text',
+        icon: 'copy-outline',
+        onPress: async () => {
+          await Clipboard.setStringAsync(claimText);
+          Haptics.selectionAsync();
+        },
+      },
+    ];
+  }, [menuClaim, approve, router]);
 
   const keyExtractor = useCallback((item: QueueClaim) => item.id, []);
 
@@ -409,6 +480,7 @@ export default function QueueScreen() {
         </ScrollView>
       ) : (
         <FlatList
+          ref={flatListRef}
           data={filteredClaims}
           renderItem={renderItem}
           keyExtractor={keyExtractor}
@@ -437,6 +509,16 @@ export default function QueueScreen() {
         subtitle={`Currently: ${SORT_LABELS[sort]}`}
         actions={sortActions}
         onDismiss={() => setSortSheetVisible(false)}
+      />
+
+      <ActionSheet
+        visible={menuClaim !== null}
+        title={
+          menuClaim?.subject_entity?.canonical_name ?? 'Claim'
+        }
+        subtitle={menuClaim?.predicate ?? undefined}
+        actions={claimMenuActions}
+        onDismiss={() => setMenuClaim(null)}
       />
 
       {selectMode && (

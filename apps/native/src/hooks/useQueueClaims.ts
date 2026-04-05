@@ -1,4 +1,5 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
+import { AppState, type AppStateStatus } from 'react-native';
 import {
   fetchQueueClaims,
   approveClaim,
@@ -10,6 +11,8 @@ import type { QueueClaim } from '@stroom/supabase';
 import type { RejectionReason } from '@stroom/types';
 import supabase from '../lib/supabase';
 import * as Haptics from 'expo-haptics';
+
+const FOREGROUND_REFRESH_DEBOUNCE_MS = 30_000;
 
 export function useQueueClaims() {
   const [claims, setClaims] = useState<QueueClaim[]>([]);
@@ -29,8 +32,12 @@ export function useQueueClaims() {
     }
   }, []);
 
+  const lastRefreshAtRef = useRef<number>(0);
+  const appStateRef = useRef<AppStateStatus>(AppState.currentState);
+
   useEffect(() => {
     refresh();
+    lastRefreshAtRef.current = Date.now();
 
     const channel = subscribeToClaimChanges(supabase, (payload) => {
       if (
@@ -45,8 +52,26 @@ export function useQueueClaims() {
       }
     });
 
+    // Silent refetch when the app returns to the foreground. Debounced to
+    // 30s so rapid background/foreground cycles don't hammer the server.
+    const appSub = AppState.addEventListener(
+      'change',
+      (next: AppStateStatus) => {
+        const prev = appStateRef.current;
+        appStateRef.current = next;
+        if (prev.match(/inactive|background/) && next === 'active') {
+          const now = Date.now();
+          if (now - lastRefreshAtRef.current >= FOREGROUND_REFRESH_DEBOUNCE_MS) {
+            lastRefreshAtRef.current = now;
+            void refresh();
+          }
+        }
+      }
+    );
+
     return () => {
       supabase.removeChannel(channel);
+      appSub.remove();
     };
   }, [refresh]);
 

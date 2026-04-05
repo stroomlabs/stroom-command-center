@@ -22,7 +22,7 @@ import Animated, {
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useNavigation, useRouter } from 'expo-router';
 import { ScreenTransition } from '../../src/components/ScreenTransition';
 import { useExploreSearch } from '../../src/hooks/useExploreSearch';
 import { usePredicatesList } from '../../src/hooks/usePredicatesList';
@@ -30,6 +30,12 @@ import { EntityRow } from '../../src/components/EntityRow';
 import { MultiCompareSheet } from '../../src/components/MultiCompareSheet';
 import { EmptyState } from '../../src/components/EmptyState';
 import { RetryCard } from '../../src/components/RetryCard';
+import {
+  ActionSheet,
+  type ActionSheetAction,
+} from '../../src/components/ActionSheet';
+import * as Clipboard from 'expo-clipboard';
+import { useBrandToast } from '../../src/components/BrandToast';
 import { useRecentlyViewed } from '../../src/hooks/useRecentlyViewed';
 import * as Haptics from 'expo-haptics';
 import type { EntitySearchResult } from '@stroom/supabase';
@@ -39,6 +45,18 @@ import { colors, fonts, spacing, radius, gradient } from '../../src/constants/br
 export default function ExploreScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const navigation = useNavigation();
+  const flatListRef = React.useRef<FlatList>(null);
+
+  React.useEffect(() => {
+    const unsub = (navigation as any).addListener?.('tabPress', () => {
+      if ((navigation as any).isFocused?.()) {
+        flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+      }
+    });
+    return unsub;
+  }, [navigation]);
+
   const [segment, setSegment] = useState<'entities' | 'predicates'>('entities');
   const [query, setQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
@@ -49,6 +67,8 @@ export default function ExploreScreen() {
     useExploreSearch(query);
   const predicates = usePredicatesList();
   const { recent: recentlyViewed } = useRecentlyViewed();
+  const { show: showToast } = useBrandToast();
+  const [menuEntity, setMenuEntity] = useState<EntitySearchResult | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
   const handleRefresh = useCallback(async () => {
@@ -164,10 +184,53 @@ export default function ExploreScreen() {
           </Pressable>
         );
       }
-      return <EntityRow entity={item} onPress={() => handleOpenEntity(item.id)} />;
+      return (
+        <EntityRow
+          entity={item}
+          onPress={() => handleOpenEntity(item.id)}
+          onLongPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            setMenuEntity(item);
+          }}
+        />
+      );
     },
     [handleOpenEntity, selectMode, selectedIds, toggleSelect]
   );
+
+  const entityMenuActions: ActionSheetAction[] = React.useMemo(() => {
+    if (!menuEntity) return [];
+    const name =
+      menuEntity.canonical_name ?? menuEntity.name ?? 'this entity';
+    return [
+      {
+        label: 'View Details',
+        icon: 'information-circle-outline',
+        tone: 'accent',
+        onPress: () => {
+          Haptics.selectionAsync();
+          handleOpenEntity(menuEntity.id);
+        },
+      },
+      {
+        label: 'Copy Name',
+        icon: 'copy-outline',
+        onPress: async () => {
+          await Clipboard.setStringAsync(name);
+          Haptics.selectionAsync();
+          showToast('Name copied', 'success');
+        },
+      },
+      {
+        label: 'View in Graph',
+        icon: 'git-network-outline',
+        onPress: () => {
+          Haptics.selectionAsync();
+          handleOpenEntity(menuEntity.id);
+        },
+      },
+    ];
+  }, [menuEntity, handleOpenEntity, showToast]);
 
   const keyExtractor = useCallback((item: EntitySearchResult) => item.id, []);
 
@@ -372,6 +435,7 @@ export default function ExploreScreen() {
           </ScrollView>
         ) : (
           <FlatList
+            ref={flatListRef}
             data={filteredResults}
             renderItem={renderItem}
             keyExtractor={keyExtractor}
@@ -490,6 +554,14 @@ export default function ExploreScreen() {
           </Pressable>
         </View>
       )}
+
+      <ActionSheet
+        visible={menuEntity !== null}
+        title={menuEntity?.canonical_name ?? menuEntity?.name ?? 'Entity'}
+        subtitle={menuEntity?.entity_type ?? 'entity'}
+        actions={entityMenuActions}
+        onDismiss={() => setMenuEntity(null)}
+      />
 
       <MultiCompareSheet
         visible={compareOpen}

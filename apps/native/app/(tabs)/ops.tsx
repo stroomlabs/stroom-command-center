@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useNavigation, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { runAutoGovernance } from '@stroom/supabase';
 import * as Haptics from 'expo-haptics';
@@ -24,6 +24,12 @@ import { ScreenTransition } from '../../src/components/ScreenTransition';
 import { useBrandAlert } from '../../src/components/BrandAlert';
 import { EmptyState } from '../../src/components/EmptyState';
 import { RetryCard } from '../../src/components/RetryCard';
+import {
+  ActionSheet,
+  type ActionSheetAction,
+} from '../../src/components/ActionSheet';
+import * as Clipboard from 'expo-clipboard';
+import { useBrandToast } from '../../src/components/BrandToast';
 import { colors, fonts, spacing, radius, gradient } from '../../src/constants/brand';
 
 interface OpsCardSpec {
@@ -38,12 +44,29 @@ interface OpsCardSpec {
 export default function OpsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const navigation = useNavigation();
+  const scrollRef = React.useRef<ScrollView>(null);
+
+  React.useEffect(() => {
+    const unsub = (navigation as any).addListener?.('tabPress', () => {
+      if ((navigation as any).isFocused?.()) {
+        scrollRef.current?.scrollTo({ y: 0, animated: true });
+      }
+    });
+    return unsub;
+  }, [navigation]);
   const { data: pulse, refresh: refreshPulse } = usePulseData();
   const { health, error: healthError, refresh: refreshHealth } = useGraphHealth();
   const { refresh: refreshQueue } = useQueueClaims();
   const { sources } = useSourcesList();
   const unhealthy = useMemo(() => pickUnhealthySources(sources).slice(0, 6), [sources]);
   const { alert } = useBrandAlert();
+  const { show: showToast } = useBrandToast();
+  const [menuSource, setMenuSource] = React.useState<{
+    id: string;
+    source_name: string;
+    source_url?: string | null;
+  } | null>(null);
   const [refreshing, setRefreshing] = React.useState(false);
   const [sweeping, setSweeping] = React.useState(false);
   const [autoApprovedToday, setAutoApprovedToday] = React.useState(0);
@@ -363,6 +386,7 @@ export default function OpsScreen() {
       </View>
 
       <ScrollView
+        ref={scrollRef}
         contentContainerStyle={styles.list}
         showsVerticalScrollIndicator={false}
         keyboardDismissMode="on-drag"
@@ -502,7 +526,24 @@ export default function OpsScreen() {
                   ? 'STALE'
                   : 'LOW TRUST';
               return (
-                <View key={u.source.id} style={styles.healthRow}>
+                <Pressable
+                  key={u.source.id}
+                  onPress={() =>
+                    router.push({
+                      pathname: '/source/[id]',
+                      params: { id: u.source.id },
+                    } as any)
+                  }
+                  onLongPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                    setMenuSource(u.source);
+                  }}
+                  delayLongPress={350}
+                  style={({ pressed }) => [
+                    styles.healthRow,
+                    pressed && { opacity: 0.85, transform: [{ scale: 0.97 }] },
+                  ]}
+                >
                   <View style={[styles.healthDot, { backgroundColor: tone }]} />
                   <View style={styles.healthBody}>
                     <Text style={styles.healthName} numberOfLines={1}>
@@ -512,27 +553,51 @@ export default function OpsScreen() {
                       {label} · trust {Number(u.source.trust_score).toFixed(1)}
                     </Text>
                   </View>
-                  <Pressable
-                    onPress={() =>
-                      router.push({
-                        pathname: '/source/[id]',
-                        params: { id: u.source.id },
-                      } as any)
-                    }
-                    style={({ pressed }) => [
-                      styles.healthCheckBtn,
-                      pressed && { opacity: 0.7 },
-                    ]}
-                  >
+                  <View style={styles.healthCheckBtn}>
                     <Text style={styles.healthCheckText}>Check</Text>
                     <Ionicons name="chevron-forward" size={12} color={colors.teal} />
-                  </Pressable>
-                </View>
+                  </View>
+                </Pressable>
               );
             })}
           </View>
         )}
       </ScrollView>
+
+      <ActionSheet
+        visible={menuSource !== null}
+        title={menuSource?.source_name ?? 'Source'}
+        subtitle={menuSource?.source_url ?? undefined}
+        actions={
+          menuSource
+            ? [
+                {
+                  label: 'View Details',
+                  icon: 'information-circle-outline',
+                  tone: 'accent',
+                  onPress: () => {
+                    Haptics.selectionAsync();
+                    router.push({
+                      pathname: '/source/[id]',
+                      params: { id: menuSource.id },
+                    } as any);
+                  },
+                },
+                {
+                  label: 'Copy Source URL',
+                  icon: 'link-outline',
+                  onPress: async () => {
+                    if (!menuSource.source_url) return;
+                    await Clipboard.setStringAsync(menuSource.source_url);
+                    Haptics.selectionAsync();
+                    showToast('URL copied', 'success');
+                  },
+                },
+              ]
+            : []
+        }
+        onDismiss={() => setMenuSource(null)}
+      />
     </LinearGradient>
     </ScreenTransition>
   );
