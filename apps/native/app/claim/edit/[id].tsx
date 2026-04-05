@@ -40,7 +40,7 @@ export default function ClaimEditScreen() {
 
   const [status, setStatus] = useState<ClaimStatus>('draft');
   const [confidence, setConfidence] = useState<string>('');
-  const [fields, setFields] = useState<Record<string, string>>({});
+  const [jsonbValue, setJsonbValue] = useState<unknown>({});
   const [rawJson, setRawJson] = useState<string>('');
   const [rawMode, setRawMode] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -52,17 +52,22 @@ export default function ClaimEditScreen() {
     setStatus(claim.status);
     setConfidence(claim.confidence_score != null ? String(claim.confidence_score) : '');
     const jsonb = claim.value_jsonb ?? {};
-    const flat = isFlatScalarObject(jsonb);
-    setRawMode(!flat);
-    if (flat) {
-      const next: Record<string, string> = {};
-      for (const [k, v] of Object.entries(jsonb)) {
-        next[k] = v == null ? '' : String(v);
-      }
-      setFields(next);
-    }
+    setJsonbValue(jsonb);
     setRawJson(JSON.stringify(jsonb, null, 2));
+    setRawMode(false); // Fields view is always the default
   }, [claim]);
+
+  // Keep raw JSON mirror up to date while editing in fields mode so toggling
+  // shows the current working state rather than the original payload.
+  useEffect(() => {
+    if (!rawMode) {
+      try {
+        setRawJson(JSON.stringify(jsonbValue, null, 2));
+      } catch {
+        // non-serializable — leave prior raw intact
+      }
+    }
+  }, [jsonbValue, rawMode]);
 
   const canSave = useMemo(() => {
     if (saving) return false;
@@ -86,15 +91,12 @@ export default function ClaimEditScreen() {
     setSaving(true);
     setSaveError(null);
 
-    let nextJsonb: Record<string, unknown> | null = claim.value_jsonb;
+    let nextJsonb: unknown;
     try {
       if (rawMode) {
         nextJsonb = JSON.parse(rawJson);
       } else {
-        // Coerce flat scalar fields back; numbers stay numbers, booleans stay booleans
-        nextJsonb = Object.fromEntries(
-          Object.entries(fields).map(([k, v]) => [k, coerceScalar(v)])
-        );
+        nextJsonb = jsonbValue;
       }
     } catch (e: any) {
       setSaveError('Invalid JSON: ' + (e.message ?? 'parse error'));
@@ -106,7 +108,7 @@ export default function ClaimEditScreen() {
 
     try {
       await updateClaim(supabase, claim.id, {
-        value_jsonb: nextJsonb,
+        value_jsonb: nextJsonb as Record<string, unknown> | null,
         status,
         confidence_score: confNum,
       });
@@ -118,7 +120,7 @@ export default function ClaimEditScreen() {
     } finally {
       setSaving(false);
     }
-  }, [claim, canSave, rawMode, rawJson, fields, confidence, status, router]);
+  }, [claim, canSave, rawMode, rawJson, jsonbValue, confidence, status, router]);
 
   const handleDiscard = useCallback(() => {
     Alert.alert('Discard changes?', 'Any edits will be lost.', [
@@ -234,9 +236,13 @@ export default function ClaimEditScreen() {
           <View style={styles.jsonHeaderRow}>
             <Text style={styles.sectionHeader}>VALUE</Text>
             <Pressable
-              onPress={() => setRawMode((m) => !m)}
+              onPress={() => {
+                Haptics.selectionAsync();
+                setRawMode((m) => !m);
+              }}
               style={({ pressed }) => [
                 styles.modeToggle,
+                rawMode && styles.modeToggleActive,
                 pressed && { opacity: 0.7 },
               ]}
             >
@@ -246,7 +252,7 @@ export default function ClaimEditScreen() {
                 color={colors.teal}
               />
               <Text style={styles.modeToggleText}>
-                {rawMode ? 'Fields' : 'Raw JSON'}
+                {rawMode ? 'Back to fields' : 'Advanced: raw JSON'}
               </Text>
             </Pressable>
           </View>
@@ -262,27 +268,8 @@ export default function ClaimEditScreen() {
               placeholder="{}"
               placeholderTextColor={colors.slate}
             />
-          ) : Object.keys(fields).length === 0 ? (
-            <Text style={styles.emptyValue}>
-              value_jsonb is empty. Toggle raw JSON mode to add fields.
-            </Text>
           ) : (
-            <View style={styles.fieldsList}>
-              {Object.entries(fields).map(([key, val]) => (
-                <View key={key} style={styles.fieldRow}>
-                  <Text style={styles.fieldLabel}>{titleCase(key)}</Text>
-                  <TextInput
-                    value={val}
-                    onChangeText={(next) =>
-                      setFields((prev) => ({ ...prev, [key]: next }))
-                    }
-                    style={styles.fieldInput}
-                    placeholder="—"
-                    placeholderTextColor={colors.slate}
-                  />
-                </View>
-              ))}
-            </View>
+            <FieldsEditor value={jsonbValue} onChange={setJsonbValue} />
           )}
 
           {saveError && (
@@ -345,24 +332,260 @@ function BackButton({ onPress }: { onPress: () => void }) {
   );
 }
 
-function isFlatScalarObject(obj: Record<string, unknown>): boolean {
-  if (obj == null || typeof obj !== 'object' || Array.isArray(obj)) return false;
-  const entries = Object.entries(obj);
-  if (entries.length === 0) return true;
-  return entries.every(
-    ([, v]) => v == null || typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean'
+// ── Recursive Fields editor ──
+//
+// Renders arbitrary JSONB structures as labeled inputs:
+//   - object → labeled rows per key (Title Case)
+//   - nested object → indented sub-fields behind a teal guide rail
+//   - array of objects → expandable cards, each with editable fields inside
+//   - array of scalars → numbered list of inputs
+//   - scalar → TextInput (with typed keyboard for numbers)
+// Typed scalars (number / boolean) round-trip their original JSON type.
+
+function FieldsEditor({
+  value,
+  onChange,
+}: {
+  value: unknown;
+  onChange: (next: unknown) => void;
+}) {
+  return (
+    <View style={styles.fieldsList}>
+      <ValueNode value={value} onChange={onChange} depth={0} />
+    </View>
   );
 }
 
-function coerceScalar(raw: string): unknown {
-  const trimmed = raw.trim();
-  if (trimmed === '') return null;
-  if (trimmed === 'true') return true;
-  if (trimmed === 'false') return false;
-  if (trimmed === 'null') return null;
-  const asNum = Number(trimmed);
-  if (!Number.isNaN(asNum) && /^-?\d+(\.\d+)?$/.test(trimmed)) return asNum;
-  return raw;
+function ValueNode({
+  value,
+  onChange,
+  depth,
+  typeHint,
+}: {
+  value: unknown;
+  onChange: (next: unknown) => void;
+  depth: number;
+  typeHint?: 'string' | 'number' | 'boolean';
+}) {
+  if (value !== null && typeof value === 'object') {
+    if (Array.isArray(value)) {
+      return <ArrayNode items={value} onChange={onChange} depth={depth} />;
+    }
+    return (
+      <ObjectNode
+        obj={value as Record<string, unknown>}
+        onChange={onChange}
+        depth={depth}
+      />
+    );
+  }
+  // Scalar or null
+  return <ScalarInput value={value} onChange={onChange} typeHint={typeHint} />;
+}
+
+function ObjectNode({
+  obj,
+  onChange,
+  depth,
+}: {
+  obj: Record<string, unknown>;
+  onChange: (next: Record<string, unknown>) => void;
+  depth: number;
+}) {
+  const entries = Object.entries(obj);
+  if (entries.length === 0) {
+    return <Text style={styles.emptyValue}>(empty object)</Text>;
+  }
+  return (
+    <View style={depth > 0 ? styles.nestedBlock : undefined}>
+      {entries.map(([key, val]) => {
+        const isComplex = val !== null && typeof val === 'object';
+        return (
+          <View key={key} style={styles.nestedFieldRow}>
+            <Text style={styles.fieldLabel}>{titleCase(key)}</Text>
+            {isComplex ? (
+              <ValueNode
+                value={val}
+                onChange={(next) => onChange({ ...obj, [key]: next })}
+                depth={depth + 1}
+              />
+            ) : (
+              <ScalarInput
+                value={val}
+                onChange={(next) => onChange({ ...obj, [key]: next })}
+              />
+            )}
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+function ArrayNode({
+  items,
+  onChange,
+  depth,
+}: {
+  items: unknown[];
+  onChange: (next: unknown[]) => void;
+  depth: number;
+}) {
+  const [expanded, setExpanded] = useState<Set<number>>(() => new Set([0]));
+
+  if (items.length === 0) {
+    return <Text style={styles.emptyValue}>(empty list)</Text>;
+  }
+
+  const allObjects = items.every(
+    (i) => i !== null && typeof i === 'object' && !Array.isArray(i)
+  );
+
+  const updateAt = (idx: number, next: unknown) => {
+    const copy = items.slice();
+    copy[idx] = next;
+    onChange(copy);
+  };
+
+  if (!allObjects) {
+    // Array of scalars or mixed — render indexed inputs
+    return (
+      <View style={styles.arrayStack}>
+        {items.map((item, i) => (
+          <View key={i} style={styles.arrayScalarRow}>
+            <Text style={styles.arrayIndex}>#{i + 1}</Text>
+            <View style={{ flex: 1 }}>
+              <ScalarInput value={item} onChange={(next) => updateAt(i, next)} />
+            </View>
+          </View>
+        ))}
+      </View>
+    );
+  }
+
+  // Array of objects — expandable cards
+  return (
+    <View style={styles.arrayStack}>
+      {items.map((item, i) => {
+        const isOpen = expanded.has(i);
+        const preview = summarizeObject(item as Record<string, unknown>);
+        return (
+          <View key={i} style={styles.expandableCard}>
+            <Pressable
+              onPress={() => {
+                setExpanded((prev) => {
+                  const next = new Set(prev);
+                  if (next.has(i)) next.delete(i);
+                  else next.add(i);
+                  return next;
+                });
+              }}
+              style={({ pressed }) => [
+                styles.expandableHeader,
+                pressed && { opacity: 0.7 },
+              ]}
+            >
+              <Text style={styles.arrayIndex}>#{i + 1}</Text>
+              <Text style={styles.expandablePreview} numberOfLines={1}>
+                {preview}
+              </Text>
+              <Ionicons
+                name={isOpen ? 'chevron-up' : 'chevron-down'}
+                size={14}
+                color={colors.slate}
+              />
+            </Pressable>
+            {isOpen && (
+              <View style={styles.expandableBody}>
+                <ObjectNode
+                  obj={item as Record<string, unknown>}
+                  onChange={(next) => updateAt(i, next)}
+                  depth={depth + 1}
+                />
+              </View>
+            )}
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+function ScalarInput({
+  value,
+  onChange,
+  typeHint,
+}: {
+  value: unknown;
+  onChange: (next: unknown) => void;
+  typeHint?: 'string' | 'number' | 'boolean';
+}) {
+  // Remember the original type so the payload round-trips cleanly.
+  const originalType = typeHint ?? (value == null ? 'string' : typeof value as 'string' | 'number' | 'boolean');
+
+  if (originalType === 'boolean') {
+    const bool = value === true;
+    return (
+      <View style={styles.boolRow}>
+        {[true, false].map((b) => {
+          const active = bool === b;
+          return (
+            <Pressable
+              key={String(b)}
+              onPress={() => onChange(b)}
+              style={({ pressed }) => [
+                styles.boolPill,
+                active && styles.boolPillActive,
+                pressed && !active && { opacity: 0.7 },
+              ]}
+            >
+              <Text style={[styles.boolText, active && styles.boolTextActive]}>
+                {b ? 'True' : 'False'}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    );
+  }
+
+  const text = value == null ? '' : String(value);
+
+  return (
+    <TextInput
+      value={text}
+      onChangeText={(next) => {
+        if (next.length === 0) {
+          onChange(null);
+          return;
+        }
+        if (originalType === 'number') {
+          const n = Number(next);
+          if (!Number.isNaN(n) && /^-?\d*\.?\d*$/.test(next)) {
+            onChange(n);
+            return;
+          }
+          // Invalid numeric input — keep original value, let operator fix
+          return;
+        }
+        onChange(next);
+      }}
+      keyboardType={originalType === 'number' ? 'decimal-pad' : 'default'}
+      placeholder="—"
+      placeholderTextColor={colors.slate}
+      style={styles.fieldInput}
+    />
+  );
+}
+
+function summarizeObject(obj: Record<string, unknown>): string {
+  if (!obj || typeof obj !== 'object') return '';
+  // Pick the first string-ish field as a preview label
+  for (const k of ['name', 'title', 'label', 'driver', 'team', 'id']) {
+    if (k in obj && typeof obj[k] !== 'object') return String(obj[k]);
+  }
+  const first = Object.entries(obj).find(([, v]) => typeof v !== 'object');
+  return first ? `${titleCase(first[0])}: ${String(first[1]).slice(0, 40)}` : '';
 }
 
 const styles = StyleSheet.create({
@@ -482,6 +705,22 @@ const styles = StyleSheet.create({
   fieldsList: {
     gap: spacing.sm,
   },
+  nestedBlock: {
+    marginTop: 4,
+    paddingLeft: spacing.sm,
+    borderLeftWidth: 2,
+    borderLeftColor: 'rgba(0, 161, 155, 0.35)',
+    gap: spacing.xs,
+  },
+  nestedFieldRow: {
+    backgroundColor: colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
+    gap: 4,
+  },
   fieldRow: {
     backgroundColor: colors.surfaceElevated,
     borderWidth: 1,
@@ -503,6 +742,83 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.alabaster,
     paddingVertical: 0,
+  },
+  arrayStack: {
+    gap: spacing.xs,
+    marginTop: 4,
+  },
+  arrayScalarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 8,
+  },
+  arrayIndex: {
+    fontFamily: fonts.mono.semibold,
+    fontSize: 10,
+    color: colors.teal,
+    letterSpacing: 0.5,
+  },
+  expandableCard: {
+    backgroundColor: colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    borderRadius: radius.md,
+    overflow: 'hidden',
+  },
+  expandableHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 12,
+  },
+  expandablePreview: {
+    flex: 1,
+    fontFamily: fonts.archivo.medium,
+    fontSize: 13,
+    color: colors.silver,
+  },
+  expandableBody: {
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.md,
+    paddingTop: 4,
+    borderTopWidth: 1,
+    borderTopColor: colors.glassBorder,
+    gap: spacing.xs,
+  },
+  boolRow: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+    marginTop: 2,
+  },
+  boolPill: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+  },
+  boolPillActive: {
+    backgroundColor: colors.tealDim,
+    borderColor: colors.teal,
+  },
+  boolText: {
+    fontFamily: fonts.archivo.semibold,
+    fontSize: 12,
+    color: colors.silver,
+  },
+  boolTextActive: {
+    color: colors.teal,
+  },
+  modeToggleActive: {
+    backgroundColor: 'rgba(0, 161, 155, 0.2)',
   },
   emptyValue: {
     fontFamily: fonts.archivo.regular,
