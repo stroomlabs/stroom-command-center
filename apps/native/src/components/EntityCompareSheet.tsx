@@ -7,11 +7,13 @@ import {
   Pressable,
   ActivityIndicator,
 } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { fetchEntityById, fetchClaimsForEntity } from '@stroom/supabase';
 import type { Entity } from '@stroom/types';
 import supabase from '../lib/supabase';
+import { useModalTransition } from '../hooks/useModalTransition';
 import { colors, fonts, spacing, radius } from '../constants/brand';
 
 interface EntityCompareSheetProps {
@@ -40,6 +42,7 @@ export function EntityCompareSheet({
   const [otherSnap, setOtherSnap] = useState<Snapshot | null>(null);
   const [currentSnap, setCurrentSnap] = useState<Snapshot | null>(null);
   const [loading, setLoading] = useState(false);
+  const { cardStyle } = useModalTransition(visible);
 
   useEffect(() => {
     if (!visible || !otherId || !current) {
@@ -82,6 +85,7 @@ export function EntityCompareSheet({
     >
       <Pressable style={styles.backdrop} onPress={onDismiss}>
         <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
+        <Animated.View style={cardStyle}>
         <Pressable style={styles.card} onPress={() => {}}>
           <View style={styles.header}>
             <Text style={styles.title}>Compare Entities</Text>
@@ -117,6 +121,7 @@ export function EntityCompareSheet({
             </View>
           )}
         </Pressable>
+        </Animated.View>
       </Pressable>
     </Modal>
   );

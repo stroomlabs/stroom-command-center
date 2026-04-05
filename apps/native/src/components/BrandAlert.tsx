@@ -13,7 +13,9 @@ import {
   Pressable,
   Platform,
 } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { BlurView } from 'expo-blur';
+import { useModalTransition } from '../hooks/useModalTransition';
 import { colors, fonts, spacing, radius } from '../constants/brand';
 
 export type BrandAlertButtonStyle = 'default' | 'cancel' | 'destructive';
@@ -44,6 +46,7 @@ const BrandAlertContext = createContext<BrandAlertContextValue | null>(null);
 
 export function BrandAlertProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<BrandAlertState | null>(null);
+  const { cardStyle } = useModalTransition(state !== null);
 
   const alert = useCallback(
     (title: string, message?: string, buttons?: BrandAlertButton[]) => {
@@ -89,6 +92,7 @@ export function BrandAlertProvider({ children }: { children: React.ReactNode }) 
             tint="dark"
             style={StyleSheet.absoluteFill}
           />
+          <Animated.View style={cardStyle}>
           <Pressable style={styles.card} onPress={() => {}}>
             <Text style={styles.title}>{state?.title}</Text>
             {state?.message ? (
@@ -118,6 +122,7 @@ export function BrandAlertProvider({ children }: { children: React.ReactNode }) 
               ))}
             </View>
           </Pressable>
+          </Animated.View>
         </Pressable>
       </Modal>
     </BrandAlertContext.Provider>

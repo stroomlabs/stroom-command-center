@@ -27,6 +27,7 @@ import { useQueueClaims } from '../../src/hooks/useQueueClaims';
 import { ClaimCard } from '../../src/components/ClaimCard';
 import { RejectSheet } from '../../src/components/RejectSheet';
 import { SkeletonClaimCard } from '../../src/components/Skeleton';
+import { ScreenTransition } from '../../src/components/ScreenTransition';
 import {
   ActionSheet,
   type ActionSheetAction,
@@ -207,6 +208,7 @@ export default function QueueScreen() {
   const keyExtractor = useCallback((item: QueueClaim) => item.id, []);
 
   return (
+    <ScreenTransition>
     <LinearGradient
       colors={[gradient.background[0], gradient.background[1]]}
       start={{ x: 0, y: 0 }}
@@ -421,6 +423,7 @@ export default function QueueScreen() {
         </View>
       )}
     </LinearGradient>
+    </ScreenTransition>
   );
 }
 

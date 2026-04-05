@@ -9,8 +9,10 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { REJECTION_REASONS, type RejectionReason } from '@stroom/types';
+import { useModalTransition } from '../hooks/useModalTransition';
 import { colors, fonts, spacing, radius } from '../constants/brand';
 
 interface RejectSheetProps {
@@ -22,6 +24,7 @@ interface RejectSheetProps {
 export function RejectSheet({ visible, onDismiss, onReject }: RejectSheetProps) {
   const [selected, setSelected] = useState<RejectionReason | null>(null);
   const [notes, setNotes] = useState('');
+  const { cardStyle } = useModalTransition(visible);
 
   const handleSubmit = () => {
     if (!selected) return;
@@ -39,7 +42,7 @@ export function RejectSheet({ visible, onDismiss, onReject }: RejectSheetProps) 
   return (
     <Modal
       visible={visible}
-      animationType="slide"
+      animationType="fade"
       transparent
       onRequestClose={handleDismiss}
     >
@@ -48,6 +51,7 @@ export function RejectSheet({ visible, onDismiss, onReject }: RejectSheetProps) 
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={styles.keyboardView}
         >
+          <Animated.View style={cardStyle}>
           <Pressable style={styles.sheet} onPress={() => {}}>
             {/* Handle */}
             <View style={styles.handle} />
@@ -103,6 +107,7 @@ export function RejectSheet({ visible, onDismiss, onReject }: RejectSheetProps) 
               <Text style={styles.submitText}>Reject Claim</Text>
             </Pressable>
           </Pressable>
+          </Animated.View>
         </KeyboardAvoidingView>
       </Pressable>
     </Modal>

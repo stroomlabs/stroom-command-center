@@ -126,6 +126,7 @@ export default function RootLayout() {
             headerShown: false,
             contentStyle: { backgroundColor: colors.black },
             animation: 'slide_from_right',
+            animationDuration: 250,
           }}
         >
           <Stack.Screen name="(tabs)" />

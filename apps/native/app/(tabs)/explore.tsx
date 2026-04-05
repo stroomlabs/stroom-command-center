@@ -14,6 +14,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { ScreenTransition } from '../../src/components/ScreenTransition';
 import { useExploreSearch } from '../../src/hooks/useExploreSearch';
 import { usePredicatesList } from '../../src/hooks/usePredicatesList';
 import { EntityRow } from '../../src/components/EntityRow';
@@ -72,6 +73,7 @@ export default function ExploreScreen() {
   const trimmed = query.trim();
 
   return (
+    <ScreenTransition>
     <LinearGradient
       colors={[gradient.background[0], gradient.background[1]]}
       start={{ x: 0, y: 0 }}
@@ -211,6 +213,7 @@ export default function ExploreScreen() {
         />
       )}
     </LinearGradient>
+    </ScreenTransition>
   );
 }
 

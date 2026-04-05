@@ -8,8 +8,10 @@ import {
   FlatList,
   ActivityIndicator,
 } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import type { CommandSession } from '@stroom/types';
+import { useModalTransition } from '../hooks/useModalTransition';
 import { colors, fonts, spacing, radius } from '../constants/brand';
 
 interface SessionHistorySheetProps {
@@ -31,15 +33,17 @@ export function SessionHistorySheet({
   onSelect,
   onDismiss,
 }: SessionHistorySheetProps) {
+  const { cardStyle } = useModalTransition(visible);
   return (
     <Modal
       visible={visible}
-      animationType="slide"
+      animationType="fade"
       transparent
       onRequestClose={onDismiss}
       statusBarTranslucent
     >
       <Pressable style={styles.backdrop} onPress={onDismiss}>
+        <Animated.View style={cardStyle}>
         <Pressable style={styles.sheet} onPress={() => {}}>
           <View style={styles.handle} />
 
@@ -128,6 +132,7 @@ export function SessionHistorySheet({
             <Text style={styles.cancelText}>Close</Text>
           </Pressable>
         </Pressable>
+        </Animated.View>
       </Pressable>
     </Modal>
   );

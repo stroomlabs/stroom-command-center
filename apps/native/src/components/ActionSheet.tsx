@@ -6,7 +6,9 @@ import {
   Modal,
   Pressable,
 } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
+import { useModalTransition } from '../hooks/useModalTransition';
 import { colors, fonts, spacing, radius } from '../constants/brand';
 
 export interface ActionSheetAction {
@@ -33,6 +35,8 @@ export function ActionSheet({
   onDismiss,
   cancelLabel = 'Cancel',
 }: ActionSheetProps) {
+  const { cardStyle } = useModalTransition(visible);
+
   const handleAction = (action: ActionSheetAction) => {
     // Close first, then run — avoids double-modal flicker if the handler opens another sheet
     onDismiss();
@@ -43,12 +47,13 @@ export function ActionSheet({
   return (
     <Modal
       visible={visible}
-      animationType="slide"
+      animationType="fade"
       transparent
       onRequestClose={onDismiss}
       statusBarTranslucent
     >
       <Pressable style={styles.backdrop} onPress={onDismiss}>
+        <Animated.View style={cardStyle}>
         <Pressable style={styles.sheet} onPress={() => {}}>
           {/* Handle */}
           <View style={styles.handle} />
@@ -95,6 +100,7 @@ export function ActionSheet({
             <Text style={styles.cancelText}>{cancelLabel}</Text>
           </Pressable>
         </Pressable>
+        </Animated.View>
       </Pressable>
     </Modal>
   );

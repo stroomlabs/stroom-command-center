@@ -24,6 +24,7 @@ import { ActionSheet, type ActionSheetAction } from '../../src/components/Action
 import { SessionHistorySheet } from '../../src/components/SessionHistorySheet';
 import { useBrandAlert } from '../../src/components/BrandAlert';
 import { GlowSpot } from '../../src/components/GlowSpot';
+import { ScreenTransition } from '../../src/components/ScreenTransition';
 import type { CommandSession } from '@stroom/types';
 import { colors, fonts, spacing, radius, gradient } from '../../src/constants/brand';
 
@@ -180,6 +181,7 @@ export default function CommandScreen() {
     messages[messages.length - 1].content === '';
 
   return (
+    <ScreenTransition>
     <LinearGradient
       colors={[gradient.background[0], gradient.background[1]]}
       start={{ x: 0, y: 0 }}
@@ -324,6 +326,7 @@ export default function CommandScreen() {
         onDismiss={() => setHistoryVisible(false)}
       />
     </LinearGradient>
+    </ScreenTransition>
   );
 }
 

@@ -209,7 +209,10 @@ function ClaimCardImpl({
             }}
             style={({ pressed }) => [
               selectMode && selected && styles.selectedCardWrap,
-              pressed && !selectMode && { opacity: 0.85 },
+              pressed && !selectMode && {
+                opacity: 0.85,
+                transform: [{ scale: 0.98 }],
+              },
             ]}
           >
           <GlassCard

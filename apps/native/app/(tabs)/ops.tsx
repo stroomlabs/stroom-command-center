@@ -20,6 +20,7 @@ import { useGraphHealth } from '../../src/hooks/useGraphHealth';
 import { useQueueClaims } from '../../src/hooks/useQueueClaims';
 import { useSourcesList, pickUnhealthySources } from '../../src/hooks/useSourcesList';
 import { GlowSpot } from '../../src/components/GlowSpot';
+import { ScreenTransition } from '../../src/components/ScreenTransition';
 import { useBrandAlert } from '../../src/components/BrandAlert';
 import { colors, fonts, spacing, radius, gradient } from '../../src/constants/brand';
 
@@ -194,6 +195,7 @@ export default function OpsScreen() {
   ];
 
   return (
+    <ScreenTransition>
     <LinearGradient
       colors={[gradient.background[0], gradient.background[1]]}
       start={{ x: 0, y: 0 }}
@@ -348,6 +350,7 @@ export default function OpsScreen() {
         )}
       </ScrollView>
     </LinearGradient>
+    </ScreenTransition>
   );
 }
 

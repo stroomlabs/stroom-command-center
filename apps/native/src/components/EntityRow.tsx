@@ -60,7 +60,8 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   pressed: {
-    opacity: 0.6,
+    opacity: 0.75,
+    transform: [{ scale: 0.98 }],
     borderColor: colors.glassBorderHover,
   },
   body: {

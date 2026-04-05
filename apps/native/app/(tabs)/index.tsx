@@ -23,6 +23,7 @@ import { PulseMetric } from '../../src/components/PulseMetric';
 import { GlassCard } from '../../src/components/GlassCard';
 import { SkeletonMetricCard } from '../../src/components/Skeleton';
 import { GlowSpot } from '../../src/components/GlowSpot';
+import { ScreenTransition } from '../../src/components/ScreenTransition';
 import { colors, fonts, spacing, radius, gradient } from '../../src/constants/brand';
 
 function formatLastUpdated(at: Date, _tick: number): string {
@@ -76,6 +77,7 @@ export default function PulseScreen() {
   };
 
   return (
+    <ScreenTransition>
     <LinearGradient
       colors={[gradient.background[0], gradient.background[1]]}
       start={{ x: 0, y: 0 }}
@@ -235,6 +237,7 @@ export default function PulseScreen() {
         ) : null}
       </ScrollView>
     </LinearGradient>
+    </ScreenTransition>
   );
 }
 
