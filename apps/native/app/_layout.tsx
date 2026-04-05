@@ -125,6 +125,7 @@ export default function RootLayout() {
           <Stack.Screen name="sources" />
           <Stack.Screen name="predicate/[key]" />
           <Stack.Screen name="digest" />
+          <Stack.Screen name="coverage" />
         </Stack>
           </ErrorBoundary>
         </RouteGuard>

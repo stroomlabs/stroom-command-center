@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import * as Clipboard from 'expo-clipboard';
 import { approveClaim, rejectClaim } from '@stroom/supabase';
 import { useClaimDetail } from '../../src/hooks/useClaimDetail';
 import { StatusBadge } from '../../src/components/StatusBadge';
@@ -38,10 +39,11 @@ export default function ClaimDetailScreen() {
 
   const handleApprove = useCallback(async () => {
     if (!claim || acting) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setActing(true);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     try {
       await approveClaim(supabase, claim.id);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       router.back();
     } catch (e: any) {
       setActing(false);
@@ -49,14 +51,19 @@ export default function ClaimDetailScreen() {
     }
   }, [claim, acting, router]);
 
+  const openRejectSheet = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setRejectVisible(true);
+  }, []);
+
   const handleReject = useCallback(
     async (reason: RejectionReason, notes?: string) => {
       if (!claim) return;
       setRejectVisible(false);
       setActing(true);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
       try {
         await rejectClaim(supabase, claim.id, reason, notes);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
         router.back();
       } catch (e: any) {
         setActing(false);
@@ -65,6 +72,12 @@ export default function ClaimDetailScreen() {
     },
     [claim, router]
   );
+
+  const handleCopyId = useCallback(async () => {
+    if (!claim) return;
+    await Clipboard.setStringAsync(claim.id);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  }, [claim]);
 
   const handleEdit = useCallback(() => {
     if (!claim) return;
@@ -292,6 +305,16 @@ export default function ClaimDetailScreen() {
             />
           )}
           <MetaRow label="Claim ID" value={claim.id} mono />
+          <Pressable
+            onPress={handleCopyId}
+            style={({ pressed }) => [
+              styles.copyIdBtn,
+              pressed && { opacity: 0.7 },
+            ]}
+          >
+            <Ionicons name="copy-outline" size={13} color={colors.teal} />
+            <Text style={styles.copyIdText}>Copy Claim ID</Text>
+          </Pressable>
         </View>
       </ScrollView>
 
@@ -303,7 +326,7 @@ export default function ClaimDetailScreen() {
         ]}
       >
         <Pressable
-          onPress={() => setRejectVisible(true)}
+          onPress={openRejectSheet}
           disabled={acting}
           style={({ pressed }) => [
             styles.actionBtn,
@@ -565,6 +588,25 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: colors.slate,
     marginTop: 2,
+  },
+  copyIdBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 6,
+    marginTop: spacing.sm,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: radius.sm,
+    backgroundColor: colors.tealDim,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 161, 155, 0.35)',
+  },
+  copyIdText: {
+    fontFamily: fonts.archivo.semibold,
+    fontSize: 11,
+    color: colors.teal,
+    letterSpacing: -0.1,
   },
   actionBar: {
     position: 'absolute',

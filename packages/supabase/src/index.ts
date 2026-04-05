@@ -778,6 +778,58 @@ function makeHourBuckets(): HourBucket[] {
   return Array.from({ length: 24 }, (_, i) => ({ hour: i, count: 0 }));
 }
 
+// ── Coverage gaps: entities with few claims ──
+
+export interface CoverageGapEntity {
+  id: string;
+  canonical_name: string | null;
+  entity_type: string | null;
+  claim_count: number;
+}
+
+export async function fetchCoverageGaps(
+  client: SupabaseClient,
+  threshold = 3,
+  entityLimit = 1000
+): Promise<CoverageGapEntity[]> {
+  const [entitiesRes, claimsRes] = await Promise.all([
+    client
+      .from('entities')
+      .select('id, canonical_name, entity_type, updated_at')
+      .order('updated_at', { ascending: false })
+      .limit(entityLimit),
+    client.from('claims').select('subject_entity_id'),
+  ]);
+  if (entitiesRes.error) throw entitiesRes.error;
+  if (claimsRes.error) throw claimsRes.error;
+
+  const counts = new Map<string, number>();
+  for (const row of (claimsRes.data as { subject_entity_id: string | null }[] | null) ?? []) {
+    const id = row.subject_entity_id;
+    if (!id) continue;
+    counts.set(id, (counts.get(id) ?? 0) + 1);
+  }
+
+  const gaps: CoverageGapEntity[] = [];
+  for (const e of (entitiesRes.data as {
+    id: string;
+    canonical_name: string | null;
+    entity_type: string | null;
+  }[] | null) ?? []) {
+    const count = counts.get(e.id) ?? 0;
+    if (count < threshold) {
+      gaps.push({
+        id: e.id,
+        canonical_name: e.canonical_name,
+        entity_type: e.entity_type,
+        claim_count: count,
+      });
+    }
+  }
+
+  return gaps.sort((a, b) => a.claim_count - b.claim_count);
+}
+
 // ── Top entities by claim count ──
 
 export interface TopEntity {

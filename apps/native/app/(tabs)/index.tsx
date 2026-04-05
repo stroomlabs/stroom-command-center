@@ -46,6 +46,7 @@ function pctTone(value: number, total: number, warnPct: number, alertPct: number
 function GraphHealthRows({
   health,
   data,
+  onOpenCoverage,
 }: {
   health: GraphHealth;
   data: {
@@ -53,6 +54,7 @@ function GraphHealthRows({
     totalEntities: number;
     totalClaims: number;
   } | null;
+  onOpenCoverage: () => void;
 }) {
   const totalSources = data?.totalSources ?? 0;
   const totalEntities = data?.totalEntities ?? 0;
@@ -73,7 +75,7 @@ function GraphHealthRows({
   const pctLabel = (value: number, total: number) =>
     total > 0 ? ` · ${((value / total) * 100).toFixed(1)}%` : '';
 
-  const rows: { label: string; value: string; tone: HealthTone }[] = [
+  const rows: { label: string; value: string; tone: HealthTone; onPress?: () => void }[] = [
     {
       label: 'Stale sources',
       value: `${health.stale_sources.toLocaleString()}${pctLabel(health.stale_sources, totalSources)}`,
@@ -83,6 +85,7 @@ function GraphHealthRows({
       label: 'Orphaned entities',
       value: `${health.orphaned_entities.toLocaleString()}${pctLabel(health.orphaned_entities, totalEntities)}`,
       tone: orphanTone,
+      onPress: onOpenCoverage,
     },
     {
       label: 'Uncorroborated claims',
@@ -113,18 +116,43 @@ function GraphHealthRows({
 
   return (
     <View>
-      {rows.map((row, idx) => (
-        <View
-          key={row.label}
-          style={[styles.healthRow, idx > 0 && styles.healthRowDivider]}
-        >
-          <View style={[styles.healthDot, { backgroundColor: toneColor(row.tone) }]} />
-          <Text style={styles.healthLabel}>{row.label}</Text>
-          <Text style={[styles.healthValue, { color: toneColor(row.tone) }]}>
-            {row.value}
-          </Text>
-        </View>
-      ))}
+      {rows.map((row, idx) => {
+        const body = (
+          <>
+            <View style={[styles.healthDot, { backgroundColor: toneColor(row.tone) }]} />
+            <Text style={styles.healthLabel}>{row.label}</Text>
+            <Text style={[styles.healthValue, { color: toneColor(row.tone) }]}>
+              {row.value}
+            </Text>
+            {row.onPress && (
+              <Ionicons name="chevron-forward" size={13} color={colors.slate} />
+            )}
+          </>
+        );
+        if (row.onPress) {
+          return (
+            <Pressable
+              key={row.label}
+              onPress={row.onPress}
+              style={({ pressed }) => [
+                styles.healthRow,
+                idx > 0 && styles.healthRowDivider,
+                pressed && { opacity: 0.75 },
+              ]}
+            >
+              {body}
+            </Pressable>
+          );
+        }
+        return (
+          <View
+            key={row.label}
+            style={[styles.healthRow, idx > 0 && styles.healthRowDivider]}
+          >
+            {body}
+          </View>
+        );
+      })}
     </View>
   );
 }
@@ -337,7 +365,11 @@ export default function PulseScreen() {
               <GlassCard style={styles.healthCard}>
                 <Text style={styles.breakdownTitle}>Graph Health</Text>
                 {graphHealth.health ? (
-                  <GraphHealthRows health={graphHealth.health} data={data} />
+                  <GraphHealthRows
+                    health={graphHealth.health}
+                    data={data}
+                    onOpenCoverage={() => router.push('/coverage' as any)}
+                  />
                 ) : (
                   <View style={{ gap: 8 }}>
                     <View style={styles.healthSkeletonRow} />
