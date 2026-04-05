@@ -108,7 +108,11 @@ export default function PulseScreen() {
             </View>
 
             <View style={styles.grid}>
-              <PulseMetric label="Sources" value={data.totalSources} />
+              <PulseMetric
+                label="Sources"
+                value={data.totalSources}
+                onPress={() => router.push('/sources' as any)}
+              />
               <PulseMetric
                 label="Queue"
                 value={data.queueDepth}

@@ -148,11 +148,15 @@ export default function ClaimDetailScreen() {
           <View style={styles.section}>
             <Text style={styles.sectionHeader}>PRIMARY SOURCE</Text>
             <Pressable
-              onPress={() => openUrl(claim.source!.source_url)}
-              disabled={!claim.source.source_url}
+              onPress={() =>
+                router.push({
+                  pathname: '/source/[id]',
+                  params: { id: claim.source!.id },
+                } as any)
+              }
               style={({ pressed }) => [
                 styles.sourceCard,
-                pressed && claim.source!.source_url && { opacity: 0.7 },
+                pressed && { opacity: 0.7 },
               ]}
             >
               <View style={styles.sourceHeader}>
@@ -169,9 +173,17 @@ export default function ClaimDetailScreen() {
                 >
                   {Number(claim.source.trust_score).toFixed(1)}
                 </Text>
+                <Ionicons name="chevron-forward" size={14} color={colors.slate} />
               </View>
               {claim.source.source_url && (
-                <View style={styles.urlRow}>
+                <Pressable
+                  onPress={() => openUrl(claim.source!.source_url)}
+                  style={({ pressed }) => [
+                    styles.urlRow,
+                    pressed && { opacity: 0.6 },
+                  ]}
+                  hitSlop={4}
+                >
                   <Ionicons
                     name="open-outline"
                     size={12}
@@ -180,7 +192,7 @@ export default function ClaimDetailScreen() {
                   <Text style={styles.url} numberOfLines={1}>
                     {claim.source.source_url}
                   </Text>
-                </View>
+                </Pressable>
               )}
             </Pressable>
           </View>

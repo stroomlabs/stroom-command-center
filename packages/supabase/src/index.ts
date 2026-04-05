@@ -514,4 +514,76 @@ export async function fetchClaimDetail(
   };
 }
 
+// ── Sources ──
+
+export async function fetchSourceById(
+  client: SupabaseClient,
+  id: string
+): Promise<Source | null> {
+  const { data, error } = await client
+    .from('sources')
+    .select('*')
+    .eq('id', id)
+    .single();
+  if (error) {
+    if (error.code === 'PGRST116') return null;
+    throw error;
+  }
+  return data as Source;
+}
+
+export interface SourceClaim {
+  id: string;
+  predicate: string | null;
+  value_jsonb: Record<string, unknown> | null;
+  object_entity_id: string | null;
+  confidence_score: number | null;
+  corroboration_score: number | null;
+  status: ClaimStatus;
+  created_at: string;
+  subject_entity: { canonical_name: string | null } | null;
+  object_entity: { canonical_name: string | null } | null;
+}
+
+export async function fetchClaimsForSource(
+  client: SupabaseClient,
+  sourceId: string,
+  limit = 50
+): Promise<SourceClaim[]> {
+  const { data, error } = await client
+    .from('claims')
+    .select(
+      `
+      id,
+      predicate,
+      value_jsonb,
+      object_entity_id,
+      confidence_score,
+      corroboration_score,
+      status,
+      created_at,
+      subject_entity:entities!claims_subject_entity_id_fkey(canonical_name),
+      object_entity:entities!claims_object_entity_id_fkey(canonical_name)
+    `
+    )
+    .eq('asserted_source_id', sourceId)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return ((data as unknown) as SourceClaim[]) ?? [];
+}
+
+export async function fetchAllSources(
+  client: SupabaseClient,
+  limit = 200
+): Promise<Source[]> {
+  const { data, error } = await client
+    .from('sources')
+    .select('*')
+    .order('trust_score', { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return (data as Source[]) ?? [];
+}
+
 export { SUPABASE_URL, SUPABASE_ANON_KEY };

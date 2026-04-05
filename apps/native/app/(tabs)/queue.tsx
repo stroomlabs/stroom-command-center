@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   ScrollView,
   Pressable,
+  TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -35,16 +36,23 @@ export default function QueueScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [rejectTarget, setRejectTarget] = useState<string | null>(null);
   const [filter, setFilter] = useState<StatusFilter>('all');
+  const [search, setSearch] = useState('');
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
-  const filteredClaims = useMemo(
-    () =>
+  const filteredClaims = useMemo(() => {
+    const byStatus =
       filter === 'all'
         ? claims
-        : claims.filter((c) => c.status === (filter as ClaimStatus)),
-    [claims, filter]
-  );
+        : claims.filter((c) => c.status === (filter as ClaimStatus));
+    const q = search.trim().toLowerCase();
+    if (!q) return byStatus;
+    return byStatus.filter((c) => {
+      const name = c.subject_entity?.canonical_name?.toLowerCase() ?? '';
+      const pred = (c.predicate ?? '').toLowerCase();
+      return name.includes(q) || pred.includes(q);
+    });
+  }, [claims, filter, search]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -132,6 +140,27 @@ export default function QueueScreen() {
         </Pressable>
       </View>
       <Text style={styles.headerSub}>Claims pending governance review</Text>
+
+      {/* Search bar */}
+      <View style={styles.searchWrap}>
+        <Ionicons name="search" size={16} color={colors.slate} />
+        <TextInput
+          value={search}
+          onChangeText={setSearch}
+          placeholder="Search by entity or predicate…"
+          placeholderTextColor={colors.slate}
+          style={styles.searchInput}
+          autoCorrect={false}
+          autoCapitalize="none"
+          returnKeyType="search"
+          clearButtonMode="while-editing"
+        />
+        {search.length > 0 && (
+          <Pressable onPress={() => setSearch('')} hitSlop={8}>
+            <Ionicons name="close-circle" size={16} color={colors.slate} />
+          </Pressable>
+        )}
+      </View>
 
       {/* Filter chips */}
       <ScrollView
@@ -359,6 +388,26 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     marginTop: spacing.xs,
     marginBottom: spacing.md,
+  },
+  searchWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.sm,
+    paddingHorizontal: spacing.md,
+    height: 40,
+    backgroundColor: colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    borderRadius: radius.md,
+  },
+  searchInput: {
+    flex: 1,
+    fontFamily: fonts.archivo.regular,
+    fontSize: 14,
+    color: colors.alabaster,
+    paddingVertical: 0,
   },
   filterScroll: {
     flexGrow: 0,
