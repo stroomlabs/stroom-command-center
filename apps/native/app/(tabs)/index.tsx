@@ -5,10 +5,12 @@ import {
   ScrollView,
   StyleSheet,
   RefreshControl,
+  Pressable,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -104,16 +106,34 @@ export default function PulseScreen() {
         {/* Header */}
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Pulse</Text>
-          <View style={styles.liveColumn}>
-            <View style={styles.liveIndicator}>
-              <Animated.View style={[styles.liveDot, liveDotStyle]} />
-              <Text style={styles.liveText}>LIVE</Text>
+          <View style={styles.headerRight}>
+            <Pressable
+              onPress={() => router.push('/notifications' as any)}
+              hitSlop={10}
+              style={({ pressed }) => [
+                styles.bellBtn,
+                pressed && { opacity: 0.6, transform: [{ scale: 0.97 }] },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel="Open notifications"
+            >
+              <Ionicons
+                name="notifications-outline"
+                size={20}
+                color={colors.silver}
+              />
+            </Pressable>
+            <View style={styles.liveColumn}>
+              <View style={styles.liveIndicator}>
+                <Animated.View style={[styles.liveDot, liveDotStyle]} />
+                <Text style={styles.liveText}>LIVE</Text>
+              </View>
+              {lastUpdatedAt && (
+                <Text style={styles.lastUpdated}>
+                  {formatLastUpdated(lastUpdatedAt, nowTick)}
+                </Text>
+              )}
             </View>
-            {lastUpdatedAt && (
-              <Text style={styles.lastUpdated}>
-                {formatLastUpdated(lastUpdatedAt, nowTick)}
-              </Text>
-            )}
           </View>
         </View>
 
@@ -254,6 +274,22 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     marginBottom: spacing.xs,
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    paddingTop: 6,
+  },
+  bellBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: radius.md,
+    backgroundColor: colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   liveColumn: {
     alignItems: 'flex-end',

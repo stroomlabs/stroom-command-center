@@ -19,6 +19,7 @@ import * as Haptics from 'expo-haptics';
 import * as Clipboard from 'expo-clipboard';
 import { useCommandChat, type ChatMessage } from '../../src/hooks/useCommandChat';
 import supabase from '../../src/lib/supabase';
+import { usePinnedMessages } from '../../src/hooks/usePinnedMessages';
 import Animated, {
   FadeIn,
   useSharedValue,
@@ -27,6 +28,8 @@ import Animated, {
   withSequence,
   withTiming,
   Easing,
+  cancelAnimation,
+  runOnJS,
 } from 'react-native-reanimated';
 import { useEntityNameMap, type EntityLookup } from '../../src/hooks/useEntityNameMap';
 import { useSessionHistory } from '../../src/hooks/useSessionHistory';
@@ -65,6 +68,8 @@ export default function CommandScreen() {
   );
   const [input, setInput] = useState('');
   const [slashRunning, setSlashRunning] = useState(false);
+  const { pinned, pin, unpin } = usePinnedMessages();
+  const [pinnedExpanded, setPinnedExpanded] = useState(false);
   const [menuTarget, setMenuTarget] = useState<ChatMessage | null>(null);
   const [historyVisible, setHistoryVisible] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
@@ -291,6 +296,7 @@ export default function CommandScreen() {
   const menuActions: ActionSheetAction[] = React.useMemo(() => {
     if (!menuTarget) return [];
     const canRetry = menuTarget.role === 'assistant' && !sending;
+    const alreadyPinned = pinned.some((p) => p.id === menuTarget.id);
     const actions: ActionSheetAction[] = [
       {
         label: 'Copy',
@@ -299,6 +305,25 @@ export default function CommandScreen() {
         onPress: () => copyMessage(menuTarget.content),
       },
     ];
+    actions.push({
+      label: alreadyPinned ? 'Unpin' : 'Pin',
+      icon: alreadyPinned ? 'bookmark' : 'bookmark-outline',
+      tone: 'accent',
+      onPress: () => {
+        if (alreadyPinned) {
+          unpin(menuTarget.id);
+        } else {
+          pin({
+            id: menuTarget.id,
+            role: menuTarget.role === 'user' ? 'user' : 'assistant',
+            content: menuTarget.content,
+            pinned_at: new Date().toISOString(),
+            session_id: sessionId,
+          });
+        }
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      },
+    });
     if (canRetry) {
       actions.push({
         label: 'Retry',
@@ -317,7 +342,17 @@ export default function CommandScreen() {
       },
     });
     return actions;
-  }, [menuTarget, sending, copyMessage, retryFrom, deleteMessage]);
+  }, [
+    menuTarget,
+    sending,
+    copyMessage,
+    retryFrom,
+    deleteMessage,
+    pinned,
+    pin,
+    unpin,
+    sessionId,
+  ]);
 
   const showTypingIndicator =
     sending &&
@@ -388,6 +423,60 @@ export default function CommandScreen() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
+          {/* Pinned context */}
+          {pinned.length > 0 && (
+            <View style={styles.pinnedCard}>
+              <Pressable
+                onPress={() => setPinnedExpanded((v) => !v)}
+                style={({ pressed }) => [
+                  styles.pinnedHeader,
+                  pressed && { opacity: 0.7 },
+                ]}
+              >
+                <Ionicons name="bookmark" size={12} color={colors.teal} />
+                <Text style={styles.pinnedHeaderText}>
+                  PINNED · {pinned.length}
+                </Text>
+                <View style={{ flex: 1 }} />
+                <Ionicons
+                  name={pinnedExpanded ? 'chevron-up' : 'chevron-down'}
+                  size={14}
+                  color={colors.slate}
+                />
+              </Pressable>
+              {pinnedExpanded && (
+                <View style={styles.pinnedList}>
+                  {pinned.map((p) => (
+                    <View key={p.id} style={styles.pinnedRow}>
+                      <Text style={styles.pinnedRole}>
+                        {p.role === 'user' ? 'YOU' : 'CLAUDE'}
+                      </Text>
+                      <Text
+                        style={styles.pinnedContent}
+                        numberOfLines={3}
+                      >
+                        {p.content}
+                      </Text>
+                      <Pressable
+                        onPress={() => unpin(p.id)}
+                        hitSlop={8}
+                        style={({ pressed }) => [
+                          pressed && { opacity: 0.6 },
+                        ]}
+                      >
+                        <Ionicons
+                          name="close"
+                          size={14}
+                          color={colors.slate}
+                        />
+                      </Pressable>
+                    </View>
+                  ))}
+                </View>
+              )}
+            </View>
+          )}
+
           {messages.length === 0 && !sending && (
             <EmptyState
               onSuggest={(prompt) => {
@@ -562,22 +651,43 @@ function Suggestion({
   );
 }
 
-// Thin blinking teal cursor shown at the end of the assistant bubble while
-// the response is still streaming. Fades between 1 and 0.2 opacity on a
-// 600ms cycle. Unmounts as soon as `sending` drops.
-function StreamingCursor() {
-  const opacity = useSharedValue(1);
+// Thin blinking teal cursor shown at the end of the assistant bubble.
+// While `active`, opacity oscillates 1 ↔ 0.2 on a 1s cycle. When the
+// parent flips `active` to false the cursor eases opacity to 0 over
+// 240ms, then unmounts via the local `mounted` state — no instant pop.
+function StreamingCursor({ active }: { active: boolean }) {
+  const opacity = useSharedValue(active ? 1 : 0);
+  const [mounted, setMounted] = React.useState(active);
+
   React.useEffect(() => {
-    opacity.value = withRepeat(
-      withSequence(
-        withTiming(0.2, { duration: 500, easing: Easing.inOut(Easing.ease) }),
-        withTiming(1, { duration: 500, easing: Easing.inOut(Easing.ease) })
-      ),
-      -1,
-      false
-    );
-  }, [opacity]);
+    if (active) {
+      setMounted(true);
+      // Cancel any pending fade-out and restart the blink loop.
+      cancelAnimation(opacity);
+      opacity.value = 1;
+      opacity.value = withRepeat(
+        withSequence(
+          withTiming(0.2, { duration: 500, easing: Easing.inOut(Easing.ease) }),
+          withTiming(1, { duration: 500, easing: Easing.inOut(Easing.ease) })
+        ),
+        -1,
+        false
+      );
+    } else {
+      cancelAnimation(opacity);
+      opacity.value = withTiming(
+        0,
+        { duration: 240, easing: Easing.out(Easing.ease) },
+        (done) => {
+          if (done) runOnJS(setMounted)(false);
+        }
+      );
+    }
+  }, [active, opacity]);
+
   const style = useAnimatedStyle(() => ({ opacity: opacity.value }));
+
+  if (!mounted) return null;
   return <Animated.View style={[styles.streamCursor, style]} />;
 }
 
@@ -633,7 +743,7 @@ function MessageBubble({
           entityLookup={entityLookup}
           onEntityPress={onEntityPress}
         />
-        {streaming && <StreamingCursor />}
+        {!isUser && <StreamingCursor active={streaming} />}
       </Pressable>
     </View>
   );
@@ -1036,6 +1146,55 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.glassBorder,
     borderBottomLeftRadius: 4,
+  },
+  pinnedCard: {
+    backgroundColor: colors.tealDim,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 161, 155, 0.35)',
+    borderRadius: radius.md,
+    marginBottom: spacing.md,
+    overflow: 'hidden',
+  },
+  pinnedHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
+  },
+  pinnedHeaderText: {
+    fontFamily: fonts.archivo.semibold,
+    fontSize: 11,
+    color: colors.teal,
+    letterSpacing: 1,
+  },
+  pinnedList: {
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.sm,
+    gap: spacing.sm,
+  },
+  pinnedRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    backgroundColor: 'rgba(0, 0, 0, 0.25)',
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 8,
+  },
+  pinnedRole: {
+    fontFamily: fonts.mono.semibold,
+    fontSize: 9,
+    color: colors.teal,
+    letterSpacing: 0.8,
+    width: 52,
+  },
+  pinnedContent: {
+    flex: 1,
+    fontFamily: fonts.archivo.regular,
+    fontSize: 12,
+    color: colors.silver,
+    lineHeight: 16,
   },
   streamCursor: {
     width: 2,

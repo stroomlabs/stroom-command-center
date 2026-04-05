@@ -7,6 +7,7 @@ import {
   Pressable,
   ActivityIndicator,
   RefreshControl,
+  ScrollView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -225,7 +226,11 @@ export default function EntityDetailScreen() {
               )}
 
               {/* Quick actions */}
-              <View style={styles.quickActionRow}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.quickActionRow}
+              >
                 <QuickActionPill
                   icon="sparkles"
                   label="Research"
@@ -249,7 +254,7 @@ export default function EntityDetailScreen() {
                     onPress={handleCompareFirst}
                   />
                 )}
-              </View>
+              </ScrollView>
 
               {/* Ask Command */}
               <Pressable

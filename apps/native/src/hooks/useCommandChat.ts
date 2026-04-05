@@ -12,6 +12,7 @@ import {
   buildMemoryContextMessage,
   summarizeConversation,
 } from './useCommandMemory';
+import { usePinnedMessages, buildPinnedContextMessage } from './usePinnedMessages';
 
 export type ChatRole = 'user' | 'assistant' | 'system';
 
@@ -44,6 +45,11 @@ export function useCommandChat() {
   useEffect(() => {
     memoriesRef.current = memories;
   }, [memories]);
+  const { pinned } = usePinnedMessages();
+  const pinnedRef = useRef(pinned);
+  useEffect(() => {
+    pinnedRef.current = pinned;
+  }, [pinned]);
 
   // Load or create session id on mount
   useEffect(() => {
@@ -145,9 +151,19 @@ export function useCommandChat() {
           }
         }
 
+        // Pinned messages are injected on every turn (unlike memory which
+        // only goes on the first) so they function as durable context
+        // Claude sees for as long as they remain pinned.
+        let pinnedMessage: { role: 'system'; content: string } | null = null;
+        const pinnedText = buildPinnedContextMessage(pinnedRef.current);
+        if (pinnedText) {
+          pinnedMessage = { role: 'system', content: pinnedText };
+        }
+
         const payloadMessages = [
           ...(contextMessage ? [contextMessage] : []),
           ...(memoryMessage ? [memoryMessage] : []),
+          ...(pinnedMessage ? [pinnedMessage] : []),
           ...convo.map(({ role, content }) => ({ role, content })),
         ];
 
