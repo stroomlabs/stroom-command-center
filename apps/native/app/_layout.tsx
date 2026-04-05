@@ -113,6 +113,7 @@ export default function RootLayout() {
           <Stack.Screen name="claim/[id]" />
           <Stack.Screen name="audit" />
           <Stack.Screen name="research" />
+          <Stack.Screen name="more" />
         </Stack>
       </RouteGuard>
     </AuthProvider>

@@ -4,8 +4,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useAuth } from '../../src/lib/auth';
-import { colors, fonts, spacing, radius, gradient } from '../../src/constants/brand';
+import { useAuth } from '../src/lib/auth';
+import { colors, fonts, spacing, radius, gradient } from '../src/constants/brand';
 
 export default function MoreScreen() {
   const insets = useSafeAreaInsets();
@@ -26,7 +26,15 @@ export default function MoreScreen() {
       end={{ x: 0.5, y: 1 }}
       style={styles.container}
     >
-      <View style={[styles.inner, { paddingTop: insets.top + spacing.lg }]}>
+      <View style={[styles.inner, { paddingTop: insets.top + spacing.sm }]}>
+        <Pressable
+          onPress={() => router.back()}
+          style={({ pressed }) => [styles.backBtn, pressed && { opacity: 0.6 }]}
+          hitSlop={10}
+        >
+          <Ionicons name="chevron-back" size={24} color={colors.alabaster} />
+          <Text style={styles.backText}>Command</Text>
+        </Pressable>
         <Text style={styles.headerTitle}>More</Text>
 
         {/* User info */}
@@ -110,6 +118,18 @@ function MenuItem({
 const styles = StyleSheet.create({
   container: { flex: 1 },
   inner: { flex: 1, paddingHorizontal: spacing.lg },
+  backBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    marginBottom: spacing.sm,
+  },
+  backText: {
+    fontFamily: fonts.archivo.medium,
+    fontSize: 16,
+    color: colors.alabaster,
+    marginLeft: 2,
+  },
   headerTitle: {
     fontFamily: fonts.archivo.bold,
     fontSize: 34,
