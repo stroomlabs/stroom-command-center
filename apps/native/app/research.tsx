@@ -76,6 +76,7 @@ export default function ResearchQueueScreen() {
           renderItem={({ item }) => <ResearchRow item={item} />}
           contentContainerStyle={styles.list}
           showsVerticalScrollIndicator={false}
+          keyboardDismissMode="on-drag"
           refreshControl={
             <RefreshControl
               refreshing={refreshing}

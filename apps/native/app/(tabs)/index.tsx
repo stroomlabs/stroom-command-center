@@ -20,6 +20,28 @@ import { GlassCard } from '../../src/components/GlassCard';
 import { SkeletonMetricCard } from '../../src/components/Skeleton';
 import { colors, fonts, spacing, radius, gradient } from '../../src/constants/brand';
 
+function QuickAction({
+  icon,
+  label,
+  onPress,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.quickActionCard, pressed && { opacity: 0.75, transform: [{ scale: 0.97 }] }]}
+    >
+      <View style={styles.quickActionIcon}>
+        <Ionicons name={icon} size={18} color={colors.teal} />
+      </View>
+      <Text style={styles.quickActionLabel}>{label}</Text>
+    </Pressable>
+  );
+}
+
 function formatLastUpdated(at: Date, _tick: number): string {
   const diffMs = Date.now() - at.getTime();
   const sec = Math.max(0, Math.floor(diffMs / 1000));
@@ -247,6 +269,26 @@ export default function PulseScreen() {
               </GlassCard>
             )}
 
+            {/* Quick Actions */}
+            <Text style={styles.sectionHeader}>QUICK ACTIONS</Text>
+            <View style={styles.quickActions}>
+              <QuickAction
+                icon="layers-outline"
+                label="Review Queue"
+                onPress={() => router.push('/(tabs)/queue' as any)}
+              />
+              <QuickAction
+                icon="sparkles-outline"
+                label="Ask Claude"
+                onPress={() => router.push('/(tabs)/command' as any)}
+              />
+              <QuickAction
+                icon="search-outline"
+                label="Search Graph"
+                onPress={() => router.push('/(tabs)/explore' as any)}
+              />
+            </View>
+
             {/* Daily digest link */}
             <Pressable
               onPress={() => router.push('/digest' as any)}
@@ -446,6 +488,46 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: spacing.lg,
     fontVariant: ['tabular-nums'],
+  },
+  sectionHeader: {
+    fontFamily: fonts.archivo.medium,
+    fontSize: 10,
+    color: colors.slate,
+    letterSpacing: 1.2,
+    marginTop: spacing.lg,
+    marginBottom: spacing.sm,
+  },
+  quickActions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  quickActionCard: {
+    flex: 1,
+    backgroundColor: colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 161, 155, 0.25)',
+    borderRadius: radius.md,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.sm,
+    alignItems: 'center',
+    gap: 8,
+  },
+  quickActionIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.tealDim,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 161, 155, 0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  quickActionLabel: {
+    fontFamily: fonts.archivo.semibold,
+    fontSize: 12,
+    color: colors.alabaster,
+    textAlign: 'center',
+    letterSpacing: -0.1,
   },
   digestBtn: {
     flexDirection: 'row',

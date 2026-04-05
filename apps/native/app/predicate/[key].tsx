@@ -89,6 +89,7 @@ export default function PredicateDetailScreen() {
           keyExtractor={(c) => c.id}
           contentContainerStyle={styles.list}
           showsVerticalScrollIndicator={false}
+          keyboardDismissMode="on-drag"
           renderItem={({ item }) => (
             <Pressable
               onPress={() =>

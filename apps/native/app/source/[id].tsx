@@ -72,6 +72,7 @@ export default function SourceDetailScreen() {
           keyExtractor={(c) => c.id}
           contentContainerStyle={styles.list}
           showsVerticalScrollIndicator={false}
+          keyboardDismissMode="on-drag"
           refreshControl={
             <RefreshControl
               refreshing={refreshing}

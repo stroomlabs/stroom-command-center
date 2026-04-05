@@ -69,6 +69,7 @@ export default function AuditTrailScreen() {
           renderItem={({ item }) => <AuditRow row={item} />}
           contentContainerStyle={styles.list}
           showsVerticalScrollIndicator={false}
+          keyboardDismissMode="on-drag"
           refreshControl={
             <RefreshControl
               refreshing={refreshing}

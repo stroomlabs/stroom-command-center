@@ -69,6 +69,7 @@ export default function SourcesListScreen() {
           keyExtractor={(s) => s.id}
           contentContainerStyle={styles.list}
           showsVerticalScrollIndicator={false}
+          keyboardDismissMode="on-drag"
           refreshControl={
             <RefreshControl
               refreshing={refreshing}

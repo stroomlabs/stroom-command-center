@@ -12,6 +12,15 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withRepeat,
+  withTiming,
+  withSequence,
+  Easing,
+  cancelAnimation,
+} from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQueueClaims } from '../../src/hooks/useQueueClaims';
@@ -38,6 +47,30 @@ export default function QueueScreen() {
   const [rejectTarget, setRejectTarget] = useState<string | null>(null);
   const [filter, setFilter] = useState<StatusFilter>('all');
   const [search, setSearch] = useState('');
+  const glow = useSharedValue(0);
+  const isHot = claims.length > 100;
+
+  React.useEffect(() => {
+    if (isHot) {
+      glow.value = withRepeat(
+        withSequence(
+          withTiming(1, { duration: 900, easing: Easing.inOut(Easing.ease) }),
+          withTiming(0, { duration: 900, easing: Easing.inOut(Easing.ease) })
+        ),
+        -1,
+        false
+      );
+    } else {
+      cancelAnimation(glow);
+      glow.value = withTiming(0, { duration: 200 });
+    }
+  }, [isHot, glow]);
+
+  const badgeAnimatedStyle = useAnimatedStyle(() => ({
+    shadowOpacity: 0.25 + glow.value * 0.55,
+    shadowRadius: 4 + glow.value * 10,
+    transform: [{ scale: 1 + glow.value * 0.06 }],
+  }));
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
@@ -124,21 +157,28 @@ export default function QueueScreen() {
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + spacing.lg }]}>
         <Text style={styles.headerTitle}>Queue</Text>
-        <Pressable
-          onLongPress={enterSelectMode}
-          delayLongPress={400}
-          style={({ pressed }) => [
-            styles.countBadge,
-            selectMode && styles.countBadgeActive,
-            pressed && { opacity: 0.7 },
-          ]}
-        >
-          <Text
-            style={[styles.countText, selectMode && styles.countTextActive]}
+        <Animated.View style={isHot ? [styles.badgeGlowWrap, badgeAnimatedStyle] : undefined}>
+          <Pressable
+            onLongPress={enterSelectMode}
+            delayLongPress={400}
+            style={({ pressed }) => [
+              styles.countBadge,
+              selectMode && styles.countBadgeActive,
+              isHot && !selectMode && styles.countBadgeHot,
+              pressed && { opacity: 0.7 },
+            ]}
           >
-            {filteredClaims.length}
-          </Text>
-        </Pressable>
+            <Text
+              style={[
+                styles.countText,
+                selectMode && styles.countTextActive,
+                isHot && !selectMode && styles.countTextHot,
+              ]}
+            >
+              {filteredClaims.length}
+            </Text>
+          </Pressable>
+        </Animated.View>
       </View>
       <Text style={styles.headerSub}>Claims pending governance review</Text>
 
@@ -259,6 +299,7 @@ export default function QueueScreen() {
             />
           }
           showsVerticalScrollIndicator={false}
+          keyboardDismissMode="on-drag"
         />
       )}
 
@@ -332,6 +373,16 @@ const styles = StyleSheet.create({
     backgroundColor: colors.teal,
     borderColor: colors.teal,
   },
+  countBadgeHot: {
+    backgroundColor: 'rgba(239, 68, 68, 0.18)',
+    borderColor: colors.statusReject,
+  },
+  badgeGlowWrap: {
+    borderRadius: 100,
+    shadowColor: colors.statusReject,
+    shadowOffset: { width: 0, height: 0 },
+    // shadowOpacity and shadowRadius are driven by the animated style
+  },
   countText: {
     fontFamily: fonts.mono.semibold,
     fontSize: 13,
@@ -340,6 +391,9 @@ const styles = StyleSheet.create({
   },
   countTextActive: {
     color: colors.obsidian,
+  },
+  countTextHot: {
+    color: colors.statusReject,
   },
   batchBar: {
     position: 'absolute',

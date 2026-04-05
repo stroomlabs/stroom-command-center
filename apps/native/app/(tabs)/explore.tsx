@@ -192,6 +192,7 @@ export default function ExploreScreen() {
             contentContainerStyle={styles.list}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
           />
         )
       ) : (
