@@ -16,10 +16,22 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Slider from '@react-native-community/slider';
 import * as Haptics from 'expo-haptics';
-import { updateSource, type SourceClaim } from '@stroom/supabase';
+import {
+  updateSource,
+  batchUpdateSiblingSources,
+  type SourceClaim,
+} from '@stroom/supabase';
 import { useSourceDetail } from '../../src/hooks/useSourceDetail';
+import {
+  useSiblingSources,
+  type SiblingSource,
+} from '../../src/hooks/useSiblingSources';
 import { RetryCard } from '../../src/components/RetryCard';
 import { StatusBadge } from '../../src/components/StatusBadge';
+import {
+  ActionSheet,
+  type ActionSheetAction,
+} from '../../src/components/ActionSheet';
 import { useBrandToast } from '../../src/components/BrandToast';
 import { useBrandAlert } from '../../src/components/BrandAlert';
 import supabase from '../../src/lib/supabase';
@@ -109,6 +121,73 @@ export default function SourceDetailScreen() {
     },
     [source, refresh, showToast]
   );
+
+  const {
+    siblings,
+    loading: siblingsLoading,
+    refresh: refreshSiblings,
+  } = useSiblingSources(source?.id ?? null);
+  const [applySheetVisible, setApplySheetVisible] = useState(false);
+
+  const runBatch = useCallback(
+    async (
+      patch: { trust_score?: number; auto_approve?: boolean; canary_status?: string },
+      label: string
+    ) => {
+      const ids = siblings.map((s) => s.id);
+      if (ids.length === 0) return;
+      setSaving(true);
+      try {
+        const n = await batchUpdateSiblingSources(supabase, ids, patch);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        showToast(`${label} · updated ${n} source${n === 1 ? '' : 's'}`, 'success');
+        await Promise.all([refresh(), refreshSiblings()]);
+      } catch (e: any) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        showToast(e?.message ?? 'Batch update failed', 'error');
+      } finally {
+        setSaving(false);
+      }
+    },
+    [siblings, refresh, refreshSiblings, showToast]
+  );
+
+  const applyActions: ActionSheetAction[] = React.useMemo(() => {
+    if (!source) return [];
+    const currentTrust = Number(source.trust_score);
+    return [
+      {
+        label: `Set All Trust to ${currentTrust.toFixed(1)}`,
+        icon: 'trending-up-outline',
+        tone: 'accent',
+        onPress: () =>
+          void runBatch(
+            { trust_score: currentTrust },
+            `Trust set to ${currentTrust.toFixed(1)}`
+          ),
+      },
+      {
+        label: 'Enable Auto-Approve on All',
+        icon: 'sparkles',
+        tone: 'accent',
+        onPress: () =>
+          void runBatch({ auto_approve: true }, 'Auto-approve enabled'),
+      },
+      {
+        label: 'Disable Auto-Approve on All',
+        icon: 'sparkles-outline',
+        onPress: () =>
+          void runBatch({ auto_approve: false }, 'Auto-approve disabled'),
+      },
+      {
+        label: 'Block All',
+        icon: 'ban-outline',
+        tone: 'destructive',
+        onPress: () =>
+          void runBatch({ canary_status: 'blocked' }, 'Blocked'),
+      },
+    ];
+  }, [source, runBatch]);
 
   const handleBlockPress = useCallback(() => {
     if (!source) return;
@@ -292,6 +371,61 @@ export default function SourceDetailScreen() {
                 </Text>
               </Pressable>
 
+              {/* Related sources — publisher siblings via RPC */}
+              {siblings.length > 1 && (
+                <View style={styles.siblingsBlock}>
+                  <View style={styles.siblingsHeader}>
+                    <Text style={styles.siblingsHeaderTitle}>
+                      Related Sources
+                    </Text>
+                    <Text style={styles.siblingsHeaderMeta} numberOfLines={1}>
+                      {source.domain ?? siblings[0]?.domain ?? 'publisher'} ·{' '}
+                      {siblings.length} sources
+                    </Text>
+                  </View>
+                  {siblings.map((sib) => (
+                    <SiblingCard
+                      key={sib.id}
+                      sibling={sib}
+                      isCurrent={sib.id === source.id}
+                      onPress={() => {
+                        if (sib.id === source.id) return;
+                        router.push({
+                          pathname: '/source/[id]',
+                          params: { id: sib.id },
+                        } as any);
+                      }}
+                    />
+                  ))}
+                  <Pressable
+                    onPress={() => {
+                      Haptics.selectionAsync();
+                      setApplySheetVisible(true);
+                    }}
+                    disabled={saving}
+                    style={({ pressed }) => [
+                      styles.applyAllBtn,
+                      (pressed || saving) && {
+                        opacity: 0.75,
+                        transform: [{ scale: 0.97 }],
+                      },
+                    ]}
+                  >
+                    <Ionicons
+                      name="layers-outline"
+                      size={14}
+                      color={colors.obsidian}
+                    />
+                    <Text style={styles.applyAllText}>Apply to All</Text>
+                  </Pressable>
+                </View>
+              )}
+              {siblings.length <= 1 && siblingsLoading && (
+                <View style={styles.siblingsLoading}>
+                  <ActivityIndicator size="small" color={colors.teal} />
+                </View>
+              )}
+
               {/* Stats */}
               <View style={styles.statsRow}>
                 <View style={styles.stat}>
@@ -356,7 +490,86 @@ export default function SourceDetailScreen() {
           }
         />
       )}
+      <ActionSheet
+        visible={applySheetVisible}
+        title="Apply to all related sources"
+        subtitle={
+          source
+            ? `${siblings.length} source${siblings.length === 1 ? '' : 's'} under ${
+                source.domain ?? 'this publisher'
+              }`
+            : undefined
+        }
+        actions={applyActions}
+        onDismiss={() => setApplySheetVisible(false)}
+      />
     </LinearGradient>
+  );
+}
+
+function SiblingCard({
+  sibling,
+  isCurrent,
+  onPress,
+}: {
+  sibling: SiblingSource;
+  isCurrent: boolean;
+  onPress: () => void;
+}) {
+  const blocked = sibling.canary_status === 'blocked';
+  const trustColor =
+    sibling.trust_score >= 7.5
+      ? colors.statusApprove
+      : sibling.trust_score >= 5
+      ? colors.teal
+      : colors.statusPending;
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={isCurrent}
+      style={({ pressed }) => [
+        styles.siblingCard,
+        isCurrent && styles.siblingCardCurrent,
+        pressed && !isCurrent && { opacity: 0.8, transform: [{ scale: 0.98 }] },
+      ]}
+    >
+      <View style={styles.siblingMain}>
+        <View style={styles.siblingTopRow}>
+          <Text style={styles.siblingName} numberOfLines={1}>
+            {sibling.source_name}
+          </Text>
+          {isCurrent && (
+            <Ionicons
+              name="checkmark-circle"
+              size={14}
+              color={colors.teal}
+            />
+          )}
+        </View>
+        <View style={styles.siblingMetaRow}>
+          <Text style={[styles.siblingTrust, { color: trustColor }]}>
+            {sibling.trust_score.toFixed(1)}
+          </Text>
+          <Text style={styles.siblingDot}>·</Text>
+          <Text style={styles.siblingClaims}>
+            {sibling.claim_count.toLocaleString()} claims
+          </Text>
+          {sibling.auto_approve && (
+            <View style={styles.siblingAutoBadge}>
+              <Text style={styles.siblingAutoText}>AUTO</Text>
+            </View>
+          )}
+          {blocked && (
+            <View style={styles.siblingBlockedBadge}>
+              <Text style={styles.siblingBlockedText}>BLOCKED</Text>
+            </View>
+          )}
+        </View>
+      </View>
+      {!isCurrent && (
+        <Ionicons name="chevron-forward" size={14} color={colors.slate} />
+      )}
+    </Pressable>
   );
 }
 
@@ -646,6 +859,129 @@ const styles = StyleSheet.create({
     fontFamily: fonts.archivo.bold,
     fontSize: 14,
     letterSpacing: 0.2,
+  },
+  siblingsBlock: {
+    marginBottom: spacing.md,
+    gap: 6,
+  },
+  siblingsHeader: {
+    marginBottom: spacing.xs,
+  },
+  siblingsHeaderTitle: {
+    fontFamily: fonts.archivo.bold,
+    fontSize: 14,
+    color: colors.alabaster,
+    letterSpacing: -0.2,
+  },
+  siblingsHeaderMeta: {
+    fontFamily: fonts.mono.regular,
+    fontSize: 11,
+    color: colors.slate,
+    marginTop: 2,
+  },
+  siblingsLoading: {
+    alignItems: 'center',
+    paddingVertical: spacing.md,
+  },
+  siblingCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.surfaceCard,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
+  },
+  siblingCardCurrent: {
+    borderColor: colors.teal,
+    backgroundColor: colors.tealDim,
+  },
+  siblingMain: {
+    flex: 1,
+    gap: 4,
+  },
+  siblingTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  siblingName: {
+    flex: 1,
+    fontFamily: fonts.archivo.semibold,
+    fontSize: 13,
+    color: colors.alabaster,
+  },
+  siblingMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexWrap: 'wrap',
+  },
+  siblingTrust: {
+    fontFamily: fonts.mono.semibold,
+    fontSize: 11,
+    fontVariant: ['tabular-nums'],
+  },
+  siblingDot: {
+    fontFamily: fonts.mono.regular,
+    fontSize: 11,
+    color: colors.slate,
+  },
+  siblingClaims: {
+    fontFamily: fonts.mono.regular,
+    fontSize: 11,
+    color: colors.slate,
+  },
+  siblingAutoBadge: {
+    backgroundColor: 'rgba(34, 197, 94, 0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(34, 197, 94, 0.4)',
+    borderRadius: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+  },
+  siblingAutoText: {
+    fontFamily: fonts.mono.semibold,
+    fontSize: 9,
+    color: colors.statusApprove,
+    letterSpacing: 0.8,
+  },
+  siblingBlockedBadge: {
+    backgroundColor: 'rgba(239, 68, 68, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.4)',
+    borderRadius: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+  },
+  siblingBlockedText: {
+    fontFamily: fonts.mono.semibold,
+    fontSize: 9,
+    color: colors.statusReject,
+    letterSpacing: 0.8,
+  },
+  applyAllBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    paddingVertical: 12,
+    borderRadius: radius.md,
+    backgroundColor: colors.teal,
+    marginTop: spacing.xs,
+    shadowColor: colors.teal,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 3,
+  },
+  applyAllText: {
+    fontFamily: fonts.archivo.bold,
+    fontSize: 13,
+    color: colors.obsidian,
+    letterSpacing: 0.3,
   },
   domainText: {
     fontFamily: fonts.mono.regular,

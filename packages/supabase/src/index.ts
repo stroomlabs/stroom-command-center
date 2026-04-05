@@ -596,6 +596,33 @@ export async function updateSource(
   if (error) throw error;
 }
 
+// Batch counterpart — applies the same patch to every source id in the
+// array via intel.batch_update_sibling_sources. The RPC handles audit
+// logging per row. Returns the number of rows updated.
+export async function batchUpdateSiblingSources(
+  client: SupabaseClient,
+  sourceIds: string[],
+  patch: {
+    trust_score?: number;
+    auto_approve?: boolean;
+    canary_status?: string;
+  }
+): Promise<number> {
+  if (sourceIds.length === 0) return 0;
+  const { data, error } = await client.rpc('batch_update_sibling_sources', {
+    source_ids: sourceIds,
+    new_trust_score: patch.trust_score ?? null,
+    new_auto_approve: patch.auto_approve ?? null,
+    new_canary_status: patch.canary_status ?? null,
+  });
+  if (error) throw error;
+  // The RPC may return the updated count or the updated rows — normalize
+  // to a number so callers can show a toast.
+  if (typeof data === 'number') return data;
+  if (Array.isArray(data)) return data.length;
+  return sourceIds.length;
+}
+
 export interface SourceClaim {
   id: string;
   predicate: string | null;
