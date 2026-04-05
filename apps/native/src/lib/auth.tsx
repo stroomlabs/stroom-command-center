@@ -1,7 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import { Alert, Platform } from 'react-native';
 import { Session, User } from '@supabase/supabase-js';
-import * as LocalAuthentication from 'expo-local-authentication';
 import * as Linking from 'expo-linking';
 import supabase from './supabase';
 
@@ -9,10 +7,8 @@ interface AuthState {
   session: Session | null;
   user: User | null;
   loading: boolean;
-  biometricPassed: boolean;
   sendMagicLink: (email: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
-  checkBiometric: () => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -26,7 +22,6 @@ export function useAuth() {
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
-  const [biometricPassed, setBiometricPassed] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -90,27 +85,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = useCallback(async () => {
     await supabase.auth.signOut();
-    setBiometricPassed(false);
-  }, []);
-
-  const checkBiometric = useCallback(async () => {
-    const hasHardware = await LocalAuthentication.hasHardwareAsync();
-    const isEnrolled = await LocalAuthentication.isEnrolledAsync();
-    if (!hasHardware || !isEnrolled) {
-      setBiometricPassed(true);
-      return true;
-    }
-    const result = await LocalAuthentication.authenticateAsync({
-      promptMessage: 'Authenticate to Stroom Command',
-      fallbackLabel: 'Use Passcode',
-    });
-    setBiometricPassed(result.success);
-    return result.success;
   }, []);
 
   return (
     <AuthContext.Provider
-      value={{ session, user: session?.user ?? null, loading, biometricPassed, sendMagicLink, signOut, checkBiometric }}
+      value={{
+        session,
+        user: session?.user ?? null,
+        loading,
+        sendMagicLink,
+        signOut,
+      }}
     >
       {children}
     </AuthContext.Provider>

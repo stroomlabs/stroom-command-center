@@ -6,6 +6,7 @@ import {
   Pressable,
   ScrollView,
   ActivityIndicator,
+  Switch,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -18,6 +19,10 @@ import * as Haptics from 'expo-haptics';
 import { useAuth } from '../src/lib/auth';
 import { useGovernanceStats } from '../src/hooks/useGovernanceStats';
 import { useTeam } from '../src/hooks/useTeam';
+import {
+  useBiometricLock,
+  biometricLabel,
+} from '../src/hooks/useBiometricLock';
 import { useBrandAlert } from '../src/components/BrandAlert';
 import { useBrandToast } from '../src/components/BrandToast';
 import supabase from '../src/lib/supabase';
@@ -32,6 +37,12 @@ export default function MoreScreen() {
   const { show: showToast } = useBrandToast();
   const { members, myInviteCode, generateInvite, refresh: refreshTeam } =
     useTeam();
+  const {
+    available: biometricAvailable,
+    kind: biometricKind,
+    enabled: biometricEnabled,
+    setEnabled: setBiometricEnabled,
+  } = useBiometricLock();
   const [generating, setGenerating] = useState(false);
 
   const handleGenerateInvite = useCallback(async () => {
@@ -276,6 +287,41 @@ export default function MoreScreen() {
             </View>
           ) : null}
         </View>
+
+        {/* Biometric lock toggle — only shown when the device supports it */}
+        {biometricAvailable && (
+          <View style={styles.biometricRow}>
+            <Ionicons
+              name={
+                biometricKind === 'face'
+                  ? 'scan-outline'
+                  : biometricKind === 'touch'
+                  ? 'finger-print'
+                  : 'lock-closed-outline'
+              }
+              size={18}
+              color={colors.silver}
+            />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.biometricLabel}>
+                Require {biometricLabel(biometricKind)}
+              </Text>
+              <Text style={styles.biometricMeta}>
+                Lock the app on launch
+              </Text>
+            </View>
+            <Switch
+              value={biometricEnabled}
+              onValueChange={(v) => {
+                Haptics.selectionAsync();
+                void setBiometricEnabled(v);
+              }}
+              trackColor={{ false: colors.surfaceCard, true: colors.teal }}
+              thumbColor={colors.alabaster}
+              ios_backgroundColor={colors.surfaceCard}
+            />
+          </View>
+        )}
 
         {/* Menu items */}
         <View style={styles.menu}>
@@ -609,6 +655,29 @@ const styles = StyleSheet.create({
   userEmail: {
     fontFamily: fonts.mono.regular,
     fontSize: 12,
+    color: colors.slate,
+    marginTop: 2,
+  },
+  biometricRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    backgroundColor: colors.surfaceElevated,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    marginBottom: spacing.md,
+  },
+  biometricLabel: {
+    fontFamily: fonts.archivo.semibold,
+    fontSize: 14,
+    color: colors.alabaster,
+  },
+  biometricMeta: {
+    fontFamily: fonts.mono.regular,
+    fontSize: 11,
     color: colors.slate,
     marginTop: 2,
   },

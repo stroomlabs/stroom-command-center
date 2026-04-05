@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
+import { ActivityIndicator, StyleSheet } from 'react-native';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
@@ -12,20 +12,20 @@ import { ErrorBoundary } from '../src/components/ErrorBoundary';
 import { BrandAlertProvider } from '../src/components/BrandAlert';
 import { BrandToastProvider } from '../src/components/BrandToast';
 import { BrandSplash } from '../src/components/BrandSplash';
+import { BiometricGate } from '../src/components/BiometricGate';
 import { OnboardingFlow } from '../src/components/OnboardingFlow';
 import { useOnboarding } from '../src/hooks/useOnboarding';
 import { PulseProvider } from '../src/lib/PulseContext';
-import { colors, fonts, gradient } from '../src/constants/brand';
+import { colors, gradient } from '../src/constants/brand';
 
 // Keep splash visible while loading
 SplashScreen.preventAutoHideAsync();
 
 function RouteGuard({ children }: { children: React.ReactNode }) {
-  const { session, loading, biometricPassed, checkBiometric } = useAuth();
+  const { session, loading } = useAuth();
   const segments = useSegments();
   const router = useRouter();
-  const [biometricChecked, setBiometricChecked] = useState(false);
-  const sessionReady = Boolean(session && biometricPassed);
+  const sessionReady = Boolean(session);
   const { needsOnboarding, complete: completeOnboarding } = useOnboarding(sessionReady);
 
   useEffect(() => {
@@ -40,15 +40,6 @@ function RouteGuard({ children }: { children: React.ReactNode }) {
     }
   }, [session, loading, segments]);
 
-  // Face ID gate after auth
-  useEffect(() => {
-    if (!session || biometricChecked) return;
-
-    checkBiometric().then(() => {
-      setBiometricChecked(true);
-    });
-  }, [session, biometricChecked]);
-
   if (loading) {
     return (
       <LinearGradient
@@ -56,17 +47,6 @@ function RouteGuard({ children }: { children: React.ReactNode }) {
         style={styles.loading}
       >
         <ActivityIndicator color={colors.teal} size="large" />
-      </LinearGradient>
-    );
-  }
-
-  if (session && !biometricPassed && biometricChecked) {
-    return (
-      <LinearGradient
-        colors={[gradient.background[0], gradient.background[1]]}
-        style={styles.loading}
-      >
-        <Text style={styles.biometricText}>Authentication required</Text>
       </LinearGradient>
     );
   }
@@ -121,6 +101,7 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
+      <BiometricGate ready={splashDone}>
       <AuthProvider>
         <BrandAlertProvider>
         <BrandToastProvider>
@@ -162,6 +143,7 @@ export default function RootLayout() {
         </BrandToastProvider>
         </BrandAlertProvider>
       </AuthProvider>
+      </BiometricGate>
       {!splashDone && (
         <BrandSplash ready={fontsLoaded} onDone={() => setSplashDone(true)} />
       )}
@@ -174,10 +156,5 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  biometricText: {
-    fontFamily: fonts.archivo.medium,
-    fontSize: 16,
-    color: colors.slate,
   },
 });
