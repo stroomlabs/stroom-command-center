@@ -19,6 +19,7 @@ import { useGraphHealth, type GraphHealth } from '../../src/hooks/useGraphHealth
 import { PulseMetric } from '../../src/components/PulseMetric';
 import { GlassCard } from '../../src/components/GlassCard';
 import { SkeletonMetricCard } from '../../src/components/Skeleton';
+import { GlowSpot } from '../../src/components/GlowSpot';
 import { colors, fonts, spacing, radius, gradient } from '../../src/constants/brand';
 
 type HealthTone = 'ok' | 'warn' | 'alert';
@@ -221,6 +222,10 @@ export default function PulseScreen() {
       end={{ x: 0.5, y: 1 }}
       style={styles.container}
     >
+      {/* Atmospheric glow spots — behind metrics + status breakdown */}
+      <GlowSpot size={520} opacity={0.06} top={insets.top + 40} left={-120} />
+      <GlowSpot size={360} opacity={0.04} top={insets.top + 480} right={-100} />
+
       <ScrollView
         contentContainerStyle={[
           styles.scroll,

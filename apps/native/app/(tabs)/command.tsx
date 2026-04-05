@@ -23,6 +23,7 @@ import { useSessionHistory } from '../../src/hooks/useSessionHistory';
 import { ActionSheet, type ActionSheetAction } from '../../src/components/ActionSheet';
 import { SessionHistorySheet } from '../../src/components/SessionHistorySheet';
 import { useBrandAlert } from '../../src/components/BrandAlert';
+import { GlowSpot } from '../../src/components/GlowSpot';
 import type { CommandSession } from '@stroom/types';
 import { colors, fonts, spacing, radius, gradient } from '../../src/constants/brand';
 
@@ -185,6 +186,9 @@ export default function CommandScreen() {
       end={{ x: 0.5, y: 1 }}
       style={styles.container}
     >
+      {/* Soft teal glow behind the header */}
+      <GlowSpot size={360} opacity={0.07} top={insets.top - 80} left={-80} />
+
       <KeyboardAvoidingView
         style={styles.container}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}

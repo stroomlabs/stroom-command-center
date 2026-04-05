@@ -391,6 +391,12 @@ const styles = StyleSheet.create({
   swipeWrap: {
     position: 'relative',
     marginBottom: spacing.md,
+    // Subtle atmospheric teal glow on the glass border
+    shadowColor: colors.teal,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.15,
+    shadowRadius: 14,
+    elevation: 2,
   },
   revealLayer: {
     ...StyleSheet.absoluteFillObject,

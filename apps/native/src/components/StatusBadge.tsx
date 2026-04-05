@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { colors, fonts, radius, spacing } from '../constants/brand';
 
-const STATUS_COLORS: Record<string, string> = {
+export const STATUS_COLORS: Record<string, string> = {
   draft: colors.statusPending,
   pending_review: colors.statusPending,
   approved: colors.statusInfo,

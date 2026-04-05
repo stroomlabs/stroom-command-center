@@ -16,9 +16,10 @@ import * as Haptics from 'expo-haptics';
 import * as Clipboard from 'expo-clipboard';
 import { approveClaim, rejectClaim } from '@stroom/supabase';
 import { useClaimDetail } from '../../src/hooks/useClaimDetail';
-import { StatusBadge } from '../../src/components/StatusBadge';
+import { StatusBadge, STATUS_COLORS } from '../../src/components/StatusBadge';
 import { JsonView } from '../../src/components/JsonView';
 import { RejectSheet } from '../../src/components/RejectSheet';
+import { GlowSpot } from '../../src/components/GlowSpot';
 import supabase from '../../src/lib/supabase';
 import type { ClaimCorroborationDetail } from '@stroom/supabase';
 import type { RejectionReason } from '@stroom/types';
@@ -131,6 +132,15 @@ export default function ClaimDetailScreen() {
       end={{ x: 0.5, y: 1 }}
       style={styles.container}
     >
+      {/* Status-matched atmospheric glow behind the badge */}
+      <GlowSpot
+        size={360}
+        opacity={0.08}
+        color={STATUS_COLORS[claim.status] ?? colors.teal}
+        top={insets.top + 20}
+        left={-80}
+      />
+
       <View style={[styles.topBar, { paddingTop: insets.top + spacing.sm }]}>
         <BackButton onPress={() => router.back()} />
       </View>

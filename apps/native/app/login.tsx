@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, Pressable, StyleSheet, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { GlowSpot } from '../src/components/GlowSpot';
 import supabase from '../src/lib/supabase';
 
 export default function LoginScreen() {
@@ -20,6 +21,9 @@ export default function LoginScreen() {
 
   return (
     <LinearGradient colors={['#000000', '#0A0D0F']} start={{ x: 0, y: 0 }} end={{ x: 0.5, y: 1 }} style={s.container}>
+      {/* Large diffused teal halo behind the logo mark */}
+      <GlowSpot size={560} opacity={0.08} style={s.logoGlow} />
+      <GlowSpot size={320} opacity={0.06} style={s.logoGlowInner} />
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={s.inner}>
         <View style={s.logoArea}>
           <Text style={s.logoMark}>S</Text>
@@ -44,6 +48,21 @@ export default function LoginScreen() {
 
 const s = StyleSheet.create({
   container: { flex: 1 },
+  logoGlow: {
+    top: '15%',
+    alignSelf: 'center',
+    // GlowSpot is position: absolute, but alignSelf doesn't apply to
+    // absolutely-positioned children. Use left:'50%' + negative margin via a
+    // centered offset. We approximate by using left with percentage via a
+    // wrapping transform.
+    left: '50%',
+    marginLeft: -280,
+  },
+  logoGlowInner: {
+    top: '22%',
+    left: '50%',
+    marginLeft: -160,
+  },
   inner: { flex: 1, justifyContent: 'center', paddingHorizontal: 32 },
   logoArea: { alignItems: 'center', marginBottom: 64 },
   logoMark: { fontWeight: '900', fontSize: 48, color: '#00A19B', marginBottom: 16 },
