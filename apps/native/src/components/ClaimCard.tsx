@@ -1,5 +1,14 @@
 import React from 'react';
-import { View, Text, StyleSheet, Pressable, Dimensions } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  Pressable,
+  Dimensions,
+  LayoutAnimation,
+  Platform,
+  UIManager,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
@@ -19,6 +28,15 @@ import { colors, fonts, spacing, radius } from '../constants/brand';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const SWIPE_THRESHOLD = 120;
+const EXIT_DURATION = 250;
+
+// Enable smooth list reflow on Android when a ClaimCard is removed.
+if (
+  Platform.OS === 'android' &&
+  UIManager.setLayoutAnimationEnabledExperimental
+) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 interface ClaimCardProps {
   claim: QueueClaim;
@@ -56,9 +74,41 @@ export function ClaimCard({
   const translateX = useSharedValue(0);
   const crossedThreshold = useSharedValue(false);
 
+  // Exit animation (tap approve/reject) — cascade upward and fade out
+  const exitTranslateY = useSharedValue(0);
+  const exitOpacity = useSharedValue(1);
+
   const onThresholdHaptic = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
   };
+
+  // Called on the JS thread after the fade-out finishes. Configures a one-shot
+  // layout animation so the cards below slide up to fill the gap smoothly when
+  // the parent removes this claim from state.
+  const finishExit = React.useCallback((callback: () => void) => {
+    LayoutAnimation.configureNext(
+      LayoutAnimation.create(220, 'easeInEaseOut', 'opacity')
+    );
+    callback();
+  }, []);
+
+  const animateOutAndRun = React.useCallback(
+    (callback: () => void) => {
+      exitTranslateY.value = withTiming(-80, { duration: EXIT_DURATION });
+      exitOpacity.value = withTiming(0, { duration: EXIT_DURATION }, (done) => {
+        if (done) runOnJS(finishExit)(callback);
+      });
+    },
+    [exitTranslateY, exitOpacity, finishExit]
+  );
+
+  const handleApprove = React.useCallback(() => {
+    animateOutAndRun(onApprove);
+  }, [animateOutAndRun, onApprove]);
+
+  const handleReject = React.useCallback(() => {
+    animateOutAndRun(onReject);
+  }, [animateOutAndRun, onReject]);
 
   const panGesture = Gesture.Pan()
     .enabled(!selectMode)
@@ -88,7 +138,11 @@ export function ClaimCard({
     });
 
   const cardAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: translateX.value }],
+    opacity: exitOpacity.value,
+    transform: [
+      { translateX: translateX.value },
+      { translateY: exitTranslateY.value },
+    ],
   }));
 
   const revealAnimatedStyle = useAnimatedStyle(() => {
@@ -139,7 +193,7 @@ export function ClaimCard({
           {!selectMode && (
             <View style={styles.quickActions}>
               <Pressable
-                onPress={onReject}
+                onPress={handleReject}
                 hitSlop={6}
                 style={({ pressed }) => [
                   styles.quickBtn,
@@ -150,7 +204,7 @@ export function ClaimCard({
                 <Ionicons name="close-sharp" size={14} color={colors.statusReject} />
               </Pressable>
               <Pressable
-                onPress={onApprove}
+                onPress={handleApprove}
                 hitSlop={6}
                 style={({ pressed }) => [
                   styles.quickBtn,
