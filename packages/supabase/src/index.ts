@@ -573,6 +573,83 @@ export async function fetchClaimsForSource(
   return ((data as unknown) as SourceClaim[]) ?? [];
 }
 
+// ── Entity connections ──
+
+export interface EntityConnection {
+  otherEntityId: string;
+  otherEntityName: string;
+  predicate: string;
+  direction: 'outgoing' | 'incoming';
+  claimCount: number;
+}
+
+// Fetch both outgoing (this → other) and incoming (other → this) object-linked
+// claims for an entity, aggregated by (other entity, predicate, direction).
+export async function fetchConnectionsForEntity(
+  client: SupabaseClient,
+  entityId: string
+): Promise<EntityConnection[]> {
+  const [outRes, inRes] = await Promise.all([
+    client
+      .from('claims')
+      .select(
+        `
+        predicate,
+        object_entity_id,
+        object_entity:entities!claims_object_entity_id_fkey(id, canonical_name)
+      `
+      )
+      .eq('subject_entity_id', entityId)
+      .not('object_entity_id', 'is', null),
+    client
+      .from('claims')
+      .select(
+        `
+        predicate,
+        subject_entity_id,
+        subject_entity:entities!claims_subject_entity_id_fkey(id, canonical_name)
+      `
+      )
+      .eq('object_entity_id', entityId)
+      .not('subject_entity_id', 'is', null),
+  ]);
+
+  if (outRes.error) throw outRes.error;
+  if (inRes.error) throw inRes.error;
+
+  const agg = new Map<string, EntityConnection>();
+  const bump = (
+    otherId: string | null | undefined,
+    otherName: string | null | undefined,
+    predicate: string | null | undefined,
+    direction: 'outgoing' | 'incoming'
+  ) => {
+    if (!otherId || !predicate) return;
+    const key = `${direction}|${otherId}|${predicate}`;
+    const existing = agg.get(key);
+    if (existing) {
+      existing.claimCount += 1;
+    } else {
+      agg.set(key, {
+        otherEntityId: otherId,
+        otherEntityName: otherName ?? 'Unknown entity',
+        predicate,
+        direction,
+        claimCount: 1,
+      });
+    }
+  };
+
+  for (const row of (outRes.data as any[]) ?? []) {
+    bump(row.object_entity_id, row.object_entity?.canonical_name, row.predicate, 'outgoing');
+  }
+  for (const row of (inRes.data as any[]) ?? []) {
+    bump(row.subject_entity_id, row.subject_entity?.canonical_name, row.predicate, 'incoming');
+  }
+
+  return Array.from(agg.values()).sort((a, b) => b.claimCount - a.claimCount);
+}
+
 export async function fetchClaimCountsBySource(
   client: SupabaseClient
 ): Promise<Map<string, number>> {

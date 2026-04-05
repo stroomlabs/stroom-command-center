@@ -5,12 +5,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../src/lib/auth';
+import { useGovernanceStats } from '../src/hooks/useGovernanceStats';
 import { colors, fonts, spacing, radius, gradient } from '../src/constants/brand';
 
 export default function MoreScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { user, signOut } = useAuth();
+  const { stats, loading: statsLoading } = useGovernanceStats();
 
   const handleSignOut = () => {
     Alert.alert('Sign Out', 'End your Command Center session?', [
@@ -36,6 +38,43 @@ export default function MoreScreen() {
           <Text style={styles.backText}>Command</Text>
         </Pressable>
         <Text style={styles.headerTitle}>More</Text>
+
+        {/* Quick Stats */}
+        <View style={styles.statsCard}>
+          <View style={styles.statsHeader}>
+            <Text style={styles.statsHeaderText}>TODAY'S GOVERNANCE</Text>
+            {statsLoading && (
+              <Text style={styles.statsHeaderLoading}>loading…</Text>
+            )}
+          </View>
+          <View style={styles.statsRow}>
+            <View style={styles.statCell}>
+              <Text style={[styles.statValue, { color: colors.statusApprove }]}>
+                {stats.approvedToday}
+              </Text>
+              <Text style={styles.statLabel}>APPROVED</Text>
+            </View>
+            <View style={styles.statDivider} />
+            <View style={styles.statCell}>
+              <Text style={[styles.statValue, { color: colors.statusReject }]}>
+                {stats.rejectedToday}
+              </Text>
+              <Text style={styles.statLabel}>REJECTED</Text>
+            </View>
+            <View style={styles.statDivider} />
+            <View style={styles.statCell}>
+              <View style={styles.streakRow}>
+                <Ionicons name="flame" size={16} color={colors.statusPending} />
+                <Text style={[styles.statValue, { color: colors.statusPending }]}>
+                  {stats.streak}
+                </Text>
+              </View>
+              <Text style={styles.statLabel}>
+                {stats.streak === 1 ? 'DAY STREAK' : 'DAY STREAK'}
+              </Text>
+            </View>
+          </View>
+        </View>
 
         {/* User info */}
         <View style={styles.userCard}>
@@ -151,6 +190,65 @@ const styles = StyleSheet.create({
     borderColor: colors.glassBorder,
     padding: spacing.lg,
     marginBottom: spacing.xl,
+  },
+  statsCard: {
+    backgroundColor: colors.surfaceElevated,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.md,
+  },
+  statsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+    paddingHorizontal: 4,
+  },
+  statsHeaderText: {
+    fontFamily: fonts.archivo.medium,
+    fontSize: 10,
+    color: colors.slate,
+    letterSpacing: 1.2,
+  },
+  statsHeaderLoading: {
+    fontFamily: fonts.mono.regular,
+    fontSize: 9,
+    color: colors.slate,
+    letterSpacing: 0.6,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  statCell: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 4,
+  },
+  streakRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  statValue: {
+    fontFamily: fonts.mono.semibold,
+    fontSize: 22,
+    fontVariant: ['tabular-nums'],
+  },
+  statLabel: {
+    fontFamily: fonts.archivo.medium,
+    fontSize: 9,
+    color: colors.slate,
+    letterSpacing: 0.9,
+  },
+  statDivider: {
+    width: 1,
+    alignSelf: 'stretch',
+    backgroundColor: colors.glassBorder,
+    marginVertical: spacing.xs,
   },
   avatar: {
     width: 44,

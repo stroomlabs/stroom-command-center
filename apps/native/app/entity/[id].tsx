@@ -14,7 +14,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useEntityDetail } from '../../src/hooks/useEntityDetail';
 import { ClaimListItem } from '../../src/components/ClaimListItem';
-import type { EntityClaim } from '@stroom/supabase';
+import type { EntityClaim, EntityConnection } from '@stroom/supabase';
 import type { ClaimStatus } from '@stroom/types';
 import { colors, fonts, spacing, radius, gradient } from '../../src/constants/brand';
 
@@ -32,7 +32,8 @@ export default function EntityDetailScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { entity, claims, loading, error, refresh } = useEntityDetail(id);
+  const { entity, claims, connections, loading, error, refresh } =
+    useEntityDetail(id);
   const [filter, setFilter] = useState<StatusFilter>('all');
   const [refreshing, setRefreshing] = useState(false);
 
@@ -215,9 +216,71 @@ export default function EntityDetailScreen() {
               <Text style={styles.listEmptyText}>No claims in this view.</Text>
             </View>
           }
+          ListFooterComponent={
+            connections.length > 0 ? (
+              <View style={styles.connectionsBlock}>
+                <Text style={styles.sectionHeader}>
+                  Connections ({connections.length})
+                </Text>
+                {connections.map((c, i) => (
+                  <ConnectionRow
+                    key={`${c.direction}-${c.otherEntityId}-${c.predicate}-${i}`}
+                    connection={c}
+                    onPress={() =>
+                      router.push({
+                        pathname: '/entity/[id]',
+                        params: { id: c.otherEntityId },
+                      } as any)
+                    }
+                  />
+                ))}
+              </View>
+            ) : null
+          }
         />
       )}
     </LinearGradient>
+  );
+}
+
+function ConnectionRow({
+  connection,
+  onPress,
+}: {
+  connection: EntityConnection;
+  onPress: () => void;
+}) {
+  const predLabel =
+    (connection.predicate.includes('.')
+      ? connection.predicate.split('.').pop()!
+      : connection.predicate)
+      .replace(/_/g, ' ');
+  const isOutgoing = connection.direction === 'outgoing';
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.connRow, pressed && { opacity: 0.75 }]}
+    >
+      <View style={styles.connDirectionWrap}>
+        <Ionicons
+          name={isOutgoing ? 'arrow-forward' : 'arrow-back'}
+          size={13}
+          color={isOutgoing ? colors.teal : colors.statusInfo}
+        />
+      </View>
+      <View style={styles.connBody}>
+        <Text style={styles.connName} numberOfLines={1}>
+          {connection.otherEntityName}
+        </Text>
+        <Text style={styles.connPredicate} numberOfLines={1}>
+          {predLabel}
+        </Text>
+      </View>
+      <View style={styles.connCountChip}>
+        <Text style={styles.connCountText}>{connection.claimCount}</Text>
+      </View>
+      <Ionicons name="chevron-forward" size={14} color={colors.slate} />
+    </Pressable>
   );
 }
 
@@ -390,6 +453,61 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.statusReject,
     textAlign: 'center',
+  },
+  connectionsBlock: {
+    marginTop: spacing.xl,
+    marginBottom: spacing.md,
+  },
+  connRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    borderRadius: radius.md,
+    paddingVertical: spacing.sm + 2,
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.xs,
+  },
+  connDirectionWrap: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  connBody: {
+    flex: 1,
+    gap: 2,
+  },
+  connName: {
+    fontFamily: fonts.archivo.semibold,
+    fontSize: 14,
+    color: colors.alabaster,
+  },
+  connPredicate: {
+    fontFamily: fonts.mono.regular,
+    fontSize: 11,
+    color: colors.teal,
+    textTransform: 'capitalize',
+  },
+  connCountChip: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: radius.sm,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+  },
+  connCountText: {
+    fontFamily: fonts.mono.semibold,
+    fontSize: 11,
+    color: colors.silver,
+    fontVariant: ['tabular-nums'],
   },
   listEmpty: {
     paddingVertical: spacing.xl,
