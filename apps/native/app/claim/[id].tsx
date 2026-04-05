@@ -54,6 +54,16 @@ export default function ClaimDetailScreen() {
     captured_at: string | null;
     raw_excerpt: string | null;
   } | null>(null);
+  const [editHistory, setEditHistory] = useState<
+    Array<{
+      id: string;
+      action_type: string | null;
+      actor: string | null;
+      old_state: Record<string, unknown> | null;
+      new_state: Record<string, unknown> | null;
+      created_at: string;
+    }>
+  >([]);
   // Inline field edit state — scalar top-level keys of value_jsonb
   const [editDraft, setEditDraft] = useState<Record<string, string> | null>(null);
   const [editSaving, setEditSaving] = useState(false);
@@ -151,6 +161,29 @@ export default function ClaimDetailScreen() {
       cancelled = true;
     };
   }, [claim]);
+
+  // Fetch full audit history for this claim (governance timeline).
+  React.useEffect(() => {
+    if (!claim?.id) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await supabase
+          .from('audit_log')
+          .select('id, action_type, actor, old_state, new_state, created_at')
+          .eq('entity_table', 'claims')
+          .eq('entity_id', claim.id)
+          .order('created_at', { ascending: false })
+          .limit(50);
+        if (!cancelled) setEditHistory((data as any) ?? []);
+      } catch {
+        if (!cancelled) setEditHistory([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [claim?.id]);
 
   // Fetch the observation that produced this claim — the middle link in
   // the Source → Observation → Claim provenance chain. We query
@@ -578,6 +611,24 @@ export default function ClaimDetailScreen() {
           </View>
         )}
 
+        {/* Edit history — full audit trail for this claim */}
+        {editHistory.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionHeader}>
+              EDIT HISTORY ({editHistory.length})
+            </Text>
+            <View style={styles.historyList}>
+              {editHistory.map((row, i) => (
+                <EditHistoryRow
+                  key={row.id}
+                  row={row}
+                  isLast={i === editHistory.length - 1}
+                />
+              ))}
+            </View>
+          </View>
+        )}
+
         {/* Corrections */}
         {supersedes.length > 0 && (
           <View style={styles.section}>
@@ -799,6 +850,99 @@ function CorroborationRow({
         </View>
       )}
     </Pressable>
+  );
+}
+
+function EditHistoryRow({
+  row,
+  isLast,
+}: {
+  row: {
+    id: string;
+    action_type: string | null;
+    actor: string | null;
+    old_state: Record<string, unknown> | null;
+    new_state: Record<string, unknown> | null;
+    created_at: string;
+  };
+  isLast: boolean;
+}) {
+  const iconName =
+    row.action_type === 'approve'
+      ? 'checkmark-circle-outline'
+      : row.action_type === 'reject'
+      ? 'close-circle-outline'
+      : row.action_type === 'update'
+      ? 'create-outline'
+      : row.action_type === 'correct'
+      ? 'git-branch-outline'
+      : row.action_type === 'supersede'
+      ? 'git-compare-outline'
+      : 'time-outline';
+  const color =
+    row.action_type === 'approve'
+      ? colors.statusApprove
+      : row.action_type === 'reject'
+      ? colors.statusReject
+      : row.action_type === 'update' || row.action_type === 'correct'
+      ? colors.statusInfo
+      : colors.silver;
+
+  // Compute a short diff blurb from the dirty keys in old/new state.
+  const diffLine = React.useMemo(() => {
+    const oldS = row.old_state ?? {};
+    const newS = row.new_state ?? {};
+    const keys = new Set([...Object.keys(oldS), ...Object.keys(newS)]);
+    const dirty: string[] = [];
+    for (const k of keys) {
+      const a = (oldS as any)[k];
+      const b = (newS as any)[k];
+      if (JSON.stringify(a) !== JSON.stringify(b)) dirty.push(k);
+    }
+    if (dirty.length === 0) return null;
+    const first = dirty[0];
+    const a = (oldS as any)[first];
+    const b = (newS as any)[first];
+    const fmt = (v: any) =>
+      v == null
+        ? '—'
+        : typeof v === 'object'
+        ? JSON.stringify(v).slice(0, 40)
+        : String(v).slice(0, 40);
+    const extra = dirty.length > 1 ? ` · +${dirty.length - 1} more` : '';
+    return `${first}: ${fmt(a)} → ${fmt(b)}${extra}`;
+  }, [row.old_state, row.new_state]);
+
+  return (
+    <View style={styles.historyRow}>
+      <View style={styles.historyRail}>
+        <View
+          style={[
+            styles.historyIconCircle,
+            { borderColor: color, backgroundColor: `${color}14` },
+          ]}
+        >
+          <Ionicons name={iconName as any} size={12} color={color} />
+        </View>
+        {!isLast && <View style={styles.historyRailLine} />}
+      </View>
+      <View style={styles.historyBody}>
+        <View style={styles.historyTopLine}>
+          <Text style={[styles.historyAction, { color }]}>
+            {(row.action_type ?? 'event').replace(/_/g, ' ')}
+          </Text>
+          <Text style={styles.historyActor}>
+            {row.actor ?? 'system'}
+          </Text>
+        </View>
+        {diffLine ? (
+          <Text style={styles.historyDiff} numberOfLines={2}>
+            {diffLine}
+          </Text>
+        ) : null}
+        <Text style={styles.historyTime}>{formatDate(row.created_at)}</Text>
+      </View>
+    </View>
   );
 }
 
@@ -1169,6 +1313,63 @@ const styles = StyleSheet.create({
   },
   provChain: {
     gap: 0,
+  },
+  historyList: {
+    gap: 0,
+  },
+  historyRow: {
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  historyRail: {
+    alignItems: 'center',
+    width: 22,
+  },
+  historyIconCircle: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  historyRailLine: {
+    flex: 1,
+    width: 2,
+    backgroundColor: colors.glassBorder,
+    marginVertical: 2,
+  },
+  historyBody: {
+    flex: 1,
+    paddingBottom: spacing.md,
+    gap: 2,
+  },
+  historyTopLine: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
+  },
+  historyAction: {
+    fontFamily: fonts.archivo.semibold,
+    fontSize: 13,
+    textTransform: 'capitalize',
+  },
+  historyActor: {
+    fontFamily: fonts.mono.regular,
+    fontSize: 10,
+    color: colors.slate,
+  },
+  historyDiff: {
+    fontFamily: fonts.mono.regular,
+    fontSize: 11,
+    color: colors.silver,
+    lineHeight: 15,
+  },
+  historyTime: {
+    fontFamily: fonts.mono.regular,
+    fontSize: 10,
+    color: colors.slate,
+    marginTop: 2,
   },
   provNode: {
     flexDirection: 'row',

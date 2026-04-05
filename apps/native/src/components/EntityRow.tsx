@@ -1,7 +1,8 @@
 import React from 'react';
-import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { EntitySearchResult } from '@stroom/supabase';
+import { PressScale } from './PressScale';
 import { colors, fonts, spacing, radius } from '../constants/brand';
 
 interface EntityRowProps {
@@ -15,11 +16,11 @@ function EntityRowImpl({ entity, onPress }: EntityRowProps) {
   const domain = entity.domain;
 
   return (
-    <Pressable
+    <PressScale
       accessibilityRole="button"
       accessibilityLabel={`${name}, ${type}${domain ? `, ${domain}` : ''}. Open entity.`}
       onPress={onPress}
-      style={({ pressed }) => [styles.row, pressed && styles.pressed]}
+      style={styles.row}
     >
       <View style={styles.body}>
         <Text style={styles.name} numberOfLines={1}>
@@ -42,7 +43,7 @@ function EntityRowImpl({ entity, onPress }: EntityRowProps) {
         )}
       </View>
       <Ionicons name="chevron-forward" size={18} color={colors.slate} />
-    </Pressable>
+    </PressScale>
   );
 }
 
@@ -58,11 +59,6 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
     marginBottom: spacing.sm,
     gap: spacing.sm,
-  },
-  pressed: {
-    opacity: 0.75,
-    transform: [{ scale: 0.98 }],
-    borderColor: colors.glassBorderHover,
   },
   body: {
     flex: 1,

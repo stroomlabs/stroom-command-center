@@ -1,9 +1,10 @@
 import React from 'react';
-import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { EntityClaim } from '@stroom/supabase';
 import { StatusBadge } from './StatusBadge';
 import { titleCase } from './JsonView';
+import { PressScale } from './PressScale';
 import { colors, fonts, spacing, radius } from '../constants/brand';
 
 interface ClaimListItemProps {
@@ -22,11 +23,11 @@ function ClaimListItemImpl({ claim, onPress }: ClaimListItemProps) {
   const corrobs = claim.corroboration_score ?? 0;
 
   return (
-    <Pressable
+    <PressScale
       accessibilityRole="button"
       accessibilityLabel={`${predicate} claim, status ${claim.status}. Open for details.`}
       onPress={onPress}
-      style={({ pressed }) => [styles.row, pressed && styles.pressed]}
+      style={styles.row}
     >
       <View style={styles.header}>
         <Text style={styles.predicate}>{predicate}</Text>
@@ -55,7 +56,7 @@ function ClaimListItemImpl({ claim, onPress }: ClaimListItemProps) {
         )}
         <Ionicons name="chevron-forward" size={14} color={colors.slate} />
       </View>
-    </Pressable>
+    </PressScale>
   );
 }
 
@@ -101,10 +102,6 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     marginBottom: spacing.sm,
     gap: spacing.sm,
-  },
-  pressed: {
-    opacity: 0.75,
-    transform: [{ scale: 0.98 }],
   },
   header: {
     flexDirection: 'row',

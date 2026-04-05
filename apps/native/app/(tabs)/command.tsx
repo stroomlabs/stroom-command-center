@@ -845,15 +845,15 @@ const styles = StyleSheet.create({
   },
   title: {
     fontFamily: fonts.archivo.bold,
-    fontSize: 28,
+    fontSize: 34,
     color: colors.alabaster,
-    letterSpacing: -0.6,
+    letterSpacing: -0.8,
   },
   subtitle: {
     fontFamily: fonts.archivo.regular,
-    fontSize: 12,
+    fontSize: 14,
     color: colors.slate,
-    marginTop: 2,
+    marginTop: 4,
   },
   headerActions: {
     flexDirection: 'row',
