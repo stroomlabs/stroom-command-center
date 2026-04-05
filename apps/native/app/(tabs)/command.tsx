@@ -18,6 +18,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import * as Clipboard from 'expo-clipboard';
 import { useCommandChat, type ChatMessage } from '../../src/hooks/useCommandChat';
+import supabase from '../../src/lib/supabase';
 import { useEntityNameMap, type EntityLookup } from '../../src/hooks/useEntityNameMap';
 import { useSessionHistory } from '../../src/hooks/useSessionHistory';
 import { ActionSheet, type ActionSheetAction } from '../../src/components/ActionSheet';
@@ -54,6 +55,7 @@ export default function CommandScreen() {
     [router]
   );
   const [input, setInput] = useState('');
+  const [slashRunning, setSlashRunning] = useState(false);
   const [menuTarget, setMenuTarget] = useState<ChatMessage | null>(null);
   const [historyVisible, setHistoryVisible] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
@@ -81,10 +83,116 @@ export default function CommandScreen() {
   const handleSend = useCallback(() => {
     const text = input.trim();
     if (!text || sending) return;
+    if (text.startsWith('/')) {
+      runSlashCommand(text);
+      return;
+    }
     Haptics.selectionAsync();
     setInput('');
     send(text);
-  }, [input, sending, send]);
+  }, [input, sending, send, runSlashCommand]);
+
+  // --- Slash commands ---
+  const runSlashCommand = useCallback(
+    async (raw: string) => {
+      if (slashRunning || sending) return;
+      const trimmed = raw.trim();
+      if (!trimmed.startsWith('/')) return;
+      const [cmd, ...rest] = trimmed.slice(1).split(/\s+/);
+      const arg = rest.join(' ').trim();
+      Haptics.selectionAsync();
+      setSlashRunning(true);
+      setInput('');
+      try {
+        let prompt: string;
+        switch (cmd) {
+          case 'health': {
+            const { data } = await supabase.rpc('get_graph_health');
+            prompt = [
+              'Graph health snapshot (run via /health):',
+              '',
+              '```json',
+              JSON.stringify(data ?? {}, null, 2),
+              '```',
+              '',
+              'Summarize the current state of the graph and flag anything above warning thresholds.',
+            ].join('\n');
+            break;
+          }
+          case 'sweep': {
+            const { data } = await supabase.rpc('run_governance_sweep');
+            prompt = [
+              'Governance sweep just executed (/sweep):',
+              '',
+              '```json',
+              JSON.stringify(data ?? {}, null, 2),
+              '```',
+              '',
+              'Summarize what changed and whether any policies need attention.',
+            ].join('\n');
+            break;
+          }
+          case 'entity': {
+            if (!arg) {
+              prompt = 'Please specify an entity name after /entity, e.g. /entity Max Verstappen';
+              break;
+            }
+            const { data } = await supabase
+              .from('entities')
+              .select('id, canonical_name, entity_type, domain, description')
+              .ilike('canonical_name', `%${arg}%`)
+              .limit(5);
+            prompt = [
+              `Entity lookup for "${arg}" (/entity):`,
+              '',
+              '```json',
+              JSON.stringify(data ?? [], null, 2),
+              '```',
+              '',
+              'Describe the matching entities and highlight the most relevant one.',
+            ].join('\n');
+            break;
+          }
+          case 'queue': {
+            const { data } = await supabase.rpc('get_command_pulse');
+            const d: any = data ?? {};
+            prompt = [
+              'Queue summary (/queue):',
+              '',
+              `- Queue depth: ${d.queue_depth ?? 0}`,
+              `- Total claims: ${d.total_claims ?? 0}`,
+              `- Claims today: ${d.claims_today ?? 0}`,
+              `- Status breakdown: ${JSON.stringify(d.status_breakdown ?? {})}`,
+              '',
+              'Summarize the governance backlog and suggest what to triage first.',
+            ].join('\n');
+            break;
+          }
+          default:
+            prompt = `Unknown slash command: /${cmd}. Try /health, /sweep, /entity, or /queue.`;
+        }
+        send(prompt);
+      } catch (e: any) {
+        send(`Slash command /${cmd} failed: ${e?.message ?? 'unknown error'}`);
+      } finally {
+        setSlashRunning(false);
+      }
+    },
+    [slashRunning, sending, send]
+  );
+
+  const slashMatches = React.useMemo(() => {
+    if (!input.startsWith('/')) return null;
+    const q = input.slice(1).toLowerCase();
+    const cmds = [
+      { key: 'health', label: '/health', desc: 'Run graph health check' },
+      { key: 'sweep', label: '/sweep', desc: 'Run governance sweep' },
+      { key: 'entity', label: '/entity [name]', desc: 'Look up entity by name' },
+      { key: 'queue', label: '/queue', desc: 'Show queue summary' },
+    ];
+    const filtered = cmds.filter((c) => c.key.startsWith(q.split(' ')[0] ?? ''));
+    return filtered.length > 0 ? filtered : null;
+  }, [input]);
 
   const openHistory = useCallback(() => {
     Keyboard.dismiss();
@@ -263,6 +371,31 @@ export default function CommandScreen() {
             </View>
           )}
         </ScrollView>
+
+        {/* Slash command suggestions */}
+        {slashMatches && (
+          <View style={styles.slashMenu}>
+            {slashMatches.map((s) => (
+              <Pressable
+                key={s.key}
+                onPress={() => {
+                  if (s.key === 'entity') {
+                    setInput('/entity ');
+                  } else {
+                    runSlashCommand(`/${s.key}`);
+                  }
+                }}
+                style={({ pressed }) => [
+                  styles.slashRow,
+                  pressed && { backgroundColor: 'rgba(0,161,155,0.08)' },
+                ]}
+              >
+                <Text style={styles.slashLabel}>{s.label}</Text>
+                <Text style={styles.slashDesc}>{s.desc}</Text>
+              </Pressable>
+            ))}
+          </View>
+        )}
 
         {/* Composer */}
         <View
@@ -933,6 +1066,32 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.statusReject,
     flex: 1,
+  },
+  slashMenu: {
+    marginHorizontal: spacing.lg,
+    marginBottom: 6,
+    backgroundColor: colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    borderRadius: radius.md,
+    overflow: 'hidden',
+  },
+  slashRow: {
+    paddingVertical: 10,
+    paddingHorizontal: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.glassBorder,
+  },
+  slashLabel: {
+    fontFamily: fonts.mono.semibold,
+    fontSize: 13,
+    color: colors.teal,
+  },
+  slashDesc: {
+    fontFamily: fonts.archivo.regular,
+    fontSize: 11,
+    color: colors.slate,
+    marginTop: 2,
   },
   composer: {
     paddingHorizontal: spacing.lg,

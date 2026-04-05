@@ -1,12 +1,25 @@
-import React from 'react';
-import { View, Text, StyleSheet, Pressable } from 'react-native';
+import React, { useEffect, useState, useCallback } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  Pressable,
+  ScrollView,
+  ActivityIndicator,
+} from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import Constants from 'expo-constants';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Clipboard from 'expo-clipboard';
+import * as Haptics from 'expo-haptics';
 import { useAuth } from '../src/lib/auth';
 import { useGovernanceStats } from '../src/hooks/useGovernanceStats';
 import { useBrandAlert } from '../src/components/BrandAlert';
+import { useBrandToast } from '../src/components/BrandToast';
+import supabase from '../src/lib/supabase';
 import { colors, fonts, spacing, radius, gradient } from '../src/constants/brand';
 
 export default function MoreScreen() {
@@ -15,6 +28,92 @@ export default function MoreScreen() {
   const { user, signOut } = useAuth();
   const { stats, loading: statsLoading } = useGovernanceStats();
   const { alert } = useBrandAlert();
+  const { show: showToast } = useBrandToast();
+  const [connected, setConnected] = useState<boolean | null>(null);
+  const [exporting, setExporting] = useState(false);
+
+  const appVersion =
+    (Constants.expoConfig?.version as string | undefined) ?? '0.1.0';
+
+  // Ping Supabase on mount to surface connection status as a dot indicator.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { error } = await supabase
+          .from('entities')
+          .select('id', { count: 'exact', head: true })
+          .limit(1);
+        if (!cancelled) setConnected(!error);
+      } catch {
+        if (!cancelled) setConnected(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleClearCache = useCallback(() => {
+    alert(
+      'Clear cache',
+      'Remove cached session state and command threads from device storage? You will stay signed in.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clear',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const keys = await AsyncStorage.getAllKeys();
+              const targets = keys.filter(
+                (k) =>
+                  k.startsWith('stroom.') ||
+                  k.startsWith('stroom.command.') ||
+                  k.includes('onboarding')
+              );
+              if (targets.length > 0) {
+                await AsyncStorage.multiRemove(targets);
+              }
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              showToast(`Cleared ${targets.length} keys`, 'success');
+            } catch (e: any) {
+              showToast(e?.message ?? 'Clear failed', 'error');
+            }
+          },
+        },
+      ]
+    );
+  }, [alert, showToast]);
+
+  const handleExport = useCallback(async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const { data, error } = await supabase
+        .from('command_sessions')
+        .select('*')
+        .order('updated_at', { ascending: false });
+      if (error) throw error;
+      const payload = {
+        exported_at: new Date().toISOString(),
+        app_version: appVersion,
+        user: user?.email ?? null,
+        sessions: data ?? [],
+      };
+      await Clipboard.setStringAsync(JSON.stringify(payload, null, 2));
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      showToast(
+        `Exported ${data?.length ?? 0} sessions to clipboard`,
+        'success'
+      );
+    } catch (e: any) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      showToast(e?.message ?? 'Export failed', 'error');
+    } finally {
+      setExporting(false);
+    }
+  }, [exporting, appVersion, user, showToast]);
 
   const handleSignOut = () => {
     alert('Sign Out', 'End your Command Center session?', [
@@ -30,7 +129,13 @@ export default function MoreScreen() {
       end={{ x: 0.5, y: 1 }}
       style={styles.container}
     >
-      <View style={[styles.inner, { paddingTop: insets.top + spacing.sm }]}>
+      <ScrollView
+        contentContainerStyle={[
+          styles.inner,
+          { paddingTop: insets.top + spacing.sm, paddingBottom: spacing.xxl },
+        ]}
+        showsVerticalScrollIndicator={false}
+      >
         <Pressable
           onPress={() => router.back()}
           style={({ pressed }) => [styles.backBtn, pressed && { opacity: 0.6 }]}
@@ -109,12 +214,50 @@ export default function MoreScreen() {
             onPress={() => router.push('/notification-prefs' as any)}
           />
           <MenuItem icon="settings-outline" label="Policy Config" disabled />
+          <MenuItem
+            icon="trash-outline"
+            label="Clear Cache"
+            onPress={handleClearCache}
+          />
+          <MenuItem
+            icon={exporting ? 'hourglass-outline' : 'download-outline'}
+            label={exporting ? 'Exporting…' : 'Export Data'}
+            onPress={exporting ? undefined : handleExport}
+            disabled={exporting}
+          />
         </View>
 
         {/* App info */}
         <View style={styles.infoBlock}>
-          <Text style={styles.infoLine}>Stroom Command Center v0.1.0</Text>
-          <Text style={styles.infoLine}>StroomHelix Engine · Supabase Realtime</Text>
+          <View style={styles.connectionRow}>
+            <View
+              style={[
+                styles.connectionDot,
+                {
+                  backgroundColor:
+                    connected === null
+                      ? colors.slate
+                      : connected
+                      ? colors.statusApprove
+                      : colors.statusReject,
+                },
+              ]}
+            />
+            <Text style={styles.infoLine}>
+              Supabase{' '}
+              {connected === null
+                ? 'checking…'
+                : connected
+                ? 'connected'
+                : 'unreachable'}
+            </Text>
+          </View>
+          <Text style={styles.infoLine}>
+            Stroom Command Center v{appVersion}
+          </Text>
+          <Text style={styles.infoLine}>
+            StroomHelix Engine · Supabase Realtime
+          </Text>
           <Text style={styles.infoLine}>Stroom Labs © 2026</Text>
         </View>
 
@@ -126,7 +269,7 @@ export default function MoreScreen() {
           <Ionicons name="log-out-outline" size={18} color={colors.statusReject} />
           <Text style={styles.signOutText}>Sign Out</Text>
         </Pressable>
-      </View>
+      </ScrollView>
     </LinearGradient>
   );
 }
@@ -162,7 +305,18 @@ function MenuItem({
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  inner: { flex: 1, paddingHorizontal: spacing.lg },
+  inner: { paddingHorizontal: spacing.lg },
+  connectionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 2,
+  },
+  connectionDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
   backBtn: {
     flexDirection: 'row',
     alignItems: 'center',
