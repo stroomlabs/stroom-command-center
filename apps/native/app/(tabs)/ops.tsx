@@ -50,25 +50,41 @@ export default function OpsScreen() {
     processed: number;
   } | null>(null);
 
-  // Query the audit_log for the most recent auto-approve burst attributable
-  // to the governance engine. A "sweep" is a contiguous run of auto_approve
-  // rows created within a short window, so we treat everything within ~5min
-  // of the most recent engine action as one sweep.
+  // Query audit_log for the most recent governance_engine auto_approve
+  // burst. A "sweep" is a contiguous run of rows created within ~5min of
+  // the latest engine action. Falls back to agent/system + approve for
+  // backfilled history where the governance_engine actor isn't set yet.
   React.useEffect(() => {
     let cancelled = false;
     (async () => {
-      const { data } = await supabase
+      // Primary: engine-tagged rows
+      const primary = await supabase
         .from('audit_log')
         .select('created_at, action_type, actor')
-        .in('actor', ['agent', 'system'])
-        .eq('action_type', 'approve')
+        .eq('actor', 'governance_engine')
+        .eq('action_type', 'auto_approve')
         .order('created_at', { ascending: false })
         .limit(100);
-      if (cancelled || !data || data.length === 0) {
-        if (!cancelled) setLastSweep(null);
+
+      let rows = (primary.data as Array<{ created_at: string }> | null) ?? [];
+
+      // Fallback: older sweeps without the engine actor label
+      if (rows.length === 0) {
+        const fallback = await supabase
+          .from('audit_log')
+          .select('created_at, action_type, actor')
+          .in('actor', ['agent', 'system'])
+          .eq('action_type', 'approve')
+          .order('created_at', { ascending: false })
+          .limit(100);
+        rows = (fallback.data as Array<{ created_at: string }> | null) ?? [];
+      }
+
+      if (cancelled) return;
+      if (rows.length === 0) {
+        setLastSweep(null);
         return;
       }
-      const rows = data as Array<{ created_at: string }>;
       const latest = new Date(rows[0].created_at).getTime();
       const windowStart = latest - 5 * 60_000;
       const processed = rows.filter(

@@ -10,10 +10,10 @@ import Animated, {
 
 // Wrap a tab screen's root in <ScreenTransition> to get the standard
 // "fade in from bottom" entering animation whenever the screen gains focus.
-// Matches the global transition spec: opacity 0 → 1, translateY 20 → 0,
-// 200ms ease-out. The Expo Router tab navigator unmounts/remounts screens
-// on focus so blur animation isn't wired here — the incoming screen handles
-// the visible transition.
+// Matches the global tab-switch spec: opacity 0 → 1, translateY 15 → 0,
+// 200ms ease-out. Expo Router's Tabs doesn't expose a per-screen content
+// wrapper at the navigator level, so every tab delegates its entering
+// animation here — this component IS the layout-level animation.
 export function ScreenTransition({
   children,
   style,
@@ -22,12 +22,12 @@ export function ScreenTransition({
   style?: StyleProp<ViewStyle>;
 }) {
   const opacity = useSharedValue(0);
-  const translateY = useSharedValue(20);
+  const translateY = useSharedValue(15);
 
   const play = React.useCallback(() => {
     // Reset to start position, then animate in.
     opacity.value = 0;
-    translateY.value = 20;
+    translateY.value = 15;
     opacity.value = withTiming(1, {
       duration: 200,
       easing: Easing.out(Easing.ease),

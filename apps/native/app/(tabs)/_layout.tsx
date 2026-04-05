@@ -5,6 +5,13 @@ import * as Haptics from 'expo-haptics';
 import { usePulseData } from '../../src/hooks/usePulseData';
 import { colors, fonts } from '../../src/constants/brand';
 
+// Tab switch animation: every tab screen wraps its root in <ScreenTransition>
+// (src/components/ScreenTransition.tsx), which runs a Reanimated fade +
+// translateY(15 → 0) over 200ms on every focus event. Expo Router's Tabs
+// navigator doesn't expose a per-screen content wrapper, so the animation
+// lives inside each screen rather than at the navigator level — this is the
+// layout-level entering animation for tabs.
+
 const tabPressListeners = {
   tabPress: () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);

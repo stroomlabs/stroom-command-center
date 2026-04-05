@@ -19,6 +19,7 @@ import { useExploreSearch } from '../../src/hooks/useExploreSearch';
 import { usePredicatesList } from '../../src/hooks/usePredicatesList';
 import { EntityRow } from '../../src/components/EntityRow';
 import { MultiCompareSheet } from '../../src/components/MultiCompareSheet';
+import { useRecentlyViewed } from '../../src/hooks/useRecentlyViewed';
 import * as Haptics from 'expo-haptics';
 import type { EntitySearchResult } from '@stroom/supabase';
 import type { Predicate } from '@stroom/types';
@@ -35,6 +36,7 @@ export default function ExploreScreen() {
   const [compareOpen, setCompareOpen] = useState(false);
   const { results, loading, error } = useExploreSearch(query);
   const predicates = usePredicatesList();
+  const { recent: recentlyViewed } = useRecentlyViewed();
 
   const toggleSelectMode = useCallback(() => {
     Haptics.selectionAsync();
@@ -300,6 +302,47 @@ export default function ExploreScreen() {
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="on-drag"
+            ListHeaderComponent={
+              !trimmed && !selectMode && recentlyViewed.length > 0 ? (
+                <View style={styles.recentBlock}>
+                  <Text style={styles.recentHeader}>RECENTLY VIEWED</Text>
+                  {recentlyViewed.map((r) => (
+                    <Pressable
+                      key={r.id}
+                      onPress={() => handleOpenEntity(r.id)}
+                      style={({ pressed }) => [
+                        styles.recentRow,
+                        pressed && {
+                          opacity: 0.75,
+                          transform: [{ scale: 0.98 }],
+                        },
+                      ]}
+                    >
+                      <Ionicons
+                        name="time-outline"
+                        size={14}
+                        color={colors.slate}
+                      />
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.recentName} numberOfLines={1}>
+                          {r.name}
+                        </Text>
+                        {r.type ? (
+                          <Text style={styles.recentType} numberOfLines={1}>
+                            {r.type}
+                          </Text>
+                        ) : null}
+                      </View>
+                      <Ionicons
+                        name="chevron-forward"
+                        size={14}
+                        color={colors.slate}
+                      />
+                    </Pressable>
+                  ))}
+                </View>
+              ) : null
+            }
           />
         )
       ) : (
@@ -748,6 +791,41 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.sm,
     paddingBottom: spacing.xxl,
+  },
+  recentBlock: {
+    marginBottom: spacing.md,
+    gap: 4,
+  },
+  recentHeader: {
+    fontFamily: fonts.archivo.medium,
+    fontSize: 10,
+    color: colors.slate,
+    letterSpacing: 1,
+    marginBottom: spacing.xs,
+    marginLeft: 2,
+  },
+  recentRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.surfaceCard,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
+    marginBottom: 6,
+  },
+  recentName: {
+    fontFamily: fonts.archivo.semibold,
+    fontSize: 13,
+    color: colors.alabaster,
+  },
+  recentType: {
+    fontFamily: fonts.mono.regular,
+    fontSize: 10,
+    color: colors.slate,
+    marginTop: 1,
   },
   loadingWrap: {
     flex: 1,

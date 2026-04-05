@@ -15,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useEntityDetail } from '../../src/hooks/useEntityDetail';
 import { useSimilarEntities } from '../../src/hooks/useSimilarEntities';
 import { useEntityActivity } from '../../src/hooks/useEntityActivity';
+import { useRecentlyViewed } from '../../src/hooks/useRecentlyViewed';
 import { ClaimListItem } from '../../src/components/ClaimListItem';
 import { EntityCompareSheet } from '../../src/components/EntityCompareSheet';
 import type { EntityClaim, EntityConnection } from '@stroom/supabase';
@@ -42,6 +43,18 @@ export default function EntityDetailScreen() {
     entity?.canonical_name ?? entity?.name
   );
   const { rows: activityRows } = useEntityActivity(entity?.id ?? null, 10);
+  const { record: recordRecent } = useRecentlyViewed();
+
+  // Record this entity in the "recently viewed" list on each visit so the
+  // Explore tab can surface it when the search box is empty.
+  React.useEffect(() => {
+    if (!entity?.id) return;
+    recordRecent({
+      id: entity.id,
+      name: entity.canonical_name ?? entity.name ?? 'Unnamed',
+      type: entity.entity_type ?? entity.entity_class ?? null,
+    });
+  }, [entity?.id, entity?.canonical_name, entity?.name, entity?.entity_type, recordRecent]);
   const [compareId, setCompareId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'list' | 'timeline'>('list');
   const [filter, setFilter] = useState<StatusFilter>('all');
@@ -234,6 +247,9 @@ export default function EntityDetailScreen() {
 
               {/* Coverage score */}
               <CoverageScore claims={claims} />
+
+              {/* Claim distribution by predicate category */}
+              <ClaimDistribution claims={claims} />
 
               {/* Possible duplicates */}
               {similar.length > 0 && (
@@ -557,6 +573,73 @@ function CoverageScore({ claims }: { claims: EntityClaim[] }) {
         <CoverageFacet label="Variety" score={predicateScore} />
         <CoverageFacet label="Corrob" score={corrobScore} />
         <CoverageFacet label="Recency" score={recencyScore} />
+      </View>
+    </View>
+  );
+}
+
+const DISTRIBUTION_COLORS = [
+  colors.teal,
+  colors.statusInfo,
+  colors.statusApprove,
+  colors.statusPending,
+  colors.statusReject,
+  '#A78BFA',
+  '#F472B6',
+  '#22D3EE',
+];
+
+function ClaimDistribution({ claims }: { claims: EntityClaim[] }) {
+  const buckets = React.useMemo(() => {
+    const map = new Map<string, number>();
+    for (const c of claims) {
+      if (!c.predicate) continue;
+      // Predicate keys follow "category.subkey" — group by the category
+      // prefix, fall back to "other" for bare keys.
+      const cat = c.predicate.includes('.')
+        ? c.predicate.split('.')[0]
+        : 'other';
+      map.set(cat, (map.get(cat) ?? 0) + 1);
+    }
+    return Array.from(map.entries())
+      .map(([k, v]) => ({ category: k, count: v }))
+      .sort((a, b) => b.count - a.count);
+  }, [claims]);
+
+  if (buckets.length === 0) return null;
+  const total = buckets.reduce((acc, b) => acc + b.count, 0);
+
+  return (
+    <View style={styles.distCard}>
+      <View style={styles.distHeaderRow}>
+        <Text style={styles.distLabel}>CLAIM DISTRIBUTION</Text>
+        <Text style={styles.distTotal}>{total}</Text>
+      </View>
+      <View style={styles.distBars}>
+        {buckets.map((b, i) => {
+          const pct = Math.round((b.count / total) * 100);
+          const color = DISTRIBUTION_COLORS[i % DISTRIBUTION_COLORS.length];
+          return (
+            <View key={b.category} style={styles.distRow}>
+              <Text style={styles.distCat} numberOfLines={1}>
+                {b.category.replace(/_/g, ' ')}
+              </Text>
+              <View style={styles.distTrack}>
+                <View
+                  style={[
+                    styles.distFill,
+                    {
+                      width: `${Math.max(2, pct)}%`,
+                      backgroundColor: color,
+                    },
+                  ]}
+                />
+              </View>
+              <Text style={styles.distCount}>{b.count}</Text>
+              <Text style={styles.distPct}>{pct}%</Text>
+            </View>
+          );
+        })}
       </View>
     </View>
   );
@@ -897,6 +980,75 @@ const styles = StyleSheet.create({
     fontFamily: fonts.archivo.semibold,
     fontSize: 11,
     color: colors.teal,
+  },
+  distCard: {
+    backgroundColor: colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    gap: spacing.sm,
+  },
+  distHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
+  },
+  distLabel: {
+    fontFamily: fonts.archivo.medium,
+    fontSize: 10,
+    color: colors.slate,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  },
+  distTotal: {
+    fontFamily: fonts.mono.semibold,
+    fontSize: 12,
+    color: colors.alabaster,
+    fontVariant: ['tabular-nums'],
+  },
+  distBars: {
+    gap: 6,
+  },
+  distRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  distCat: {
+    fontFamily: fonts.archivo.medium,
+    fontSize: 11,
+    color: colors.silver,
+    width: 80,
+    textTransform: 'capitalize',
+  },
+  distTrack: {
+    flex: 1,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    overflow: 'hidden',
+  },
+  distFill: {
+    height: '100%',
+    borderRadius: 3,
+  },
+  distCount: {
+    fontFamily: fonts.mono.medium,
+    fontSize: 11,
+    color: colors.alabaster,
+    fontVariant: ['tabular-nums'],
+    width: 24,
+    textAlign: 'right',
+  },
+  distPct: {
+    fontFamily: fonts.mono.regular,
+    fontSize: 10,
+    color: colors.slate,
+    fontVariant: ['tabular-nums'],
+    width: 32,
+    textAlign: 'right',
   },
   coverageCard: {
     backgroundColor: colors.surfaceElevated,
