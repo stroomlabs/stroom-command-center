@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { GlassCard } from './GlassCard';
 import { colors, fonts, spacing } from '../constants/brand';
 
@@ -10,6 +10,7 @@ interface PulseMetricProps {
   prefix?: string;
   suffix?: string;
   compact?: boolean;
+  onPress?: () => void;
 }
 
 export function PulseMetric({
@@ -19,11 +20,13 @@ export function PulseMetric({
   prefix,
   suffix,
   compact = false,
+  onPress,
 }: PulseMetricProps) {
   const displayValue = typeof value === 'number' ? formatNumber(value) : value;
 
-  return (
-    <GlassCard style={compact ? styles.compact : styles.card}>
+  const cardStyle = compact ? styles.compact : styles.card;
+  const inner = (
+    <GlassCard style={onPress ? styles.innerFill : cardStyle}>
       <Text style={styles.label}>{label}</Text>
       <View style={styles.valueRow}>
         {prefix && <Text style={[styles.prefix, { color: accent }]}>{prefix}</Text>}
@@ -31,6 +34,17 @@ export function PulseMetric({
         {suffix && <Text style={[styles.suffix, { color: colors.slate }]}>{suffix}</Text>}
       </View>
     </GlassCard>
+  );
+
+  if (!onPress) return inner;
+
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [cardStyle, pressed && styles.pressed]}
+    >
+      {inner}
+    </Pressable>
   );
 }
 
@@ -48,6 +62,13 @@ const styles = StyleSheet.create({
   compact: {
     flex: 1,
     minWidth: '30%',
+  },
+  innerFill: {
+    width: '100%',
+  },
+  pressed: {
+    opacity: 0.75,
+    transform: [{ scale: 0.98 }],
   },
   label: {
     fontFamily: fonts.archivo.medium,

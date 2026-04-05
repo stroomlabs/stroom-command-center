@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
 import { usePulseData } from '../../src/hooks/usePulseData';
 import { usePushNotifications } from '../../src/hooks/usePushNotifications';
 import { PulseMetric } from '../../src/components/PulseMetric';
@@ -17,6 +18,7 @@ import { colors, fonts, spacing, gradient } from '../../src/constants/brand';
 
 export default function PulseScreen() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const { data, loading, error, refresh } = usePulseData();
   const [refreshing, setRefreshing] = React.useState(false);
 
@@ -71,7 +73,11 @@ export default function PulseScreen() {
           <>
             {/* Primary metrics — 2-column grid */}
             <View style={styles.grid}>
-              <PulseMetric label="Claims" value={data.totalClaims} />
+              <PulseMetric
+                label="Claims"
+                value={data.totalClaims}
+                onPress={() => router.push('/(tabs)/explore' as any)}
+              />
               <PulseMetric label="Entities" value={data.totalEntities} />
             </View>
 
@@ -81,6 +87,7 @@ export default function PulseScreen() {
                 label="Queue"
                 value={data.queueDepth}
                 accent={data.queueDepth > 0 ? colors.statusPending : colors.teal}
+                onPress={() => router.push('/(tabs)/queue' as any)}
               />
             </View>
 

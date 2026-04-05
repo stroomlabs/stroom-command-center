@@ -1,9 +1,13 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { usePulseData } from '../../src/hooks/usePulseData';
 import { colors, fonts } from '../../src/constants/brand';
 
 export default function TabLayout() {
+  const { data } = usePulseData();
+  const queueDepth = data?.queueDepth ?? 0;
+
   return (
     <Tabs
       screenOptions={{
@@ -41,6 +45,16 @@ export default function TabLayout() {
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="layers-outline" size={size} color={color} />
           ),
+          tabBarBadge: queueDepth > 0 ? queueDepth : undefined,
+          tabBarBadgeStyle: {
+            backgroundColor: colors.statusPending,
+            color: colors.obsidian,
+            fontFamily: fonts.mono.semibold,
+            fontSize: 11,
+            minWidth: 18,
+            height: 18,
+            lineHeight: 14,
+          },
         }}
       />
       <Tabs.Screen

@@ -6,6 +6,7 @@ import {
   StyleSheet,
   RefreshControl,
   ActivityIndicator,
+  ScrollView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -71,18 +72,34 @@ export default function QueueScreen() {
         <View style={styles.loadingWrap}>
           <ActivityIndicator color={colors.teal} size="large" />
         </View>
-      ) : error && claims.length === 0 ? (
-        <View style={styles.emptyWrap}>
-          <Text style={styles.errorText}>{error}</Text>
-        </View>
       ) : claims.length === 0 ? (
-        <View style={styles.emptyWrap}>
-          <Text style={styles.emptyIcon}>✓</Text>
-          <Text style={styles.emptyTitle}>Queue clear</Text>
-          <Text style={styles.emptyBody}>
-            No claims pending review. New claims will appear here in real time.
-          </Text>
-        </View>
+        <ScrollView
+          contentContainerStyle={styles.emptyScroll}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              tintColor={colors.teal}
+            />
+          }
+        >
+          {error ? (
+            <>
+              <Text style={styles.emptyIcon}>!</Text>
+              <Text style={styles.emptyTitle}>Couldn't load queue</Text>
+              <Text style={styles.errorText}>{error}</Text>
+            </>
+          ) : (
+            <>
+              <Text style={styles.emptyIcon}>✓</Text>
+              <Text style={styles.emptyTitle}>Queue clear</Text>
+              <Text style={styles.emptyBody}>
+                No claims pending review. Pull to refresh — new claims will
+                also appear here in real time.
+              </Text>
+            </>
+          )}
+        </ScrollView>
       ) : (
         <FlatList
           data={claims}
@@ -156,11 +173,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  emptyWrap: {
-    flex: 1,
+  emptyScroll: {
+    flexGrow: 1,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.xxl,
   },
   emptyIcon: {
     fontSize: 48,
