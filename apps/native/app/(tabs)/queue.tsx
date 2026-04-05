@@ -156,20 +156,55 @@ export default function QueueScreen() {
   }));
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [domainFilter, setDomainFilter] = useState<string | null>(null);
+
+  // Distinct domains present in the current queue — rendered as a
+  // horizontally scrollable chip bar below the status filters.
+  const availableDomains = useMemo(() => {
+    const set = new Set<string>();
+    for (const c of claims) {
+      const d = c.subject_entity?.domain;
+      if (d) set.add(d);
+    }
+    return Array.from(set).sort();
+  }, [claims]);
+
+  // Drop a stale domain filter if no claims in the current queue match it
+  // (e.g. after a refresh).
+  React.useEffect(() => {
+    if (domainFilter && !availableDomains.includes(domainFilter)) {
+      setDomainFilter(null);
+    }
+  }, [availableDomains, domainFilter]);
+
+  // Compact top sort toggle — Smart (risk-weighted default), Newest, Oldest.
+  // The full ActionSheet still exists for power users who want low_trust
+  // or explicit Risk sorts.
+  const TOP_SORTS: { key: SortKey; label: string }[] = [
+    { key: 'smart', label: 'Risk' },
+    { key: 'newest', label: 'Newest' },
+    { key: 'oldest', label: 'Oldest' },
+  ];
+
+  const activeFilterCount =
+    (filter === 'all' ? 0 : 1) + (domainFilter ? 1 : 0);
 
   const filteredClaims = useMemo(() => {
     const byStatus =
       filter === 'all'
         ? claims
         : claims.filter((c) => c.status === (filter as ClaimStatus));
+    const byDomain = domainFilter
+      ? byStatus.filter((c) => c.subject_entity?.domain === domainFilter)
+      : byStatus;
     const q = search.trim().toLowerCase();
     const bySearch = q
-      ? byStatus.filter((c) => {
+      ? byDomain.filter((c) => {
           const name = c.subject_entity?.canonical_name?.toLowerCase() ?? '';
           const pred = (c.predicate ?? '').toLowerCase();
           return name.includes(q) || pred.includes(q);
         })
-      : byStatus;
+      : byDomain;
 
     // Risk score: larger = higher risk. Low trust/confidence/corroboration add.
     const riskScore = (c: typeof bySearch[number]) => {
@@ -214,7 +249,7 @@ export default function QueueScreen() {
         );
     }
     return copy;
-  }, [claims, filter, search, sort, importance]);
+  }, [claims, filter, domainFilter, search, sort, importance]);
 
   const sortActions: ActionSheetAction[] = (Object.keys(SORT_LABELS) as SortKey[]).map(
     (key) => ({
@@ -447,6 +482,103 @@ export default function QueueScreen() {
           );
         })}
       </ScrollView>
+
+      {/* Sort toggle (Risk / Newest / Oldest) + active filter count */}
+      <View style={styles.sortToggleRow}>
+        <View style={styles.sortSegment}>
+          {TOP_SORTS.map((s) => {
+            const active = sort === s.key;
+            return (
+              <Pressable
+                key={s.key}
+                onPress={() => {
+                  Haptics.selectionAsync();
+                  setSort(s.key);
+                }}
+                style={({ pressed }) => [
+                  styles.sortSegmentBtn,
+                  active && styles.sortSegmentBtnActive,
+                  pressed && !active && { opacity: 0.75 },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.sortSegmentText,
+                    active && styles.sortSegmentTextActive,
+                  ]}
+                >
+                  {s.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+        {activeFilterCount > 0 && (
+          <View style={styles.filtersLabelChip}>
+            <Ionicons name="funnel" size={10} color={colors.teal} />
+            <Text style={styles.filtersLabelText}>
+              {activeFilterCount} filter{activeFilterCount === 1 ? '' : 's'}
+            </Text>
+          </View>
+        )}
+      </View>
+
+      {/* Domain chip bar — only rendered when the current queue actually
+          spans multiple domains (single-domain queues skip the row). */}
+      {availableDomains.length > 1 && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filterRow}
+        >
+          <Pressable
+            onPress={() => {
+              Haptics.selectionAsync();
+              setDomainFilter(null);
+            }}
+            style={({ pressed }) => [
+              styles.filterPill,
+              domainFilter === null && styles.filterPillActive,
+              pressed && { opacity: 0.7 },
+            ]}
+          >
+            <Text
+              style={[
+                styles.filterText,
+                domainFilter === null && styles.filterTextActive,
+              ]}
+            >
+              All Domains
+            </Text>
+          </Pressable>
+          {availableDomains.map((d) => {
+            const active = domainFilter === d;
+            return (
+              <Pressable
+                key={d}
+                onPress={() => {
+                  Haptics.selectionAsync();
+                  setDomainFilter(active ? null : d);
+                }}
+                style={({ pressed }) => [
+                  styles.filterPill,
+                  active && styles.filterPillActive,
+                  pressed && { opacity: 0.7 },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.filterText,
+                    active && styles.filterTextActive,
+                  ]}
+                >
+                  {d.replace(/_/g, ' ')}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      )}
 
       {loading && claims.length === 0 ? (
         <ScrollView
@@ -711,6 +843,56 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(0, 161, 155, 0.3)',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  sortToggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    marginBottom: spacing.sm,
+  },
+  sortSegment: {
+    flexDirection: 'row',
+    backgroundColor: colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    borderRadius: radius.full,
+    padding: 3,
+    gap: 2,
+  },
+  sortSegmentBtn: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: 6,
+    borderRadius: radius.full,
+  },
+  sortSegmentBtnActive: {
+    backgroundColor: colors.tealDim,
+  },
+  sortSegmentText: {
+    fontFamily: fonts.archivo.semibold,
+    fontSize: 11,
+    color: colors.silver,
+    letterSpacing: 0.3,
+  },
+  sortSegmentTextActive: {
+    color: colors.teal,
+  },
+  filtersLabelChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: radius.full,
+    backgroundColor: colors.tealDim,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 161, 155, 0.35)',
+  },
+  filtersLabelText: {
+    fontFamily: fonts.mono.semibold,
+    fontSize: 10,
+    color: colors.teal,
+    letterSpacing: 0.5,
   },
   searchInput: {
     flex: 1,

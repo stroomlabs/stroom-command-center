@@ -113,12 +113,13 @@ export interface QueueClaim {
   id: string;
   predicate: string | null;
   value_jsonb: Record<string, unknown> | null;
+  subject_entity_id: string | null;
   object_entity_id: string | null;
   confidence_score: number | null;
   corroboration_score: number | null;
   status: ClaimStatus;
   created_at: string;
-  subject_entity: { canonical_name: string } | null;
+  subject_entity: { canonical_name: string; domain: string | null } | null;
   object_entity: { canonical_name: string } | null;
   source: { id: string; source_name: string; trust_score: number } | null;
 }
@@ -135,12 +136,13 @@ export async function fetchQueueClaims(
       id,
       predicate,
       value_jsonb,
+      subject_entity_id,
       object_entity_id,
       confidence_score,
       corroboration_score,
       status,
       created_at,
-      subject_entity:entities!claims_subject_entity_id_fkey(canonical_name),
+      subject_entity:entities!claims_subject_entity_id_fkey(canonical_name, domain),
       object_entity:entities!claims_object_entity_id_fkey(canonical_name),
       source:sources!claims_asserted_source_id_fkey(id, source_name, trust_score)
     `
@@ -157,12 +159,13 @@ export async function fetchQueueClaims(
       id,
       predicate,
       value_jsonb,
+      subject_entity_id,
       object_entity_id,
       confidence_score,
       corroboration_score,
       status,
       created_at,
-      subject_entity:entities!claims_subject_entity_id_fkey(canonical_name),
+      subject_entity:entities!claims_subject_entity_id_fkey(canonical_name, domain),
       object_entity:entities!claims_object_entity_id_fkey(canonical_name),
       source:sources!claims_asserted_source_id_fkey(id, source_name, trust_score)
     `

@@ -6,6 +6,7 @@ import {
   StyleSheet,
   RefreshControl,
   Pressable,
+  ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -25,6 +26,7 @@ import { usePulseContext } from '../../src/lib/PulseContext';
 import { usePulseDeltas } from '../../src/hooks/usePulseDeltas';
 import { usePushNotifications } from '../../src/hooks/usePushNotifications';
 import supabase from '../../src/lib/supabase';
+import { runAutoGovernance } from '@stroom/supabase';
 import { PulseMetric } from '../../src/components/PulseMetric';
 import { GlassCard } from '../../src/components/GlassCard';
 import { SkeletonMetricCard } from '../../src/components/Skeleton';
@@ -52,6 +54,30 @@ export default function PulseScreen() {
   const scrollRef = React.useRef<ScrollView>(null);
   const { data, loading, error, refresh, lastUpdatedAt } = usePulseContext();
   const { deltas } = usePulseDeltas();
+  const [sweeping, setSweeping] = React.useState(false);
+  const [lastSweepResult, setLastSweepResult] = React.useState<{
+    approved: number;
+    flagged: number;
+    rejected: number;
+  } | null>(null);
+
+  const handleSweep = React.useCallback(async () => {
+    if (sweeping) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setSweeping(true);
+    try {
+      const result = await runAutoGovernance(supabase);
+      setLastSweepResult(result);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      // Pulse refetch so totalClaims + queueDepth (and the Queue tab
+      // badge via PulseContext) reflect the post-sweep state.
+      await refresh();
+    } catch {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    } finally {
+      setSweeping(false);
+    }
+  }, [sweeping, refresh]);
   const [refreshing, setRefreshing] = React.useState(false);
   const [nowTick, setNowTick] = React.useState(0);
 
@@ -271,6 +297,40 @@ export default function PulseScreen() {
               </Animated.Text>
             )}
 
+            {/* Quick sweep — same RPC as Ops, surfaced on Pulse so the
+                most-used action is one tap from the home tab. */}
+            <Pressable
+              onPress={handleSweep}
+              disabled={sweeping}
+              style={({ pressed }) => [
+                styles.sweepBtn,
+                (pressed || sweeping) && { opacity: 0.75, transform: [{ scale: 0.98 }] },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel="Run governance sweep"
+            >
+              {sweeping ? (
+                <ActivityIndicator size="small" color={colors.teal} />
+              ) : (
+                <Ionicons name="sparkles" size={16} color={colors.teal} />
+              )}
+              <Text style={styles.sweepBtnText}>
+                {sweeping ? 'Running sweep…' : 'Run Sweep'}
+              </Text>
+            </Pressable>
+            {lastSweepResult && !sweeping && (
+              <Animated.Text
+                entering={FadeIn.duration(240)}
+                style={styles.sweepResult}
+              >
+                ✓ {lastSweepResult.approved} approved ·{' '}
+                {lastSweepResult.flagged} flagged
+                {lastSweepResult.rejected > 0
+                  ? ` · ${lastSweepResult.rejected} rejected`
+                  : ''}
+              </Animated.Text>
+            )}
+
             {/* Status breakdown */}
             {data.statusBreakdown && Object.keys(data.statusBreakdown).length > 0 && (
               <GlassCard style={styles.breakdownCard}>
@@ -427,6 +487,32 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
     marginBottom: spacing.xs,
     letterSpacing: 0.1,
+  },
+  sweepBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    paddingVertical: 12,
+    borderRadius: radius.md,
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: colors.teal,
+    marginTop: spacing.sm,
+  },
+  sweepBtnText: {
+    fontFamily: fonts.archivo.bold,
+    fontSize: 13,
+    color: colors.teal,
+    letterSpacing: 0.3,
+  },
+  sweepResult: {
+    fontFamily: fonts.archivo.regular,
+    fontSize: 12,
+    color: colors.silver,
+    textAlign: 'center',
+    marginTop: 6,
+    marginBottom: spacing.xs,
   },
   breakdownCard: {
     marginTop: spacing.sm,

@@ -90,6 +90,31 @@ export default function CommandScreen() {
   const { briefing } = useMorningBriefing(messages.length === 0 && !sending);
   const [menuTarget, setMenuTarget] = useState<ChatMessage | null>(null);
   const [historyVisible, setHistoryVisible] = useState(false);
+  // Session search — search icon in the header toggles an inline search
+  // bar at the top of the chat. While a query is active, the chat is
+  // replaced with a filtered list of past sessions whose messages match.
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearchQuery(searchQuery), 300);
+    return () => clearTimeout(t);
+  }, [searchQuery]);
+
+  const filteredSessions = React.useMemo(() => {
+    const q = debouncedSearchQuery.trim().toLowerCase();
+    if (!q) return [];
+    return (history.sessions ?? []).filter((s: any) => {
+      const msgs = Array.isArray(s.messages) ? s.messages : [];
+      for (const m of msgs) {
+        const c = String(m?.content ?? '').toLowerCase();
+        if (c.includes(q)) return true;
+      }
+      if (String(s.title ?? '').toLowerCase().includes(q)) return true;
+      return false;
+    });
+  }, [debouncedSearchQuery, history.sessions]);
+
   const scrollRef = useRef<ScrollView>(null);
   const consumedPromptRef = useRef<string | null>(null);
 
@@ -454,6 +479,33 @@ export default function CommandScreen() {
           </View>
           <View style={styles.headerActions}>
             <Pressable
+              onPress={() => {
+                Haptics.selectionAsync();
+                setSearchOpen((prev) => {
+                  const next = !prev;
+                  if (next) history.refresh();
+                  else {
+                    setSearchQuery('');
+                    setDebouncedSearchQuery('');
+                  }
+                  return next;
+                });
+              }}
+              style={({ pressed }) => [
+                styles.iconBtn,
+                searchOpen && styles.iconBtnActive,
+                pressed && { opacity: 0.6 },
+              ]}
+              hitSlop={8}
+              accessibilityLabel="Search sessions"
+            >
+              <Ionicons
+                name="search"
+                size={20}
+                color={searchOpen ? colors.teal : colors.silver}
+              />
+            </Pressable>
+            <Pressable
               onPress={openHistory}
               style={({ pressed }) => [styles.iconBtn, pressed && { opacity: 0.6 }]}
               hitSlop={8}
@@ -485,7 +537,90 @@ export default function CommandScreen() {
           </View>
         </View>
 
-        {/* Messages */}
+        {/* Inline session search — when open, replaces the chat with a
+            filtered list of past sessions whose messages match the query. */}
+        {searchOpen && (
+          <View style={styles.searchBar}>
+            <Ionicons name="search" size={16} color={colors.slate} />
+            <TextInput
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder="Search past sessions…"
+              placeholderTextColor={colors.slate}
+              style={styles.searchInput}
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoFocus
+              keyboardAppearance="dark"
+              selectionColor={colors.teal}
+            />
+            {searchQuery.length > 0 ? (
+              <Pressable
+                onPress={() => {
+                  setSearchQuery('');
+                  setDebouncedSearchQuery('');
+                }}
+                hitSlop={8}
+              >
+                <Ionicons name="close-circle" size={16} color={colors.slate} />
+              </Pressable>
+            ) : null}
+          </View>
+        )}
+
+        {searchOpen && debouncedSearchQuery.trim().length > 0 ? (
+          <ScrollView
+            style={styles.messages}
+            contentContainerStyle={styles.searchResults}
+            keyboardShouldPersistTaps="handled"
+          >
+            {filteredSessions.length === 0 ? (
+              <Text style={styles.searchEmpty}>
+                No sessions match "{debouncedSearchQuery.trim()}"
+              </Text>
+            ) : (
+              filteredSessions.map((s: any) => (
+                <Pressable
+                  key={s.id}
+                  onPress={() => {
+                    Haptics.selectionAsync();
+                    setSearchOpen(false);
+                    setSearchQuery('');
+                    setDebouncedSearchQuery('');
+                    handleLoadSession(s);
+                  }}
+                  style={({ pressed }) => [
+                    styles.searchRow,
+                    pressed && { opacity: 0.75, transform: [{ scale: 0.98 }] },
+                  ]}
+                >
+                  <Ionicons
+                    name="chatbubble-outline"
+                    size={14}
+                    color={colors.teal}
+                  />
+                  <View style={{ flex: 1 }}>
+                    <HighlightedText
+                      text={deriveSessionTitle(s)}
+                      query={debouncedSearchQuery.trim()}
+                      style={styles.searchRowTitle}
+                    />
+                    <Text style={styles.searchRowMeta} numberOfLines={1}>
+                      {Array.isArray(s.messages) ? s.messages.length : 0}{' '}
+                      messages · {formatSearchRelative(s.updated_at)}
+                    </Text>
+                  </View>
+                  <Ionicons
+                    name="chevron-forward"
+                    size={14}
+                    color={colors.slate}
+                  />
+                </Pressable>
+              ))
+            )}
+          </ScrollView>
+        ) : (
+        /* Messages */
         <ScrollView
           ref={scrollRef}
           style={styles.messages}
@@ -640,6 +775,7 @@ export default function CommandScreen() {
             </View>
           )}
         </ScrollView>
+        )}
 
         {/* "New messages" pill — visible when the user has scrolled up
             while a message arrives. Tap to snap to bottom. */}
@@ -848,6 +984,75 @@ function NewMessagesPill({
 // While `active`, opacity oscillates 1 ↔ 0.2 on a 1s cycle. When the
 // parent flips `active` to false the cursor eases opacity to 0 over
 // 240ms, then unmounts via the local `mounted` state — no instant pop.
+// Session title helper for the search-results list — mirrors the
+// SessionHistorySheet derivation but kept local so command.tsx doesn't
+// need to import the sheet internals.
+function deriveSessionTitle(session: any): string {
+  if (session?.title && String(session.title).trim().length > 0)
+    return String(session.title);
+  if (Array.isArray(session?.messages)) {
+    const firstUser = session.messages.find((m: any) => m?.role === 'user');
+    if (firstUser?.content) {
+      const text = String(firstUser.content).trim();
+      return text.length > 60 ? text.slice(0, 60) + '…' : text;
+    }
+  }
+  return 'Untitled session';
+}
+
+function formatSearchRelative(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60_000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+// Renders `text` with every case-insensitive occurrence of `query`
+// wrapped in a teal-highlighted inline Text segment.
+function HighlightedText({
+  text,
+  query,
+  style,
+}: {
+  text: string;
+  query: string;
+  style: any;
+}) {
+  if (!query) return <Text style={style}>{text}</Text>;
+  const lower = text.toLowerCase();
+  const q = query.toLowerCase();
+  const parts: Array<{ text: string; match: boolean }> = [];
+  let i = 0;
+  while (i < text.length) {
+    const hit = lower.indexOf(q, i);
+    if (hit === -1) {
+      parts.push({ text: text.slice(i), match: false });
+      break;
+    }
+    if (hit > i) parts.push({ text: text.slice(i, hit), match: false });
+    parts.push({ text: text.slice(hit, hit + q.length), match: true });
+    i = hit + q.length;
+  }
+  return (
+    <Text style={style} numberOfLines={1}>
+      {parts.map((p, idx) =>
+        p.match ? (
+          <Text key={idx} style={styles.searchHighlight}>
+            {p.text}
+          </Text>
+        ) : (
+          <Text key={idx}>{p.text}</Text>
+        )
+      )}
+    </Text>
+  );
+}
+
 function StreamingCursor({ active }: { active: boolean }) {
   const opacity = useSharedValue(active ? 1 : 0);
   const [mounted, setMounted] = React.useState(active);
@@ -1257,6 +1462,70 @@ const styles = StyleSheet.create({
     borderColor: colors.glassBorder,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  iconBtnActive: {
+    backgroundColor: colors.tealDim,
+    borderColor: 'rgba(0, 161, 155, 0.4)',
+  },
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginHorizontal: spacing.lg,
+    marginTop: 6,
+    marginBottom: 2,
+    paddingHorizontal: spacing.md,
+    height: 40,
+    borderRadius: radius.md,
+    backgroundColor: colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+  },
+  searchInput: {
+    flex: 1,
+    fontFamily: fonts.archivo.regular,
+    fontSize: 14,
+    color: colors.alabaster,
+    paddingVertical: 0,
+  },
+  searchResults: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xl,
+    gap: 6,
+  },
+  searchEmpty: {
+    fontFamily: fonts.archivo.regular,
+    fontSize: 13,
+    color: colors.slate,
+    textAlign: 'center',
+    paddingVertical: spacing.xl,
+  },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
+  },
+  searchRowTitle: {
+    fontFamily: fonts.archivo.semibold,
+    fontSize: 13,
+    color: colors.alabaster,
+  },
+  searchRowMeta: {
+    fontFamily: fonts.mono.regular,
+    fontSize: 10,
+    color: colors.slate,
+    marginTop: 2,
+  },
+  searchHighlight: {
+    backgroundColor: 'rgba(0, 161, 155, 0.25)',
+    color: colors.teal,
   },
   messages: { flex: 1 },
   messagesContent: {
