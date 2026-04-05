@@ -116,7 +116,7 @@ export interface QueueClaim {
   created_at: string;
   subject_entity: { canonical_name: string } | null;
   object_entity: { canonical_name: string } | null;
-  source: { source_name: string; trust_score: number } | null;
+  source: { id: string; source_name: string; trust_score: number } | null;
 }
 
 export async function fetchQueueClaims(
@@ -138,7 +138,7 @@ export async function fetchQueueClaims(
       created_at,
       subject_entity:entities!claims_subject_entity_id_fkey(canonical_name),
       object_entity:entities!claims_object_entity_id_fkey(canonical_name),
-      source:sources!claims_asserted_source_id_fkey(source_name, trust_score)
+      source:sources!claims_asserted_source_id_fkey(id, source_name, trust_score)
     `
     )
     .eq('status', 'pending_review')
@@ -160,7 +160,7 @@ export async function fetchQueueClaims(
       created_at,
       subject_entity:entities!claims_subject_entity_id_fkey(canonical_name),
       object_entity:entities!claims_object_entity_id_fkey(canonical_name),
-      source:sources!claims_asserted_source_id_fkey(source_name, trust_score)
+      source:sources!claims_asserted_source_id_fkey(id, source_name, trust_score)
     `
     )
     .eq('status', 'draft')
@@ -408,7 +408,7 @@ export async function fetchClaimsForEntity(
       status,
       created_at,
       object_entity:entities!claims_object_entity_id_fkey(canonical_name),
-      source:sources!claims_asserted_source_id_fkey(source_name, trust_score)
+      source:sources!claims_asserted_source_id_fkey(id, source_name, trust_score)
     `
     )
     .eq('subject_entity_id', entityId)
@@ -571,6 +571,25 @@ export async function fetchClaimsForSource(
     .limit(limit);
   if (error) throw error;
   return ((data as unknown) as SourceClaim[]) ?? [];
+}
+
+export async function fetchClaimCountsBySource(
+  client: SupabaseClient
+): Promise<Map<string, number>> {
+  // PostgREST doesn't support group-by directly. Pulling the single
+  // asserted_source_id column for all claims keeps the payload tiny
+  // and counting client-side scales well into the tens of thousands.
+  const { data, error } = await client
+    .from('claims')
+    .select('asserted_source_id');
+  if (error) throw error;
+  const counts = new Map<string, number>();
+  for (const row of (data as { asserted_source_id: string | null }[] | null) ?? []) {
+    const id = row.asserted_source_id;
+    if (!id) continue;
+    counts.set(id, (counts.get(id) ?? 0) + 1);
+  }
+  return counts;
 }
 
 export async function fetchAllSources(

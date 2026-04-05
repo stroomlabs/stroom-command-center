@@ -10,6 +10,7 @@ import {
   UIManager,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   useSharedValue,
@@ -55,6 +56,7 @@ export function ClaimCard({
   selected = false,
   onToggleSelect,
 }: ClaimCardProps) {
+  const router = useRouter();
   const subjectName = claim.subject_entity?.canonical_name ?? 'Unknown entity';
   const objectName = claim.object_entity?.canonical_name;
   const sourceName = claim.source?.source_name ?? 'Unknown source';
@@ -242,7 +244,21 @@ export function ClaimCard({
 
       {/* Source row */}
       <View style={styles.sourceRow}>
-        <View style={styles.sourceChip}>
+        <Pressable
+          onPress={() => {
+            if (claim.source?.id && !selectMode) {
+              router.push({
+                pathname: '/source/[id]',
+                params: { id: claim.source.id },
+              } as any);
+            }
+          }}
+          disabled={!claim.source?.id || selectMode}
+          style={({ pressed }) => [
+            styles.sourceChip,
+            pressed && claim.source?.id && !selectMode && { opacity: 0.65 },
+          ]}
+        >
           <Text style={styles.sourceLabel} numberOfLines={1}>
             {sourceName}
           </Text>
@@ -254,7 +270,10 @@ export function ClaimCard({
           >
             {Number(trustScore).toFixed(1)}
           </Text>
-        </View>
+          {claim.source?.id && !selectMode && (
+            <Ionicons name="chevron-forward" size={11} color={colors.slate} />
+          )}
+        </Pressable>
         {corroborations > 0 && (
           <View style={styles.corrobBadge}>
             <Ionicons name="layers-outline" size={12} color={colors.silver} />

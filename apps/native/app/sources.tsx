@@ -19,7 +19,7 @@ import { colors, fonts, spacing, radius, gradient } from '../src/constants/brand
 export default function SourcesListScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { sources, loading, error, refresh } = useSourcesList();
+  const { sources, claimCounts, loading, error, refresh } = useSourcesList();
   const [refreshing, setRefreshing] = React.useState(false);
 
   const handleRefresh = useCallback(async () => {
@@ -79,6 +79,7 @@ export default function SourcesListScreen() {
           renderItem={({ item }) => (
             <SourceRow
               source={item}
+              claimCount={claimCounts.get(item.id) ?? 0}
               onPress={() =>
                 router.push({
                   pathname: '/source/[id]',
@@ -93,7 +94,15 @@ export default function SourcesListScreen() {
   );
 }
 
-function SourceRow({ source, onPress }: { source: Source; onPress: () => void }) {
+function SourceRow({
+  source,
+  claimCount,
+  onPress,
+}: {
+  source: Source;
+  claimCount: number;
+  onPress: () => void;
+}) {
   const score = Number(source.trust_score);
   const color =
     score >= 7.5
@@ -112,6 +121,12 @@ function SourceRow({ source, onPress }: { source: Source; onPress: () => void })
         <Text style={styles.rowName} numberOfLines={1}>
           {source.source_name}
         </Text>
+        <View style={styles.claimCountChip}>
+          <Text style={styles.claimCountText}>{claimCount}</Text>
+          <Text style={styles.claimCountLabel}>
+            {claimCount === 1 ? 'claim' : 'claims'}
+          </Text>
+        </View>
         <Text style={[styles.rowScore, { color }]}>{score.toFixed(1)}</Text>
       </View>
       <View style={styles.rowMeta}>
@@ -202,6 +217,30 @@ const styles = StyleSheet.create({
     fontFamily: fonts.mono.semibold,
     fontSize: 15,
     fontVariant: ['tabular-nums'],
+  },
+  claimCountChip: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: radius.sm,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+  },
+  claimCountText: {
+    fontFamily: fonts.mono.semibold,
+    fontSize: 12,
+    color: colors.alabaster,
+    fontVariant: ['tabular-nums'],
+  },
+  claimCountLabel: {
+    fontFamily: fonts.archivo.medium,
+    fontSize: 9,
+    color: colors.slate,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
   },
   rowMeta: {
     flexDirection: 'row',
