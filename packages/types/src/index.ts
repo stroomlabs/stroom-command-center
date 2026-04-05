@@ -67,6 +67,7 @@ export interface Source {
   notes: string | null;
   operational_reliability: number | null;
   auto_approve: boolean | null;
+  canary_status: 'active' | 'blocked' | 'quarantine' | string | null;
   monitor_config: Record<string, unknown> | null;
   created_at: string;
 }

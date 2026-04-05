@@ -576,6 +576,26 @@ export async function fetchSourceById(
   return data as Source;
 }
 
+// Calls the intel.update_source RPC which handles audit logging. Only the
+// fields the caller passes get updated — everything else is left untouched.
+export async function updateSource(
+  client: SupabaseClient,
+  id: string,
+  patch: {
+    trust_score?: number;
+    auto_approve?: boolean;
+    canary_status?: string;
+  }
+): Promise<void> {
+  const { error } = await client.rpc('update_source', {
+    source_id: id,
+    new_trust_score: patch.trust_score ?? null,
+    new_auto_approve: patch.auto_approve ?? null,
+    new_canary_status: patch.canary_status ?? null,
+  });
+  if (error) throw error;
+}
+
 export interface SourceClaim {
   id: string;
   predicate: string | null;

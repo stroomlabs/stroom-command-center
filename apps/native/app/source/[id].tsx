@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   View,
   Text,
@@ -8,15 +8,21 @@ import {
   ActivityIndicator,
   RefreshControl,
   Linking,
+  Switch,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import type { SourceClaim } from '@stroom/supabase';
+import Slider from '@react-native-community/slider';
+import * as Haptics from 'expo-haptics';
+import { updateSource, type SourceClaim } from '@stroom/supabase';
 import { useSourceDetail } from '../../src/hooks/useSourceDetail';
 import { RetryCard } from '../../src/components/RetryCard';
 import { StatusBadge } from '../../src/components/StatusBadge';
+import { useBrandToast } from '../../src/components/BrandToast';
+import { useBrandAlert } from '../../src/components/BrandAlert';
+import supabase from '../../src/lib/supabase';
 import { colors, fonts, spacing, radius, gradient } from '../../src/constants/brand';
 
 export default function SourceDetailScreen() {
@@ -25,6 +31,104 @@ export default function SourceDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { source, claims, loading, error, refresh } = useSourceDetail(id);
   const [refreshing, setRefreshing] = React.useState(false);
+  const { show: showToast } = useBrandToast();
+  const { alert } = useBrandAlert();
+
+  // Local trust draft for the slider — decoupled from server state so the
+  // thumb follows the finger, then we commit on release.
+  const [trustDraft, setTrustDraft] = React.useState<number | null>(null);
+  React.useEffect(() => {
+    if (source) setTrustDraft(Number(source.trust_score));
+  }, [source?.id, source?.trust_score]);
+
+  const [saving, setSaving] = React.useState(false);
+
+  const commitTrustScore = useCallback(
+    async (value: number) => {
+      if (!source) return;
+      setSaving(true);
+      try {
+        await updateSource(supabase, source.id, { trust_score: value });
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        showToast(`Trust score updated to ${value.toFixed(1)}`, 'success');
+        await refresh();
+      } catch (e: any) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        showToast(e?.message ?? 'Update failed', 'error');
+      } finally {
+        setSaving(false);
+      }
+    },
+    [source, refresh, showToast]
+  );
+
+  const toggleAutoApprove = useCallback(
+    async (next: boolean) => {
+      if (!source) return;
+      Haptics.selectionAsync();
+      setSaving(true);
+      try {
+        await updateSource(supabase, source.id, { auto_approve: next });
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        showToast(
+          next ? 'Auto-approve enabled' : 'Auto-approve disabled',
+          'success'
+        );
+        await refresh();
+      } catch (e: any) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        showToast(e?.message ?? 'Update failed', 'error');
+      } finally {
+        setSaving(false);
+      }
+    },
+    [source, refresh, showToast]
+  );
+
+  const currentStatus = (source?.canary_status ?? 'active') as string;
+  const isBlocked = currentStatus === 'blocked';
+
+  const setCanaryStatus = useCallback(
+    async (next: 'active' | 'blocked') => {
+      if (!source) return;
+      setSaving(true);
+      try {
+        await updateSource(supabase, source.id, { canary_status: next });
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        showToast(
+          next === 'blocked' ? 'Source blocked' : 'Source unblocked',
+          next === 'blocked' ? 'warn' : 'success'
+        );
+        await refresh();
+      } catch (e: any) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        showToast(e?.message ?? 'Update failed', 'error');
+      } finally {
+        setSaving(false);
+      }
+    },
+    [source, refresh, showToast]
+  );
+
+  const handleBlockPress = useCallback(() => {
+    if (!source) return;
+    if (isBlocked) {
+      void setCanaryStatus('active');
+      return;
+    }
+    alert(
+      `Block ${source.source_name}?`,
+      'Claims from this source will no longer auto-approve.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Block',
+          style: 'destructive',
+          onPress: () => void setCanaryStatus('blocked'),
+        },
+      ]
+    );
+  }, [source, isBlocked, alert, setCanaryStatus]);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -91,9 +195,7 @@ export default function SourceDetailScreen() {
 
               <View style={styles.metaRow}>
                 {source.source_class && (
-                  <View style={styles.typeChip}>
-                    <Text style={styles.typeText}>{source.source_class}</Text>
-                  </View>
+                  <SourceClassBadge sourceClass={source.source_class} />
                 )}
                 {source.domain && (
                   <Text style={styles.domainText}>{source.domain}</Text>
@@ -104,10 +206,91 @@ export default function SourceDetailScreen() {
                     <Text style={styles.autoText}>auto-approve</Text>
                   </View>
                 )}
+                {isBlocked && (
+                  <View style={styles.blockedChip}>
+                    <Ionicons
+                      name="ban-outline"
+                      size={10}
+                      color={colors.statusReject}
+                    />
+                    <Text style={styles.blockedText}>blocked</Text>
+                  </View>
+                )}
               </View>
 
               {/* Trust score bar */}
               <TrustBar score={Number(source.trust_score)} />
+
+              {/* Editable trust score slider */}
+              <View style={styles.controlCard}>
+                <View style={styles.controlHeader}>
+                  <Text style={styles.controlLabel}>ADJUST TRUST</Text>
+                  <Text style={styles.controlValue}>
+                    {(trustDraft ?? Number(source.trust_score)).toFixed(1)}
+                  </Text>
+                </View>
+                <Slider
+                  value={trustDraft ?? Number(source.trust_score)}
+                  minimumValue={0}
+                  maximumValue={10}
+                  step={0.5}
+                  minimumTrackTintColor={colors.teal}
+                  maximumTrackTintColor="rgba(255,255,255,0.08)"
+                  thumbTintColor={colors.teal}
+                  onValueChange={setTrustDraft}
+                  onSlidingComplete={(v) => {
+                    const rounded = Math.round(v * 2) / 2;
+                    setTrustDraft(rounded);
+                    if (Math.abs(rounded - Number(source.trust_score)) >= 0.05) {
+                      void commitTrustScore(rounded);
+                    }
+                  }}
+                  disabled={saving}
+                />
+              </View>
+
+              {/* Auto-approve toggle */}
+              <View style={styles.controlRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.controlRowLabel}>Auto-Approve</Text>
+                  <Text style={styles.controlRowMeta}>
+                    Trust claims from this source automatically
+                  </Text>
+                </View>
+                <Switch
+                  value={!!source.auto_approve}
+                  onValueChange={toggleAutoApprove}
+                  trackColor={{ false: colors.surfaceCard, true: colors.teal }}
+                  thumbColor={colors.alabaster}
+                  ios_backgroundColor={colors.surfaceCard}
+                  disabled={saving}
+                />
+              </View>
+
+              {/* Block / unblock source */}
+              <Pressable
+                onPress={handleBlockPress}
+                disabled={saving}
+                style={({ pressed }) => [
+                  styles.blockBtn,
+                  isBlocked ? styles.unblockBtn : styles.blockBtnDestructive,
+                  (pressed || saving) && { opacity: 0.75, transform: [{ scale: 0.97 }] },
+                ]}
+              >
+                <Ionicons
+                  name={isBlocked ? 'lock-open-outline' : 'ban-outline'}
+                  size={16}
+                  color={isBlocked ? colors.teal : colors.statusReject}
+                />
+                <Text
+                  style={[
+                    styles.blockBtnText,
+                    { color: isBlocked ? colors.teal : colors.statusReject },
+                  ]}
+                >
+                  {isBlocked ? 'Unblock Source' : 'Block Source'}
+                </Text>
+              </Pressable>
 
               {/* Stats */}
               <View style={styles.statsRow}>
@@ -175,6 +358,72 @@ export default function SourceDetailScreen() {
       )}
     </LinearGradient>
   );
+}
+
+// Colored source class badge — matches the Stroom Source Control dashboard
+// palette. Falls back to the neutral teal chip for unknown classes.
+function SourceClassBadge({ sourceClass }: { sourceClass: string }) {
+  const palette = classPalette(sourceClass);
+  return (
+    <View
+      style={[
+        styles.classBadge,
+        {
+          backgroundColor: palette.bg,
+          borderColor: palette.border,
+        },
+      ]}
+    >
+      <Text style={[styles.classBadgeText, { color: palette.fg }]}>
+        {sourceClass.replace(/_/g, ' ').toUpperCase()}
+      </Text>
+    </View>
+  );
+}
+
+function classPalette(cls: string): { bg: string; border: string; fg: string } {
+  const key = cls.toLowerCase();
+  if (key.includes('corporate') || key.includes('ir')) {
+    return {
+      bg: 'rgba(34, 197, 94, 0.12)',
+      border: 'rgba(34, 197, 94, 0.35)',
+      fg: colors.statusApprove,
+    };
+  }
+  if (key.includes('news') || key.includes('media')) {
+    return {
+      bg: 'rgba(59, 130, 246, 0.14)',
+      border: 'rgba(59, 130, 246, 0.4)',
+      fg: colors.statusInfo,
+    };
+  }
+  if (key.includes('premium') || key.includes('data')) {
+    return {
+      bg: 'rgba(167, 139, 250, 0.14)',
+      border: 'rgba(167, 139, 250, 0.4)',
+      fg: '#A78BFA',
+    };
+  }
+  if (key.includes('social') || key.includes('community')) {
+    return {
+      bg: 'rgba(244, 114, 182, 0.14)',
+      border: 'rgba(244, 114, 182, 0.4)',
+      fg: '#F472B6',
+    };
+  }
+  if (key.includes('government') || key.includes('regulatory')) {
+    return {
+      bg: 'rgba(245, 158, 11, 0.14)',
+      border: 'rgba(245, 158, 11, 0.4)',
+      fg: colors.statusPending,
+    };
+  }
+  // Default: brand teal chip
+  return {
+    bg: colors.tealDim,
+    border: 'rgba(0, 161, 155, 0.35)',
+    fg: colors.teal,
+  };
 }
 
 function TrustBar({ score }: { score: number }) {
@@ -295,6 +544,108 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: colors.teal,
     textTransform: 'uppercase',
+  },
+  classBadge: {
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  classBadgeText: {
+    fontFamily: fonts.mono.semibold,
+    fontSize: 10,
+    letterSpacing: 0.8,
+  },
+  blockedChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.35)',
+    borderRadius: radius.sm,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  blockedText: {
+    fontFamily: fonts.mono.semibold,
+    fontSize: 10,
+    color: colors.statusReject,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+  },
+  controlCard: {
+    backgroundColor: colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  controlHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
+    marginBottom: 2,
+  },
+  controlLabel: {
+    fontFamily: fonts.archivo.medium,
+    fontSize: 10,
+    color: colors.slate,
+    letterSpacing: 1,
+  },
+  controlValue: {
+    fontFamily: fonts.mono.semibold,
+    fontSize: 18,
+    color: colors.teal,
+    fontVariant: ['tabular-nums'],
+  },
+  controlRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    backgroundColor: colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    marginBottom: spacing.md,
+  },
+  controlRowLabel: {
+    fontFamily: fonts.archivo.semibold,
+    fontSize: 14,
+    color: colors.alabaster,
+  },
+  controlRowMeta: {
+    fontFamily: fonts.archivo.regular,
+    fontSize: 11,
+    color: colors.slate,
+    marginTop: 2,
+  },
+  blockBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    paddingVertical: 14,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    marginBottom: spacing.md,
+  },
+  blockBtnDestructive: {
+    backgroundColor: 'rgba(239, 68, 68, 0.08)',
+    borderColor: 'rgba(239, 68, 68, 0.35)',
+  },
+  unblockBtn: {
+    backgroundColor: colors.tealDim,
+    borderColor: 'rgba(0, 161, 155, 0.35)',
+  },
+  blockBtnText: {
+    fontFamily: fonts.archivo.bold,
+    fontSize: 14,
+    letterSpacing: 0.2,
   },
   domainText: {
     fontFamily: fonts.mono.regular,
