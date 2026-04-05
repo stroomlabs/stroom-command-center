@@ -21,6 +21,8 @@ import { EntityMiniMap } from '../../src/components/EntityMiniMap';
 import { RetryCard } from '../../src/components/RetryCard';
 import { ClaimListItem } from '../../src/components/ClaimListItem';
 import { EntityCompareSheet } from '../../src/components/EntityCompareSheet';
+import { EntityEditSheet } from '../../src/components/EntityEditSheet';
+import * as Haptics from 'expo-haptics';
 import type { EntityClaim, EntityConnection } from '@stroom/supabase';
 import type { ClaimStatus } from '@stroom/types';
 import { colors, fonts, spacing, radius, gradient } from '../../src/constants/brand';
@@ -59,6 +61,7 @@ export default function EntityDetailScreen() {
     });
   }, [entity?.id, entity?.canonical_name, entity?.name, entity?.entity_type, recordRecent]);
   const [compareId, setCompareId] = useState<string | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
   const [viewMode, setViewMode] = useState<'list' | 'timeline'>('list');
   const [filter, setFilter] = useState<StatusFilter>('all');
   const [refreshing, setRefreshing] = useState(false);
@@ -168,7 +171,7 @@ export default function EntityDetailScreen() {
       end={{ x: 0.5, y: 1 }}
       style={styles.container}
     >
-      {/* Header with back button */}
+      {/* Header with back button + edit */}
       <View style={[styles.topBar, { paddingTop: insets.top + spacing.sm }]}>
         <Pressable
           onPress={() => router.back()}
@@ -178,6 +181,24 @@ export default function EntityDetailScreen() {
           <Ionicons name="chevron-back" size={24} color={colors.alabaster} />
           <Text style={styles.backText}>Explore</Text>
         </Pressable>
+        {entity && (
+          <Pressable
+            onPress={() => {
+              Haptics.selectionAsync();
+              setEditOpen(true);
+            }}
+            hitSlop={10}
+            style={({ pressed }) => [
+              styles.editEntityBtn,
+              pressed && { opacity: 0.7, transform: [{ scale: 0.97 }] },
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel="Edit entity"
+          >
+            <Ionicons name="create-outline" size={18} color={colors.teal} />
+            <Text style={styles.editEntityText}>Edit</Text>
+          </Pressable>
+        )}
       </View>
 
       {loading && !entity ? (
@@ -555,6 +576,26 @@ export default function EntityDetailScreen() {
           router.push({ pathname: '/entity/[id]', params: { id: nextId } } as any)
         }
       />
+
+      <EntityEditSheet
+        visible={editOpen}
+        entity={
+          entity
+            ? {
+                id: entity.id,
+                canonical_name: entity.canonical_name ?? null,
+                canonical_slug: (entity as any).canonical_slug ?? null,
+                entity_type: entity.entity_type ?? null,
+                domain: entity.domain ?? null,
+                description: entity.description ?? null,
+              }
+            : null
+        }
+        onDismiss={() => setEditOpen(false)}
+        onSaved={() => {
+          void refresh();
+        }}
+      />
     </LinearGradient>
   );
 }
@@ -904,6 +945,9 @@ function ConnectionRow({
 const styles = StyleSheet.create({
   container: { flex: 1 },
   topBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.sm,
   },
@@ -911,6 +955,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     alignSelf: 'flex-start',
+  },
+  editEntityBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 8,
+    borderRadius: radius.full,
+    backgroundColor: colors.tealDim,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 161, 155, 0.35)',
+  },
+  editEntityText: {
+    fontFamily: fonts.archivo.semibold,
+    fontSize: 12,
+    color: colors.teal,
   },
   backText: {
     fontFamily: fonts.archivo.medium,

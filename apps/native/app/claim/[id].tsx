@@ -28,6 +28,8 @@ import { StatusBadge, STATUS_COLORS } from '../../src/components/StatusBadge';
 import { JsonView } from '../../src/components/JsonView';
 import { RejectSheet } from '../../src/components/RejectSheet';
 import { ClaimDiffSheet } from '../../src/components/ClaimDiffSheet';
+import { ClaimReassignSheet } from '../../src/components/ClaimReassignSheet';
+import { useBrandAlert } from '../../src/components/BrandAlert';
 import { RetryCard } from '../../src/components/RetryCard';
 import { GlowSpot } from '../../src/components/GlowSpot';
 import { useBrandToast } from '../../src/components/BrandToast';
@@ -265,6 +267,8 @@ export default function ClaimDetailScreen() {
   }, [claim?.source?.id]);
 
   const [rejectVisible, setRejectVisible] = useState(false);
+  const [reassignVisible, setReassignVisible] = useState(false);
+  const { alert } = useBrandAlert();
   const [acting, setActing] = useState(false);
   // Local status override so the badge can animate to its new state before
   // we navigate back. Null = fall through to claim.status.
@@ -335,6 +339,44 @@ export default function ClaimDetailScreen() {
     await Clipboard.setStringAsync(claim.id);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   }, [claim]);
+
+  const handleSupersede = useCallback(() => {
+    if (!claim) return;
+    alert(
+      'Supersede this claim?',
+      'It will be marked as replaced in the graph. This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Supersede',
+          style: 'destructive',
+          onPress: async () => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            setActing(true);
+            try {
+              const { error } = await supabase.rpc(
+                'reassign_or_supersede_claim',
+                {
+                  claim_id: claim.id,
+                  supersede: true,
+                }
+              );
+              if (error) throw error;
+              Haptics.notificationAsync(
+                Haptics.NotificationFeedbackType.Success
+              );
+              showToast('Claim superseded', 'success');
+              setTimeout(() => router.back(), 400);
+            } catch (e: any) {
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+              showToast(e?.message ?? 'Supersede failed', 'error');
+              setActing(false);
+            }
+          },
+        },
+      ]
+    );
+  }, [claim, alert, router, showToast]);
 
   const handleEdit = useCallback(() => {
     if (!claim) return;
@@ -816,6 +858,26 @@ export default function ClaimDetailScreen() {
           { paddingBottom: Math.max(insets.bottom, spacing.md) },
         ]}
       >
+        {/* Supersede pill — muted "more actions" row above the primary bar */}
+        <View style={styles.moreActionsRow}>
+          <Pressable
+            onPress={handleSupersede}
+            disabled={acting}
+            style={({ pressed }) => [
+              styles.supersedeBtn,
+              (pressed || acting) && { opacity: 0.7 },
+            ]}
+          >
+            <Ionicons
+              name="git-compare-outline"
+              size={12}
+              color={colors.slate}
+            />
+            <Text style={styles.supersedeText}>Supersede</Text>
+          </Pressable>
+        </View>
+
+        <View style={styles.actionButtonsRow}>
         <Pressable
           onPress={openRejectSheet}
           disabled={acting}
@@ -845,6 +907,24 @@ export default function ClaimDetailScreen() {
         </Pressable>
 
         <Pressable
+          onPress={() => {
+            Haptics.selectionAsync();
+            setReassignVisible(true);
+          }}
+          disabled={acting}
+          style={({ pressed }) => [
+            styles.actionBtn,
+            styles.reassignBtn,
+            (pressed || acting) && { opacity: 0.7 },
+          ]}
+        >
+          <Ionicons name="swap-horizontal" size={18} color={colors.statusPending} />
+          <Text style={[styles.actionText, { color: colors.statusPending }]}>
+            Reassign
+          </Text>
+        </Pressable>
+
+        <Pressable
           onPress={handleApprove}
           disabled={acting}
           style={({ pressed }) => [
@@ -862,6 +942,7 @@ export default function ClaimDetailScreen() {
             Approve
           </Text>
         </Pressable>
+        </View>
       </View>
 
       <RejectSheet
@@ -876,6 +957,17 @@ export default function ClaimDetailScreen() {
         baseValueJsonb={(claim?.value_jsonb ?? null) as any}
         targetClaimId={diffTargetId}
         onDismiss={() => setDiffTargetId(null)}
+      />
+
+      <ClaimReassignSheet
+        visible={reassignVisible}
+        claimId={claim?.id ?? null}
+        currentSubjectId={claim?.subject_entity_id ?? null}
+        currentSubjectName={claim?.subject_entity?.canonical_name ?? null}
+        onDismiss={() => setReassignVisible(false)}
+        onReassigned={() => {
+          void refreshClaim();
+        }}
       />
     </LinearGradient>
   );
@@ -1412,21 +1504,44 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    flexDirection: 'row',
-    gap: spacing.sm,
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
+    paddingTop: spacing.sm,
     backgroundColor: colors.surfaceElevated,
     borderTopWidth: 1,
     borderTopColor: colors.glassBorder,
+  },
+  moreActionsRow: {
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  supersedeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 6,
+    borderRadius: radius.full,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+  },
+  supersedeText: {
+    fontFamily: fonts.archivo.semibold,
+    fontSize: 11,
+    color: colors.slate,
+    letterSpacing: 0.3,
+  },
+  actionButtonsRow: {
+    flexDirection: 'row',
+    gap: 6,
   },
   actionBtn: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 14,
+    gap: 4,
+    paddingVertical: 12,
     borderRadius: radius.md,
     borderWidth: 1,
   },
@@ -1442,10 +1557,14 @@ const styles = StyleSheet.create({
     backgroundColor: colors.tealDim,
     borderColor: 'rgba(0, 161, 155, 0.35)',
   },
+  reassignBtn: {
+    backgroundColor: 'rgba(245, 158, 11, 0.1)',
+    borderColor: 'rgba(245, 158, 11, 0.4)',
+  },
   actionText: {
     fontFamily: fonts.archivo.bold,
-    fontSize: 14,
-    letterSpacing: -0.2,
+    fontSize: 12,
+    letterSpacing: -0.1,
   },
   section: {
     marginBottom: spacing.lg,
