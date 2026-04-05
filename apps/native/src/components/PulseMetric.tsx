@@ -46,18 +46,21 @@ export function PulseMetric({
     >
       {compact ? (
         <View style={styles.compactRow}>
-          <Text style={[labelStyle, isZero && { color: 'rgba(86, 95, 100, 0.7)' }]}>
+          <Text
+            numberOfLines={1}
+            style={[labelStyle, isZero && { color: 'rgba(86, 95, 100, 0.7)' }]}
+          >
             {label}
           </Text>
-          <View style={styles.valueRow}>
-            {prefix && (
-              <Text style={[prefixStyle, { color: effectiveAccent }]}>{prefix}</Text>
-            )}
-            <Text style={[valueStyle, { color: effectiveAccent }]}>{displayValue}</Text>
-            {suffix && (
-              <Text style={[suffixStyle, { color: colors.slate }]}>{suffix}</Text>
-            )}
-          </View>
+          <Text
+            numberOfLines={1}
+            ellipsizeMode="clip"
+            style={[valueStyle, styles.compactValueInline, { color: effectiveAccent }]}
+          >
+            {prefix ?? ''}
+            {displayValue}
+            {suffix ? ` ${suffix}` : ''}
+          </Text>
         </View>
       ) : (
         <>
@@ -108,7 +111,8 @@ const styles = StyleSheet.create({
   compactCard: {
     paddingVertical: 0,
     paddingHorizontal: 12,
-    minHeight: 48,
+    height: 40,
+    minHeight: 40,
     justifyContent: 'center',
   },
   compactRow: {
@@ -117,8 +121,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.sm,
   },
+  compactValueInline: {
+    flexShrink: 0,
+    includeFontPadding: false,
+  },
   mutedCard: {
-    opacity: 0.55,
+    opacity: 0.45,
   },
   innerFill: {
     width: '100%',

@@ -18,6 +18,10 @@ import Slider from '@react-native-community/slider';
 import * as Haptics from 'expo-haptics';
 import type { GovernancePolicy, GovernanceAction } from '@stroom/types';
 import { useGovernancePolicies } from '../src/hooks/useGovernancePolicies';
+import {
+  useNotificationPrefs,
+  type GovernanceSweepFrequency,
+} from '../src/hooks/useNotificationPrefs';
 import { useBrandAlert } from '../src/components/BrandAlert';
 import { colors, fonts, spacing, radius, gradient } from '../src/constants/brand';
 
@@ -42,6 +46,7 @@ export default function PoliciesScreen() {
     lastSweep,
   } = useGovernancePolicies();
   const { alert } = useBrandAlert();
+  const { prefs, update: updatePrefs } = useNotificationPrefs();
   const [refreshing, setRefreshing] = useState(false);
 
   const handleRefresh = async () => {
@@ -128,6 +133,15 @@ export default function PoliciesScreen() {
             />
           }
         >
+          {/* Schedule */}
+          <ScheduleCard
+            frequency={prefs.governanceSweepFrequency}
+            onChange={(v) => {
+              Haptics.selectionAsync();
+              updatePrefs({ governanceSweepFrequency: v });
+            }}
+          />
+
           {/* Action bar */}
           <View style={styles.actionRow}>
             <Pressable
@@ -186,6 +200,80 @@ export default function PoliciesScreen() {
         </ScrollView>
       )}
     </LinearGradient>
+  );
+}
+
+const SCHEDULE_OPTIONS: { key: GovernanceSweepFrequency; label: string }[] = [
+  { key: 'off', label: 'Off' },
+  { key: '15min', label: 'Every 15 min' },
+  { key: 'hourly', label: 'Hourly' },
+  { key: 'daily', label: 'Daily' },
+];
+
+function ScheduleCard({
+  frequency,
+  onChange,
+}: {
+  frequency: GovernanceSweepFrequency;
+  onChange: (next: GovernanceSweepFrequency) => void;
+}) {
+  const enabled = frequency !== 'off';
+  return (
+    <View style={styles.scheduleCard}>
+      <View style={styles.scheduleHeader}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.scheduleTitle}>Schedule</Text>
+          <Text style={styles.scheduleSub}>
+            Run the sweep automatically on a cadence
+          </Text>
+        </View>
+        <Switch
+          value={enabled}
+          onValueChange={(v) => onChange(v ? 'hourly' : 'off')}
+          trackColor={{ false: colors.surfaceCard, true: colors.teal }}
+          thumbColor={colors.alabaster}
+          ios_backgroundColor={colors.surfaceCard}
+        />
+      </View>
+      {enabled && (
+        <>
+          <View style={styles.scheduleRow}>
+            {SCHEDULE_OPTIONS.filter((o) => o.key !== 'off').map((opt) => {
+              const active = frequency === opt.key;
+              return (
+                <Pressable
+                  key={opt.key}
+                  onPress={() => onChange(opt.key)}
+                  style={({ pressed }) => [
+                    styles.schedulePill,
+                    active && {
+                      backgroundColor: colors.tealDim,
+                      borderColor: colors.teal,
+                    },
+                    pressed && !active && { opacity: 0.7 },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.schedulePillText,
+                      active && { color: colors.teal },
+                    ]}
+                  >
+                    {opt.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          <View style={styles.scheduleNote}>
+            <Ionicons name="information-circle-outline" size={12} color={colors.slate} />
+            <Text style={styles.scheduleNoteText}>
+              Sweeps run via n8n cron. This UI configures the preference; backend wiring is separate.
+            </Text>
+          </View>
+        </>
+      )}
+    </View>
   );
 }
 
@@ -539,5 +627,60 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  scheduleCard: {
+    backgroundColor: colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    gap: spacing.sm,
+  },
+  scheduleHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  scheduleTitle: {
+    fontFamily: fonts.archivo.bold,
+    fontSize: 16,
+    color: colors.alabaster,
+  },
+  scheduleSub: {
+    fontFamily: fonts.archivo.regular,
+    fontSize: 12,
+    color: colors.slate,
+    marginTop: 2,
+  },
+  scheduleRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+  },
+  schedulePill: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+  },
+  schedulePillText: {
+    fontFamily: fonts.archivo.semibold,
+    fontSize: 12,
+    color: colors.silver,
+  },
+  scheduleNote: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+    marginTop: 2,
+  },
+  scheduleNoteText: {
+    flex: 1,
+    fontFamily: fonts.archivo.regular,
+    fontSize: 11,
+    color: colors.slate,
+    lineHeight: 15,
   },
 });

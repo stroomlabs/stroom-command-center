@@ -1,16 +1,20 @@
 import { useCallback, useEffect, useState } from 'react';
 import supabase from '../lib/supabase';
 
+export type GovernanceSweepFrequency = 'off' | '15min' | 'hourly' | 'daily';
+
 export interface NotificationPrefs {
   notifyOnNewClaims: boolean;
   notifyOnResearchComplete: boolean;
   notifyOnSourceHealth: boolean;
+  governanceSweepFrequency: GovernanceSweepFrequency;
 }
 
 const DEFAULTS: NotificationPrefs = {
   notifyOnNewClaims: true,
   notifyOnResearchComplete: true,
   notifyOnSourceHealth: false,
+  governanceSweepFrequency: 'off',
 };
 
 // Reads/writes `intel.operator_profiles.preferences` JSONB for the current user.
