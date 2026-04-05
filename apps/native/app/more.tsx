@@ -17,6 +17,7 @@ import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import { useAuth } from '../src/lib/auth';
 import { useGovernanceStats } from '../src/hooks/useGovernanceStats';
+import { useTeam } from '../src/hooks/useTeam';
 import { useBrandAlert } from '../src/components/BrandAlert';
 import { useBrandToast } from '../src/components/BrandToast';
 import supabase from '../src/lib/supabase';
@@ -29,6 +30,28 @@ export default function MoreScreen() {
   const { stats, loading: statsLoading } = useGovernanceStats();
   const { alert } = useBrandAlert();
   const { show: showToast } = useBrandToast();
+  const { members, myInviteCode, generateInvite, refresh: refreshTeam } =
+    useTeam();
+  const [generating, setGenerating] = useState(false);
+
+  const handleGenerateInvite = useCallback(async () => {
+    setGenerating(true);
+    try {
+      const code = await generateInvite();
+      await Clipboard.setStringAsync(code);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      alert(
+        'Invite code generated',
+        `Code \`${code}\` copied to clipboard. Share it with a teammate — they'll use it at sign-in to get operator access.`
+      );
+      refreshTeam();
+    } catch (e: any) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      showToast(e?.message ?? 'Generate failed', 'error');
+    } finally {
+      setGenerating(false);
+    }
+  }, [generateInvite, alert, refreshTeam, showToast]);
   const [connected, setConnected] = useState<boolean | null>(null);
   const [exporting, setExporting] = useState(false);
 
@@ -196,6 +219,64 @@ export default function MoreScreen() {
           </View>
         </View>
 
+        {/* Team */}
+        <View style={styles.teamCard}>
+          <View style={styles.teamHeader}>
+            <Text style={styles.teamTitle}>TEAM</Text>
+            <Text style={styles.teamCount}>
+              {members.length} {members.length === 1 ? 'operator' : 'operators'}
+            </Text>
+          </View>
+          {members.map((m) => (
+            <View key={m.user_id} style={styles.teamRow}>
+              <View
+                style={[
+                  styles.statusDot,
+                  {
+                    backgroundColor: m.online
+                      ? colors.statusApprove
+                      : colors.slate,
+                  },
+                ]}
+              />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.teamName} numberOfLines={1}>
+                  {m.display_name ?? m.email ?? m.user_id.slice(0, 8)}
+                  {m.is_me ? ' (you)' : ''}
+                </Text>
+                <Text style={styles.teamMeta} numberOfLines={1}>
+                  {m.online
+                    ? 'online now'
+                    : m.last_seen
+                    ? `last seen ${formatRelative(m.last_seen)}`
+                    : 'never seen'}
+                </Text>
+              </View>
+            </View>
+          ))}
+
+          <Pressable
+            onPress={handleGenerateInvite}
+            disabled={generating}
+            style={({ pressed }) => [
+              styles.inviteBtn,
+              pressed && { opacity: 0.7, transform: [{ scale: 0.97 }] },
+              generating && { opacity: 0.6 },
+            ]}
+          >
+            <Ionicons name="share-outline" size={14} color={colors.teal} />
+            <Text style={styles.inviteBtnText}>
+              {generating ? 'Generating…' : 'Share Access'}
+            </Text>
+          </Pressable>
+          {myInviteCode ? (
+            <View style={styles.inviteCodeBox}>
+              <Text style={styles.inviteCodeLabel}>CURRENT CODE</Text>
+              <Text style={styles.inviteCodeValue}>{myInviteCode}</Text>
+            </View>
+          ) : null}
+        </View>
+
         {/* Menu items */}
         <View style={styles.menu}>
           <MenuItem
@@ -274,6 +355,17 @@ export default function MoreScreen() {
   );
 }
 
+function formatRelative(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const min = Math.floor(diff / 60_000);
+  if (min < 1) return 'just now';
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  const d = Math.floor(hr / 24);
+  return `${d}d ago`;
+}
+
 function MenuItem({
   icon,
   label,
@@ -345,7 +437,95 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.glassBorder,
     padding: spacing.lg,
+    marginBottom: spacing.md,
+  },
+  teamCard: {
+    backgroundColor: colors.surfaceElevated,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    padding: spacing.md,
     marginBottom: spacing.xl,
+    gap: spacing.sm,
+  },
+  teamHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
+    marginBottom: 2,
+  },
+  teamTitle: {
+    fontFamily: fonts.archivo.medium,
+    fontSize: 10,
+    color: colors.slate,
+    letterSpacing: 1.2,
+  },
+  teamCount: {
+    fontFamily: fonts.mono.regular,
+    fontSize: 10,
+    color: colors.slate,
+  },
+  teamRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: 6,
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  teamName: {
+    fontFamily: fonts.archivo.semibold,
+    fontSize: 13,
+    color: colors.alabaster,
+  },
+  teamMeta: {
+    fontFamily: fonts.mono.regular,
+    fontSize: 10,
+    color: colors.slate,
+    marginTop: 1,
+  },
+  inviteBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 161, 155, 0.35)',
+    backgroundColor: colors.tealDim,
+    marginTop: spacing.xs,
+  },
+  inviteBtnText: {
+    fontFamily: fonts.archivo.semibold,
+    fontSize: 12,
+    color: colors.teal,
+  },
+  inviteCodeBox: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: colors.surfaceCard,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 8,
+  },
+  inviteCodeLabel: {
+    fontFamily: fonts.mono.medium,
+    fontSize: 9,
+    color: colors.slate,
+    letterSpacing: 1,
+  },
+  inviteCodeValue: {
+    fontFamily: fonts.mono.semibold,
+    fontSize: 14,
+    color: colors.teal,
+    letterSpacing: 1.5,
   },
   statsCard: {
     backgroundColor: colors.surfaceElevated,

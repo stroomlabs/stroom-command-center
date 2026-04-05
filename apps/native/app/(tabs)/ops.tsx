@@ -228,6 +228,13 @@ export default function OpsScreen() {
       summary: 'Auto-governance rules',
       route: '/policies',
     },
+    {
+      key: 'analytics',
+      icon: 'stats-chart-outline',
+      title: 'Analytics',
+      summary: 'Approvals, velocity, utilization',
+      route: '/analytics',
+    },
   ];
 
   return (

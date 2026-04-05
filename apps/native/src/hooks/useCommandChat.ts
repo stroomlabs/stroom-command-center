@@ -7,6 +7,11 @@ import {
   buildOperatorContextMessage,
 } from '@stroom/supabase';
 import supabase from '../lib/supabase';
+import {
+  useCommandMemory,
+  buildMemoryContextMessage,
+  summarizeConversation,
+} from './useCommandMemory';
 
 export type ChatRole = 'user' | 'assistant' | 'system';
 
@@ -34,6 +39,11 @@ export function useCommandChat() {
   const [error, setError] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const xhrRef = useRef<XMLHttpRequest | null>(null);
+  const { memories, save: saveMemory } = useCommandMemory();
+  const memoriesRef = useRef(memories);
+  useEffect(() => {
+    memoriesRef.current = memories;
+  }, [memories]);
 
   // Load or create session id on mount
   useEffect(() => {
@@ -50,13 +60,26 @@ export function useCommandChat() {
   const resetSession = useCallback(async () => {
     xhrRef.current?.abort();
     xhrRef.current = null;
+    // Before dropping the session, stash a compact summary to operator
+    // memory so the next fresh session can be primed with continuity.
+    if (sessionId && messages.length >= 2) {
+      const summary = summarizeConversation(messages);
+      if (summary) {
+        void saveMemory({
+          session_id: sessionId,
+          topic: summary.topic,
+          summary: summary.summary,
+          saved_at: new Date().toISOString(),
+        });
+      }
+    }
     const id = makeId();
     await AsyncStorage.setItem(SESSION_KEY, id);
     setSessionId(id);
     setMessages([]);
     setError(null);
     setSending(false);
-  }, []);
+  }, [sessionId, messages, saveMemory]);
 
   // Load a previously persisted session (from intel.command_sessions).
   const loadSession = useCallback(
@@ -109,8 +132,22 @@ export function useCommandChat() {
           // swallow — context is an enhancement, not a requirement
         }
 
+        // On the first user turn of a session, inject prior-session memory
+        // summaries so Claude has continuity across fresh sessions. Only the
+        // first turn carries the memory block to keep token usage down.
+        let memoryMessage: { role: 'system'; content: string } | null = null;
+        const isFirstTurn =
+          convo.filter((m) => m.role === 'user').length <= 1;
+        if (isFirstTurn) {
+          const memoryText = buildMemoryContextMessage(memoriesRef.current);
+          if (memoryText) {
+            memoryMessage = { role: 'system', content: memoryText };
+          }
+        }
+
         const payloadMessages = [
           ...(contextMessage ? [contextMessage] : []),
+          ...(memoryMessage ? [memoryMessage] : []),
           ...convo.map(({ role, content }) => ({ role, content })),
         ];
 

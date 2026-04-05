@@ -145,6 +145,7 @@ export default function RootLayout() {
           <Stack.Screen name="coverage" />
           <Stack.Screen name="pulse" />
           <Stack.Screen name="policies" />
+          <Stack.Screen name="analytics" />
         </Stack>
           </ErrorBoundary>
         </RouteGuard>
