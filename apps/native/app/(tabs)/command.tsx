@@ -233,7 +233,14 @@ export default function CommandScreen() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          {messages.length === 0 && !sending && <EmptyState />}
+          {messages.length === 0 && !sending && (
+            <EmptyState
+              onSuggest={(prompt) => {
+                Haptics.selectionAsync();
+                send(prompt);
+              }}
+            />
+          )}
 
           {messages.map((msg, i) => (
             <MessageBubble
@@ -320,7 +327,14 @@ export default function CommandScreen() {
   );
 }
 
-function EmptyState() {
+const SUGGESTED_PROMPTS = [
+  'Graph health check',
+  'What needs review?',
+  'Coverage gaps report',
+  'Source reliability audit',
+] as const;
+
+function EmptyState({ onSuggest }: { onSuggest: (prompt: string) => void }) {
   return (
     <View style={styles.empty}>
       <View style={styles.emptyIcon}>
@@ -332,20 +346,29 @@ function EmptyState() {
         explain contradictions in the StroomHelix intelligence graph.
       </Text>
       <View style={styles.suggestions}>
-        <Suggestion text="Top 5 crew chiefs by win rate this season" />
-        <Suggestion text="What claims conflict about Kyle Larson?" />
-        <Suggestion text="Summarize today's research queue" />
+        {SUGGESTED_PROMPTS.map((prompt) => (
+          <Suggestion key={prompt} text={prompt} onPress={() => onSuggest(prompt)} />
+        ))}
       </View>
     </View>
   );
 }
 
-function Suggestion({ text }: { text: string }) {
+function Suggestion({
+  text,
+  onPress,
+}: {
+  text: string;
+  onPress: () => void;
+}) {
   return (
-    <View style={styles.suggestion}>
-      <Ionicons name="arrow-forward" size={12} color={colors.slate} />
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.suggestion, pressed && { opacity: 0.7 }]}
+    >
+      <Ionicons name="arrow-forward" size={12} color={colors.teal} />
       <Text style={styles.suggestionText}>{text}</Text>
-    </View>
+    </Pressable>
   );
 }
 

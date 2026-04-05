@@ -6,14 +6,20 @@ import {
   ScrollView,
   Pressable,
   RefreshControl,
+  ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { runAutoGovernance } from '@stroom/supabase';
+import * as Haptics from 'expo-haptics';
+import supabase from '../../src/lib/supabase';
 import { usePulseData } from '../../src/hooks/usePulseData';
 import { useGraphHealth } from '../../src/hooks/useGraphHealth';
+import { useQueueClaims } from '../../src/hooks/useQueueClaims';
 import { GlowSpot } from '../../src/components/GlowSpot';
+import { useBrandAlert } from '../../src/components/BrandAlert';
 import { colors, fonts, spacing, radius, gradient } from '../../src/constants/brand';
 
 interface OpsCardSpec {
@@ -28,9 +34,38 @@ interface OpsCardSpec {
 export default function OpsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { data: pulse } = usePulseData();
+  const { data: pulse, refresh: refreshPulse } = usePulseData();
   const { health, refresh: refreshHealth } = useGraphHealth();
+  const { refresh: refreshQueue } = useQueueClaims();
+  const { alert } = useBrandAlert();
   const [refreshing, setRefreshing] = React.useState(false);
+  const [sweeping, setSweeping] = React.useState(false);
+
+  const handleSweep = async () => {
+    if (sweeping) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setSweeping(true);
+    try {
+      const result = await runAutoGovernance(supabase);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      alert(
+        'Sweep complete',
+        `Approved ${result.approved} · Flagged ${result.flagged}${
+          result.rejected > 0 ? ` · Rejected ${result.rejected}` : ''
+        }`,
+        [{ text: 'OK' }]
+      );
+      // Refresh dependent views
+      refreshPulse();
+      refreshQueue();
+      refreshHealth();
+    } catch (e: any) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      alert('Sweep failed', e?.message ?? 'Unknown error');
+    } finally {
+      setSweeping(false);
+    }
+  };
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -167,6 +202,7 @@ export default function OpsScreen() {
       <ScrollView
         contentContainerStyle={styles.list}
         showsVerticalScrollIndicator={false}
+        keyboardDismissMode="on-drag"
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -175,6 +211,25 @@ export default function OpsScreen() {
           />
         }
       >
+        {/* Primary action — Run Sweep */}
+        <Pressable
+          onPress={handleSweep}
+          disabled={sweeping}
+          style={({ pressed }) => [
+            styles.sweepBtn,
+            (pressed || sweeping) && { opacity: 0.85 },
+          ]}
+        >
+          {sweeping ? (
+            <ActivityIndicator size="small" color={colors.obsidian} />
+          ) : (
+            <Ionicons name="sparkles" size={18} color={colors.obsidian} />
+          )}
+          <Text style={styles.sweepText}>
+            {sweeping ? 'Sweeping…' : 'Run Governance Sweep'}
+          </Text>
+        </Pressable>
+
         {cards.map((card) => (
           <OpsCard
             key={card.key}
@@ -272,6 +327,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.xxl,
     gap: spacing.sm,
+  },
+  sweepBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.teal,
+    paddingVertical: 16,
+    borderRadius: radius.lg,
+    marginBottom: spacing.sm,
+    shadowColor: colors.teal,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.4,
+    shadowRadius: 16,
+    elevation: 6,
+  },
+  sweepText: {
+    fontFamily: fonts.archivo.bold,
+    fontSize: 15,
+    color: colors.obsidian,
+    letterSpacing: -0.2,
   },
   card: {
     flexDirection: 'row',

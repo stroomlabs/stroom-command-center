@@ -27,11 +27,23 @@ import { useQueueClaims } from '../../src/hooks/useQueueClaims';
 import { ClaimCard } from '../../src/components/ClaimCard';
 import { RejectSheet } from '../../src/components/RejectSheet';
 import { SkeletonClaimCard } from '../../src/components/Skeleton';
+import {
+  ActionSheet,
+  type ActionSheetAction,
+} from '../../src/components/ActionSheet';
 import type { RejectionReason, ClaimStatus } from '@stroom/types';
 import type { QueueClaim } from '@stroom/supabase';
 import { colors, fonts, spacing, radius, gradient } from '../../src/constants/brand';
 
 type StatusFilter = 'all' | 'draft' | 'pending_review';
+type SortKey = 'newest' | 'oldest' | 'risk' | 'low_trust';
+
+const SORT_LABELS: Record<SortKey, string> = {
+  newest: 'Newest first',
+  oldest: 'Oldest first',
+  risk: 'Highest risk',
+  low_trust: 'Lowest trust source',
+};
 
 const FILTERS: { key: StatusFilter; label: string }[] = [
   { key: 'all', label: 'All' },
@@ -47,6 +59,8 @@ export default function QueueScreen() {
   const [rejectTarget, setRejectTarget] = useState<string | null>(null);
   const [filter, setFilter] = useState<StatusFilter>('all');
   const [search, setSearch] = useState('');
+  const [sort, setSort] = useState<SortKey>('newest');
+  const [sortSheetVisible, setSortSheetVisible] = useState(false);
   const glow = useSharedValue(0);
   const isHot = claims.length > 100;
 
@@ -80,13 +94,58 @@ export default function QueueScreen() {
         ? claims
         : claims.filter((c) => c.status === (filter as ClaimStatus));
     const q = search.trim().toLowerCase();
-    if (!q) return byStatus;
-    return byStatus.filter((c) => {
-      const name = c.subject_entity?.canonical_name?.toLowerCase() ?? '';
-      const pred = (c.predicate ?? '').toLowerCase();
-      return name.includes(q) || pred.includes(q);
-    });
-  }, [claims, filter, search]);
+    const bySearch = q
+      ? byStatus.filter((c) => {
+          const name = c.subject_entity?.canonical_name?.toLowerCase() ?? '';
+          const pred = (c.predicate ?? '').toLowerCase();
+          return name.includes(q) || pred.includes(q);
+        })
+      : byStatus;
+
+    // Risk score: larger = higher risk. Low trust/confidence/corroboration add.
+    const riskScore = (c: typeof bySearch[number]) => {
+      const trust = Number(c.source?.trust_score ?? 0);
+      const conf = Number(c.confidence_score ?? 0);
+      const corr = Number(c.corroboration_score ?? 0);
+      return (10 - trust) + (10 - conf) + (corr === 0 ? 5 : 0);
+    };
+
+    const copy = [...bySearch];
+    switch (sort) {
+      case 'oldest':
+        copy.sort(
+          (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+        );
+        break;
+      case 'risk':
+        copy.sort((a, b) => riskScore(b) - riskScore(a));
+        break;
+      case 'low_trust':
+        copy.sort(
+          (a, b) =>
+            Number(a.source?.trust_score ?? 0) - Number(b.source?.trust_score ?? 0)
+        );
+        break;
+      case 'newest':
+      default:
+        copy.sort(
+          (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        );
+    }
+    return copy;
+  }, [claims, filter, search, sort]);
+
+  const sortActions: ActionSheetAction[] = (Object.keys(SORT_LABELS) as SortKey[]).map(
+    (key) => ({
+      label: SORT_LABELS[key],
+      icon: key === sort ? 'checkmark' : undefined,
+      tone: key === sort ? 'accent' : 'default',
+      onPress: () => {
+        Haptics.selectionAsync();
+        setSort(key);
+      },
+    })
+  );
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -182,25 +241,37 @@ export default function QueueScreen() {
       </View>
       <Text style={styles.headerSub}>Claims pending governance review</Text>
 
-      {/* Search bar */}
-      <View style={styles.searchWrap}>
-        <Ionicons name="search" size={16} color={colors.slate} />
-        <TextInput
-          value={search}
-          onChangeText={setSearch}
-          placeholder="Search by entity or predicate…"
-          placeholderTextColor={colors.slate}
-          style={styles.searchInput}
-          autoCorrect={false}
-          autoCapitalize="none"
-          returnKeyType="search"
-          clearButtonMode="while-editing"
-        />
-        {search.length > 0 && (
-          <Pressable onPress={() => setSearch('')} hitSlop={8}>
-            <Ionicons name="close-circle" size={16} color={colors.slate} />
-          </Pressable>
-        )}
+      {/* Search bar + sort */}
+      <View style={styles.searchRow}>
+        <View style={styles.searchWrap}>
+          <Ionicons name="search" size={16} color={colors.slate} />
+          <TextInput
+            value={search}
+            onChangeText={setSearch}
+            placeholder="Search by entity or predicate…"
+            placeholderTextColor={colors.slate}
+            style={styles.searchInput}
+            autoCorrect={false}
+            autoCapitalize="none"
+            returnKeyType="search"
+            clearButtonMode="while-editing"
+          />
+          {search.length > 0 && (
+            <Pressable onPress={() => setSearch('')} hitSlop={8}>
+              <Ionicons name="close-circle" size={16} color={colors.slate} />
+            </Pressable>
+          )}
+        </View>
+        <Pressable
+          onPress={() => {
+            Haptics.selectionAsync();
+            setSortSheetVisible(true);
+          }}
+          style={({ pressed }) => [styles.sortBtn, pressed && { opacity: 0.7 }]}
+          hitSlop={6}
+        >
+          <Ionicons name="swap-vertical" size={16} color={colors.teal} />
+        </Pressable>
       </View>
 
       {/* Filter chips */}
@@ -307,6 +378,14 @@ export default function QueueScreen() {
         visible={rejectTarget !== null}
         onDismiss={() => setRejectTarget(null)}
         onReject={handleReject}
+      />
+
+      <ActionSheet
+        visible={sortSheetVisible}
+        title="Sort Queue"
+        subtitle={`Currently: ${SORT_LABELS[sort]}`}
+        actions={sortActions}
+        onDismiss={() => setSortSheetVisible(false)}
       />
 
       {selectMode && (
@@ -450,18 +529,34 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
     marginBottom: spacing.md,
   },
-  searchWrap: {
+  searchRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    marginHorizontal: spacing.lg,
+    paddingHorizontal: spacing.lg,
     marginBottom: spacing.sm,
+  },
+  searchWrap: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
     paddingHorizontal: spacing.md,
     height: 40,
     backgroundColor: colors.surfaceElevated,
     borderWidth: 1,
     borderColor: colors.glassBorder,
     borderRadius: radius.md,
+  },
+  sortBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.md,
+    backgroundColor: colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 161, 155, 0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   searchInput: {
     flex: 1,
