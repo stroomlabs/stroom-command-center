@@ -18,6 +18,8 @@ import { ScreenTransition } from '../../src/components/ScreenTransition';
 import { useExploreSearch } from '../../src/hooks/useExploreSearch';
 import { usePredicatesList } from '../../src/hooks/usePredicatesList';
 import { EntityRow } from '../../src/components/EntityRow';
+import { MultiCompareSheet } from '../../src/components/MultiCompareSheet';
+import * as Haptics from 'expo-haptics';
 import type { EntitySearchResult } from '@stroom/supabase';
 import type { Predicate } from '@stroom/types';
 import { colors, fonts, spacing, radius, gradient } from '../../src/constants/brand';
@@ -28,8 +30,54 @@ export default function ExploreScreen() {
   const [segment, setSegment] = useState<'entities' | 'predicates'>('entities');
   const [query, setQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [compareOpen, setCompareOpen] = useState(false);
   const { results, loading, error } = useExploreSearch(query);
   const predicates = usePredicatesList();
+
+  const toggleSelectMode = useCallback(() => {
+    Haptics.selectionAsync();
+    setSelectMode((m) => {
+      if (m) setSelectedIds(new Set());
+      return !m;
+    });
+  }, []);
+
+  const toggleSelect = useCallback((id: string) => {
+    Haptics.selectionAsync();
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const handleResearchAll = useCallback(() => {
+    if (selectedIds.size === 0) return;
+    const picked = results.filter((r) => selectedIds.has(r.id));
+    const names = picked.map((p) => p.canonical_name ?? p.name ?? 'unnamed');
+    const prompt = [
+      `Research the following ${picked.length} entities and summarize how they compare:`,
+      '',
+      ...picked.map(
+        (p) =>
+          `- ${p.canonical_name ?? p.name ?? 'unnamed'}${
+            p.entity_type ? ` (${p.entity_type})` : ''
+          }${p.domain ? ` — ${p.domain}` : ''}`
+      ),
+      '',
+      'For each entity, return: a 1-sentence identity, top 3 facts, and any notable differences between them.',
+    ].join('\n');
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    router.push({
+      pathname: '/(tabs)/command',
+      params: { prompt },
+    } as any);
+    setSelectMode(false);
+    setSelectedIds(new Set());
+  }, [results, selectedIds, router]);
 
   // Unique entity types present in the current result set
   const availableTypes = useMemo(() => {
@@ -62,10 +110,40 @@ export default function ExploreScreen() {
   );
 
   const renderItem = useCallback(
-    ({ item }: { item: EntitySearchResult }) => (
-      <EntityRow entity={item} onPress={() => handleOpenEntity(item.id)} />
-    ),
-    [handleOpenEntity]
+    ({ item }: { item: EntitySearchResult }) => {
+      if (selectMode) {
+        const checked = selectedIds.has(item.id);
+        return (
+          <Pressable
+            onPress={() => toggleSelect(item.id)}
+            style={({ pressed }) => [
+              styles.selectRow,
+              checked && styles.selectRowActive,
+              pressed && { opacity: 0.75, transform: [{ scale: 0.98 }] },
+            ]}
+          >
+            <View
+              style={[styles.checkbox, checked && styles.checkboxActive]}
+            >
+              {checked && (
+                <Ionicons name="checkmark" size={14} color={colors.obsidian} />
+              )}
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.selectName} numberOfLines={1}>
+                {item.canonical_name ?? item.name ?? 'Unnamed'}
+              </Text>
+              <Text style={styles.selectMeta} numberOfLines={1}>
+                {item.entity_type ?? 'entity'}
+                {item.domain ? ` · ${item.domain}` : ''}
+              </Text>
+            </View>
+          </Pressable>
+        );
+      }
+      return <EntityRow entity={item} onPress={() => handleOpenEntity(item.id)} />;
+    },
+    [handleOpenEntity, selectMode, selectedIds, toggleSelect]
   );
 
   const keyExtractor = useCallback((item: EntitySearchResult) => item.id, []);
@@ -81,7 +159,34 @@ export default function ExploreScreen() {
       style={styles.container}
     >
       <View style={[styles.header, { paddingTop: insets.top + spacing.lg }]}>
-        <Text style={styles.headerTitle}>Explore</Text>
+        <View style={styles.headerRow}>
+          <Text style={styles.headerTitle}>Explore</Text>
+          {segment === 'entities' && (
+            <Pressable
+              onPress={toggleSelectMode}
+              hitSlop={10}
+              style={({ pressed }) => [
+                styles.selectToggle,
+                selectMode && styles.selectToggleActive,
+                pressed && { opacity: 0.7 },
+              ]}
+            >
+              <Ionicons
+                name={selectMode ? 'close' : 'checkbox-outline'}
+                size={14}
+                color={selectMode ? colors.teal : colors.silver}
+              />
+              <Text
+                style={[
+                  styles.selectToggleText,
+                  selectMode && { color: colors.teal },
+                ]}
+              >
+                {selectMode ? 'Done' : 'Select'}
+              </Text>
+            </Pressable>
+          )}
+        </View>
         <Text style={styles.headerSub}>
           {segment === 'entities'
             ? trimmed
@@ -212,6 +317,57 @@ export default function ExploreScreen() {
           }}
         />
       )}
+      {selectMode && selectedIds.size > 0 && (
+        <View style={[styles.fab, { bottom: insets.bottom + 16 }]}>
+          <Pressable
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setCompareOpen(true);
+            }}
+            style={({ pressed }) => [
+              styles.fabBtn,
+              pressed && { opacity: 0.75 },
+            ]}
+            disabled={selectedIds.size < 2}
+          >
+            <Ionicons
+              name="layers-outline"
+              size={16}
+              color={selectedIds.size < 2 ? colors.slate : colors.alabaster}
+            />
+            <Text
+              style={[
+                styles.fabBtnText,
+                selectedIds.size < 2 && { color: colors.slate },
+              ]}
+            >
+              Compare ({selectedIds.size})
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={handleResearchAll}
+            style={({ pressed }) => [
+              styles.fabBtnPrimary,
+              pressed && { opacity: 0.75 },
+            ]}
+          >
+            <Ionicons name="sparkles" size={16} color={colors.obsidian} />
+            <Text style={styles.fabBtnPrimaryText}>Research All</Text>
+          </Pressable>
+        </View>
+      )}
+
+      <MultiCompareSheet
+        visible={compareOpen}
+        entityIds={Array.from(selectedIds)}
+        onDismiss={() => setCompareOpen(false)}
+        onOpenEntity={(id) => {
+          setCompareOpen(false);
+          setSelectMode(false);
+          setSelectedIds(new Set());
+          router.push({ pathname: '/entity/[id]', params: { id } } as any);
+        }}
+      />
     </LinearGradient>
     </ScreenTransition>
   );
@@ -336,11 +492,120 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.md,
   },
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
   headerTitle: {
     fontFamily: fonts.archivo.bold,
     fontSize: 34,
     color: colors.alabaster,
     letterSpacing: -0.8,
+  },
+  selectToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    backgroundColor: colors.surfaceElevated,
+  },
+  selectToggleActive: {
+    borderColor: colors.teal,
+    backgroundColor: colors.tealDim,
+  },
+  selectToggleText: {
+    fontFamily: fonts.archivo.semibold,
+    fontSize: 12,
+    color: colors.silver,
+  },
+  selectRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    backgroundColor: colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  selectRowActive: {
+    borderColor: colors.teal,
+    backgroundColor: colors.tealDim,
+  },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 1.5,
+    borderColor: colors.slate,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkboxActive: {
+    backgroundColor: colors.teal,
+    borderColor: colors.teal,
+  },
+  selectName: {
+    fontFamily: fonts.archivo.semibold,
+    fontSize: 15,
+    color: colors.alabaster,
+  },
+  selectMeta: {
+    fontFamily: fonts.mono.regular,
+    fontSize: 11,
+    color: colors.slate,
+    marginTop: 2,
+  },
+  fab: {
+    position: 'absolute',
+    left: spacing.lg,
+    right: spacing.lg,
+    flexDirection: 'row',
+    gap: spacing.sm,
+    backgroundColor: colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    borderRadius: radius.lg,
+    padding: spacing.sm,
+  },
+  fabBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 12,
+    borderRadius: radius.md,
+    backgroundColor: colors.surfaceCard,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+  },
+  fabBtnText: {
+    fontFamily: fonts.archivo.semibold,
+    fontSize: 13,
+    color: colors.alabaster,
+  },
+  fabBtnPrimary: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 12,
+    borderRadius: radius.md,
+    backgroundColor: colors.teal,
+  },
+  fabBtnPrimaryText: {
+    fontFamily: fonts.archivo.bold,
+    fontSize: 13,
+    color: colors.obsidian,
   },
   headerSub: {
     fontFamily: fonts.archivo.regular,

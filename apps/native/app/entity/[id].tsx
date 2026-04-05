@@ -14,6 +14,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useEntityDetail } from '../../src/hooks/useEntityDetail';
 import { useSimilarEntities } from '../../src/hooks/useSimilarEntities';
+import { useEntityActivity } from '../../src/hooks/useEntityActivity';
 import { ClaimListItem } from '../../src/components/ClaimListItem';
 import { EntityCompareSheet } from '../../src/components/EntityCompareSheet';
 import type { EntityClaim, EntityConnection } from '@stroom/supabase';
@@ -40,6 +41,7 @@ export default function EntityDetailScreen() {
     entity?.id,
     entity?.canonical_name ?? entity?.name
   );
+  const { rows: activityRows } = useEntityActivity(entity?.id ?? null, 10);
   const [compareId, setCompareId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'list' | 'timeline'>('list');
   const [filter, setFilter] = useState<StatusFilter>('all');
@@ -382,25 +384,39 @@ export default function EntityDetailScreen() {
             </View>
           }
           ListFooterComponent={
-            connections.length > 0 ? (
-              <View style={styles.connectionsBlock}>
-                <Text style={styles.sectionHeader}>
-                  Connections ({connections.length})
-                </Text>
-                {connections.map((c, i) => (
-                  <ConnectionRow
-                    key={`${c.direction}-${c.otherEntityId}-${c.predicate}-${i}`}
-                    connection={c}
-                    onPress={() =>
-                      router.push({
-                        pathname: '/entity/[id]',
-                        params: { id: c.otherEntityId },
-                      } as any)
-                    }
-                  />
-                ))}
-              </View>
-            ) : null
+            <>
+              {connections.length > 0 && (
+                <View style={styles.connectionsBlock}>
+                  <Text style={styles.sectionHeader}>
+                    Connections ({connections.length})
+                  </Text>
+                  {connections.map((c, i) => (
+                    <ConnectionRow
+                      key={`${c.direction}-${c.otherEntityId}-${c.predicate}-${i}`}
+                      connection={c}
+                      onPress={() =>
+                        router.push({
+                          pathname: '/entity/[id]',
+                          params: { id: c.otherEntityId },
+                        } as any)
+                      }
+                    />
+                  ))}
+                </View>
+              )}
+              {activityRows.length > 0 && (
+                <View style={styles.activityBlock}>
+                  <Text style={styles.sectionHeader}>Activity</Text>
+                  {activityRows.map((row) => (
+                    <ActivityRow
+                      key={row.id}
+                      row={row}
+                      onPress={() => router.push('/audit' as any)}
+                    />
+                  ))}
+                </View>
+              )}
+            </>
           }
         />
       )}
@@ -557,6 +573,65 @@ function CoverageFacet({ label, score }: { label: string; score: number }) {
       </View>
     </View>
   );
+}
+
+function ActivityRow({
+  row,
+  onPress,
+}: {
+  row: { id: string; action_type: string | null; actor?: string | null; created_at: string; entity_table?: string | null };
+  onPress: () => void;
+}) {
+  const iconName =
+    row.action_type === 'approve'
+      ? 'checkmark-circle-outline'
+      : row.action_type === 'reject'
+      ? 'close-circle-outline'
+      : row.action_type === 'update'
+      ? 'create-outline'
+      : row.action_type === 'merge'
+      ? 'git-merge-outline'
+      : 'time-outline';
+  const color =
+    row.action_type === 'approve'
+      ? colors.statusApprove
+      : row.action_type === 'reject'
+      ? colors.statusReject
+      : row.action_type === 'update'
+      ? colors.statusInfo
+      : colors.silver;
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.activityRow,
+        pressed && { opacity: 0.7, transform: [{ scale: 0.98 }] },
+      ]}
+    >
+      <Ionicons name={iconName as any} size={16} color={color} />
+      <View style={styles.activityBody}>
+        <Text style={styles.activityAction}>
+          {(row.action_type ?? 'event').replace(/_/g, ' ')}
+          {row.entity_table ? ` · ${row.entity_table}` : ''}
+        </Text>
+        <Text style={styles.activityMeta} numberOfLines={1}>
+          {row.actor ?? 'system'} · {formatRelative(row.created_at)}
+        </Text>
+      </View>
+      <Ionicons name="chevron-forward" size={12} color={colors.slate} />
+    </Pressable>
+  );
+}
+
+function formatRelative(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const min = Math.floor(diff / 60_000);
+  if (min < 1) return 'just now';
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  const d = Math.floor(hr / 24);
+  return `${d}d ago`;
 }
 
 function ConnectionRow({
@@ -971,6 +1046,36 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.statusReject,
     textAlign: 'center',
+  },
+  activityBlock: {
+    marginTop: spacing.lg,
+    gap: spacing.xs,
+  },
+  activityRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.surfaceCard,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    borderRadius: radius.sm,
+    paddingVertical: 10,
+    paddingHorizontal: spacing.md,
+  },
+  activityBody: {
+    flex: 1,
+  },
+  activityAction: {
+    fontFamily: fonts.archivo.semibold,
+    fontSize: 12,
+    color: colors.alabaster,
+    textTransform: 'capitalize',
+  },
+  activityMeta: {
+    fontFamily: fonts.mono.regular,
+    fontSize: 10,
+    color: colors.slate,
+    marginTop: 1,
   },
   connectionsBlock: {
     marginTop: spacing.xl,

@@ -48,6 +48,12 @@ export default function ClaimDetailScreen() {
   const { claim, corroborations, loading, error } = useClaimDetail(id);
   const { show: showToast } = useBrandToast();
   const [supersedes, setSupersedes] = useState<SupersedingClaim[]>([]);
+  const [observation, setObservation] = useState<{
+    id: string;
+    extraction_method: string | null;
+    captured_at: string | null;
+    raw_excerpt: string | null;
+  } | null>(null);
   // Inline field edit state — scalar top-level keys of value_jsonb
   const [editDraft, setEditDraft] = useState<Record<string, string> | null>(null);
   const [editSaving, setEditSaving] = useState(false);
@@ -145,6 +151,34 @@ export default function ClaimDetailScreen() {
       cancelled = true;
     };
   }, [claim]);
+
+  // Fetch the observation that produced this claim — the middle link in
+  // the Source → Observation → Claim provenance chain. We query
+  // intel.observations by source_id and pick the most recent that matches.
+  React.useEffect(() => {
+    if (!claim?.source?.id) {
+      setObservation(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await supabase
+          .from('observations')
+          .select('id, extraction_method, captured_at, raw_excerpt')
+          .eq('source_id', claim.source!.id)
+          .order('captured_at', { ascending: false })
+          .limit(1);
+        if (!cancelled) setObservation((data?.[0] as any) ?? null);
+      } catch {
+        if (!cancelled) setObservation(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [claim?.source?.id]);
+
   const [rejectVisible, setRejectVisible] = useState(false);
   const [acting, setActing] = useState(false);
   // Local status override so the badge can animate to its new state before
@@ -486,6 +520,52 @@ export default function ClaimDetailScreen() {
           </View>
         )}
 
+        {/* Provenance chain: Source → Observation → Claim */}
+        {claim.source && (
+          <View style={styles.section}>
+            <Text style={styles.sectionHeader}>PROVENANCE</Text>
+            <View style={styles.provChain}>
+              <ProvenanceNode
+                icon="globe-outline"
+                label="Source"
+                title={claim.source.source_name}
+                meta={
+                  claim.source.source_url
+                    ? claim.source.source_url.replace(/^https?:\/\//, '')
+                    : `trust ${Number(claim.source.trust_score).toFixed(1)}`
+                }
+              />
+              <View style={styles.provConnector} />
+              <ProvenanceNode
+                icon="eye-outline"
+                label="Observation"
+                title={
+                  observation?.extraction_method
+                    ? titleCase(observation.extraction_method)
+                    : 'No observation recorded'
+                }
+                meta={
+                  observation?.captured_at
+                    ? `captured ${formatDate(observation.captured_at)}`
+                    : observation
+                    ? 'timestamp unknown'
+                    : 'fetch pending'
+                }
+                dim={!observation}
+                excerpt={observation?.raw_excerpt ?? null}
+              />
+              <View style={styles.provConnector} />
+              <ProvenanceNode
+                icon="document-text-outline"
+                label="Claim"
+                title={formatPredicate(claim.predicate ?? 'unknown')}
+                meta={`extracted ${formatDate(claim.created_at)}`}
+                active
+              />
+            </View>
+          </View>
+        )}
+
         {/* Corroborations */}
         {corroborations.length > 0 && (
           <View style={styles.section}>
@@ -719,6 +799,55 @@ function CorroborationRow({
         </View>
       )}
     </Pressable>
+  );
+}
+
+function ProvenanceNode({
+  icon,
+  label,
+  title,
+  meta,
+  excerpt,
+  active,
+  dim,
+}: {
+  icon: React.ComponentProps<typeof Ionicons>['name'];
+  label: string;
+  title: string;
+  meta: string;
+  excerpt?: string | null;
+  active?: boolean;
+  dim?: boolean;
+}) {
+  return (
+    <View style={[styles.provNode, dim && { opacity: 0.55 }]}>
+      <View
+        style={[
+          styles.provIconCircle,
+          active && { borderColor: colors.teal, backgroundColor: colors.tealDim },
+        ]}
+      >
+        <Ionicons
+          name={icon}
+          size={14}
+          color={active ? colors.teal : colors.silver}
+        />
+      </View>
+      <View style={styles.provBody}>
+        <Text style={styles.provLabel}>{label.toUpperCase()}</Text>
+        <Text style={styles.provTitle} numberOfLines={1}>
+          {title}
+        </Text>
+        <Text style={styles.provMeta} numberOfLines={1}>
+          {meta}
+        </Text>
+        {excerpt ? (
+          <Text style={styles.provExcerpt} numberOfLines={3}>
+            "{excerpt}"
+          </Text>
+        ) : null}
+      </View>
+    </View>
   );
 }
 
@@ -1037,6 +1166,64 @@ const styles = StyleSheet.create({
     color: colors.slate,
     letterSpacing: 1,
     marginBottom: spacing.sm,
+  },
+  provChain: {
+    gap: 0,
+  },
+  provNode: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.md,
+    backgroundColor: colors.surfaceCard,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    borderRadius: radius.md,
+    padding: spacing.md,
+  },
+  provIconCircle: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    backgroundColor: 'rgba(255,255,255,0.02)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 2,
+  },
+  provBody: {
+    flex: 1,
+    gap: 2,
+  },
+  provLabel: {
+    fontFamily: fonts.mono.medium,
+    fontSize: 9,
+    letterSpacing: 1,
+    color: colors.slate,
+  },
+  provTitle: {
+    fontFamily: fonts.archivo.semibold,
+    fontSize: 14,
+    color: colors.alabaster,
+  },
+  provMeta: {
+    fontFamily: fonts.mono.regular,
+    fontSize: 10,
+    color: colors.slate,
+  },
+  provExcerpt: {
+    fontFamily: fonts.archivo.regular,
+    fontSize: 12,
+    color: colors.silver,
+    fontStyle: 'italic',
+    marginTop: 6,
+    lineHeight: 16,
+  },
+  provConnector: {
+    width: 2,
+    height: 16,
+    backgroundColor: colors.glassBorder,
+    marginLeft: spacing.md + 14 - 1,
   },
   sourceCard: {
     backgroundColor: colors.surfaceElevated,
