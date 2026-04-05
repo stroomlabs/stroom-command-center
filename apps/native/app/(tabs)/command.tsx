@@ -10,19 +10,23 @@ import {
   Platform,
   ActivityIndicator,
   Keyboard,
+  Alert,
+  ActionSheetIOS,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
+import * as Clipboard from 'expo-clipboard';
 import { useCommandChat, type ChatMessage } from '../../src/hooks/useCommandChat';
 import { colors, fonts, spacing, radius, gradient } from '../../src/constants/brand';
 
 export default function CommandScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { messages, sending, error, send, resetSession } = useCommandChat();
+  const { messages, sending, error, send, resetSession, deleteMessage, retryFrom } =
+    useCommandChat();
   const [input, setInput] = useState('');
   const scrollRef = useRef<ScrollView>(null);
 
@@ -44,8 +48,81 @@ export default function CommandScreen() {
 
   const handleReset = useCallback(() => {
     Keyboard.dismiss();
-    resetSession();
-  }, [resetSession]);
+    if (messages.length === 0) {
+      resetSession();
+      return;
+    }
+    Alert.alert(
+      'Start new session?',
+      'This will clear the current thread and rotate the session id.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'New session',
+          style: 'destructive',
+          onPress: () => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            resetSession();
+          },
+        },
+      ]
+    );
+  }, [messages.length, resetSession]);
+
+  const copyMessage = useCallback(async (content: string) => {
+    if (!content) return;
+    await Clipboard.setStringAsync(content);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  }, []);
+
+  const showMessageMenu = useCallback(
+    (message: ChatMessage) => {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      const canRetry = message.role === 'assistant' && !sending;
+      const options = canRetry
+        ? ['Copy', 'Retry', 'Delete', 'Cancel']
+        : ['Copy', 'Delete', 'Cancel'];
+      const destructiveIndex = canRetry ? 2 : 1;
+      const cancelIndex = options.length - 1;
+
+      const handle = (index: number) => {
+        if (index === 0) {
+          copyMessage(message.content);
+        } else if (canRetry && index === 1) {
+          retryFrom(message.id);
+        } else if (index === destructiveIndex) {
+          deleteMessage(message.id);
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+        }
+      };
+
+      if (Platform.OS === 'ios') {
+        ActionSheetIOS.showActionSheetWithOptions(
+          {
+            options,
+            cancelButtonIndex: cancelIndex,
+            destructiveButtonIndex: destructiveIndex,
+            userInterfaceStyle: 'dark',
+          },
+          handle
+        );
+      } else {
+        Alert.alert('Message', undefined, [
+          { text: 'Copy', onPress: () => handle(0) },
+          ...(canRetry
+            ? [{ text: 'Retry', onPress: () => handle(1) }]
+            : []),
+          {
+            text: 'Delete',
+            style: 'destructive',
+            onPress: () => handle(destructiveIndex),
+          },
+          { text: 'Cancel', style: 'cancel' },
+        ]);
+      }
+    },
+    [sending, copyMessage, retryFrom, deleteMessage]
+  );
 
   const showTypingIndicator =
     sending &&
@@ -101,9 +178,11 @@ export default function CommandScreen() {
 
           {messages.map((msg, i) => (
             <MessageBubble
-              key={`${i}-${msg.timestamp}`}
+              key={msg.id}
               message={msg}
               showTyping={showTypingIndicator && i === messages.length - 1}
+              onCopy={() => copyMessage(msg.content)}
+              onLongPress={() => showMessageMenu(msg)}
             />
           ))}
 
@@ -194,9 +273,13 @@ function Suggestion({ text }: { text: string }) {
 function MessageBubble({
   message,
   showTyping,
+  onCopy,
+  onLongPress,
 }: {
   message: ChatMessage;
   showTyping: boolean;
+  onCopy: () => void;
+  onLongPress: () => void;
 }) {
   const isUser = message.role === 'user';
 
@@ -210,16 +293,23 @@ function MessageBubble({
     );
   }
 
+  // Tap-to-copy applies to assistant messages only; long-press works for both.
+  const handlePress = !isUser && message.content ? onCopy : undefined;
+
   return (
     <View style={[styles.bubbleRow, isUser ? styles.userRow : styles.assistantRow]}>
-      <View
-        style={[
+      <Pressable
+        onPress={handlePress}
+        onLongPress={message.content ? onLongPress : undefined}
+        delayLongPress={350}
+        style={({ pressed }) => [
           styles.bubble,
           isUser ? styles.userBubble : styles.assistantBubble,
+          pressed && handlePress && styles.bubblePressed,
         ]}
       >
         <RichContent content={message.content} isUser={isUser} />
-      </View>
+      </Pressable>
     </View>
   );
 }
@@ -523,6 +613,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.glassBorder,
     borderBottomLeftRadius: 4,
+  },
+  bubblePressed: {
+    opacity: 0.7,
   },
   userText: {
     fontFamily: fonts.archivo.regular,
