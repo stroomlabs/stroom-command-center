@@ -107,9 +107,11 @@ export default function OpsScreen() {
     let cancelled = false;
     (async () => {
       try {
-        const { data, error } = await supabase.rpc('get_ingestion_timeline', {
-          days: 14,
-        });
+        const { data, error } = await supabase
+          .schema('intel')
+          .rpc('get_ingestion_timeline', {
+            days_back: 14,
+          });
         if (cancelled) return;
         if (error) throw error;
         setIngestion((data as any[]) ?? []);
@@ -128,9 +130,11 @@ export default function OpsScreen() {
     let cancelled = false;
     (async () => {
       try {
-        const { data, error } = await supabase.rpc('get_sweep_history', {
-          limit_n: 5,
-        });
+        const { data, error } = await supabase
+          .schema('intel')
+          .rpc('get_sweep_history', {
+            limit_count: 5,
+          });
         if (cancelled) return;
         if (error) throw error;
         setSweepHistory((data as any[]) ?? []);
@@ -149,7 +153,9 @@ export default function OpsScreen() {
     let cancelled = false;
     (async () => {
       try {
-        const { data, error } = await supabase.rpc('get_vertical_breakdown');
+        const { data, error } = await supabase
+          .schema('intel')
+          .rpc('get_vertical_breakdown');
         if (cancelled) return;
         if (error) throw error;
         const rows = Array.isArray(data)

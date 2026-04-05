@@ -907,7 +907,8 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   filterRow: {
-    paddingHorizontal: spacing.lg,
+    paddingLeft: 16,
+    paddingRight: 20,
     gap: spacing.sm,
     alignItems: 'center',
   },
