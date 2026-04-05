@@ -181,10 +181,20 @@ export function ClaimCard({
       <GestureDetector gesture={panGesture}>
         <Animated.View style={cardAnimatedStyle}>
           <Pressable
-            onPress={selectMode ? onToggleSelect : undefined}
-            style={
-              selectMode && selected ? styles.selectedCardWrap : undefined
-            }
+            onPress={() => {
+              if (selectMode) {
+                onToggleSelect?.();
+              } else {
+                router.push({
+                  pathname: '/claim/[id]',
+                  params: { id: claim.id },
+                } as any);
+              }
+            }}
+            style={({ pressed }) => [
+              selectMode && selected && styles.selectedCardWrap,
+              pressed && !selectMode && { opacity: 0.85 },
+            ]}
           >
           <GlassCard style={styles.card}>
       {/* Header row */}
