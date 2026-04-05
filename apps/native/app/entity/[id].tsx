@@ -158,9 +158,66 @@ export default function EntityDetailScreen() {
               <Pressable
                 onPress={() => {
                   const name = entity.canonical_name || entity.name || 'this entity';
+                  const type = entity.entity_type ?? 'entity';
+
+                  // Top predicates by frequency for inline context
+                  const predCounts = new Map<string, number>();
+                  for (const c of claims) {
+                    if (!c.predicate) continue;
+                    const key = c.predicate.split('.').pop() ?? c.predicate;
+                    predCounts.set(key, (predCounts.get(key) ?? 0) + 1);
+                  }
+                  const topPredicates = Array.from(predCounts.entries())
+                    .sort(([, a], [, b]) => b - a)
+                    .slice(0, 5)
+                    .map(([k, n]) => `${k.replace(/_/g, ' ')} (${n})`)
+                    .join(', ');
+
+                  // Coverage score using the same formula as CoverageScore
+                  const claimCount = claims.length;
+                  const uniquePredicates = new Set(
+                    claims.map((c) => c.predicate).filter(Boolean)
+                  ).size;
+                  const corroborated = claims.filter(
+                    (c) => (c.corroboration_score ?? 0) >= 1
+                  ).length;
+                  const latest = claims.reduce<number>((max, c) => {
+                    const t = new Date(c.created_at).getTime();
+                    return t > max ? t : max;
+                  }, 0);
+                  const claimScore = Math.min(1, claimCount / 10);
+                  const predicateScore = Math.min(1, uniquePredicates / 5);
+                  const corrobScore = claimCount > 0 ? corroborated / claimCount : 0;
+                  const ageDays =
+                    latest > 0 ? (Date.now() - latest) / 86_400_000 : 999;
+                  const recencyScore = Math.max(0, 1 - ageDays / 30);
+                  const coveragePct = Math.round(
+                    ((claimScore + predicateScore + corrobScore + recencyScore) / 4) * 100
+                  );
+
+                  const lastUpdated =
+                    latest > 0
+                      ? new Date(latest).toLocaleDateString('en-US', {
+                          month: 'short',
+                          day: 'numeric',
+                          year: 'numeric',
+                        })
+                      : 'never';
+
+                  const promptLines = [
+                    `Tell me about ${name}.`,
+                    '',
+                    'Context from our graph:',
+                    `- Type: ${type}`,
+                    `- Claims: ${claimCount}`,
+                    `- Coverage score: ${coveragePct}%`,
+                    topPredicates ? `- Top predicates: ${topPredicates}` : null,
+                    `- Last updated: ${lastUpdated}`,
+                  ].filter(Boolean);
+
                   router.push({
                     pathname: '/(tabs)/command',
-                    params: { prompt: `Tell me about ${name}` },
+                    params: { prompt: promptLines.join('\n') },
                   } as any);
                 }}
                 style={({ pressed }) => [

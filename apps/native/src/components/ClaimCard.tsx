@@ -48,7 +48,7 @@ interface ClaimCardProps {
   onToggleSelect?: () => void;
 }
 
-export function ClaimCard({
+function ClaimCardImpl({
   claim,
   onApprove,
   onReject,
@@ -190,6 +190,13 @@ export function ClaimCard({
       <GestureDetector gesture={panGesture}>
         <Animated.View style={cardAnimatedStyle}>
           <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={
+              selectMode
+                ? `${selected ? 'Deselect' : 'Select'} claim about ${subjectName}, ${predicateLabel}`
+                : `Claim about ${subjectName}, ${predicateLabel}. Open for details.`
+            }
+            accessibilityState={selectMode ? { selected } : undefined}
             onPress={() => {
               if (selectMode) {
                 onToggleSelect?.();
@@ -220,6 +227,8 @@ export function ClaimCard({
           {!selectMode && (
             <View style={styles.quickActions}>
               <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Reject claim about ${subjectName}`}
                 onPress={handleReject}
                 hitSlop={6}
                 style={({ pressed }) => [
@@ -231,6 +240,8 @@ export function ClaimCard({
                 <Ionicons name="close-sharp" size={14} color={colors.statusReject} />
               </Pressable>
               <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Approve claim about ${subjectName}`}
                 onPress={handleApprove}
                 hitSlop={6}
                 style={({ pressed }) => [
@@ -586,3 +597,7 @@ const styles = StyleSheet.create({
     borderColor: colors.statusReject,
   },
 });
+
+// Memoized — the Queue renders up to 30 cards and re-renders on every
+// batch-select toggle, so skipping unchanged rows matters.
+export const ClaimCard = React.memo(ClaimCardImpl);

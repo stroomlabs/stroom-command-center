@@ -9,13 +9,15 @@ interface EntityRowProps {
   onPress: () => void;
 }
 
-export function EntityRow({ entity, onPress }: EntityRowProps) {
+function EntityRowImpl({ entity, onPress }: EntityRowProps) {
   const name = entity.canonical_name || entity.name || 'Unnamed entity';
   const type = entity.entity_type || entity.entity_class || 'entity';
   const domain = entity.domain;
 
   return (
     <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${name}, ${type}${domain ? `, ${domain}` : ''}. Open entity.`}
       onPress={onPress}
       style={({ pressed }) => [styles.row, pressed && styles.pressed]}
     >
@@ -101,3 +103,6 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
 });
+
+// Memoized — FlatList rows benefit when rendering large result sets.
+export const EntityRow = React.memo(EntityRowImpl);

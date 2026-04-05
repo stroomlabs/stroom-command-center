@@ -11,7 +11,7 @@ interface ClaimListItemProps {
   onPress: () => void;
 }
 
-export function ClaimListItem({ claim, onPress }: ClaimListItemProps) {
+function ClaimListItemImpl({ claim, onPress }: ClaimListItemProps) {
   const predicate = formatPredicate(claim.predicate ?? 'unknown');
   const value = resolveDisplayValue(
     claim.value_jsonb,
@@ -23,6 +23,8 @@ export function ClaimListItem({ claim, onPress }: ClaimListItemProps) {
 
   return (
     <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${predicate} claim, status ${claim.status}. Open for details.`}
       onPress={onPress}
       style={({ pressed }) => [styles.row, pressed && styles.pressed]}
     >
@@ -152,3 +154,6 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
 });
+
+// Memoized — entity detail renders up to 100 of these at a time.
+export const ClaimListItem = React.memo(ClaimListItemImpl);

@@ -80,6 +80,8 @@ export function PulseMetric({
 
   return (
     <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${label}: ${prefix ?? ''}${displayValue}${suffix ? ' ' + suffix : ''}`}
       onPress={onPress}
       style={({ pressed }) => [cardStyle, pressed && styles.pressed]}
     >
