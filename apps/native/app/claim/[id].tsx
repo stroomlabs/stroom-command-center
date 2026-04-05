@@ -31,6 +31,7 @@ import { ClaimDiffSheet } from '../../src/components/ClaimDiffSheet';
 import { RetryCard } from '../../src/components/RetryCard';
 import { GlowSpot } from '../../src/components/GlowSpot';
 import { useBrandToast } from '../../src/components/BrandToast';
+import Slider from '@react-native-community/slider';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -71,6 +72,53 @@ export default function ClaimDetailScreen() {
   // Inline field edit state — scalar top-level keys of value_jsonb
   const [editDraft, setEditDraft] = useState<Record<string, string> | null>(null);
   const [editSaving, setEditSaving] = useState(false);
+  // Local draft for the confidence slider — decoupled from server state
+  // so the thumb follows the finger, then we commit on release.
+  const [confidenceDraft, setConfidenceDraft] = useState<number | null>(null);
+  const [confidenceSaving, setConfidenceSaving] = useState(false);
+  React.useEffect(() => {
+    if (claim?.confidence_score != null) {
+      setConfidenceDraft(Number(claim.confidence_score));
+    } else {
+      setConfidenceDraft(null);
+    }
+  }, [claim?.id, claim?.confidence_score]);
+
+  const commitConfidence = useCallback(
+    async (next: number) => {
+      if (!claim) return;
+      const current = claim.confidence_score != null
+        ? Number(claim.confidence_score)
+        : null;
+      // Skip the RPC entirely if the value hasn't actually moved — avoids
+      // noisy audit rows when the operator nudges the thumb and lets go
+      // on the same notch.
+      if (current != null && Math.abs(next - current) < 0.05) return;
+      setConfidenceSaving(true);
+      try {
+        const { error: rpcError } = await supabase.rpc(
+          'update_claim_confidence',
+          {
+            claim_id: claim.id,
+            new_confidence: next,
+          }
+        );
+        if (rpcError) throw rpcError;
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        showToast(`Confidence updated to ${next.toFixed(1)}`, 'success');
+        await refreshClaim();
+      } catch (e: any) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        showToast(e?.message ?? 'Update failed', 'error');
+        // Roll the draft back to the server value so the thumb snaps
+        // back where the truth is.
+        if (current != null) setConfidenceDraft(current);
+      } finally {
+        setConfidenceSaving(false);
+      }
+    },
+    [claim, refreshClaim, showToast]
+  );
 
   const scalarEntries = React.useMemo(() => {
     const jsonb = claim?.value_jsonb;
@@ -495,14 +543,38 @@ export default function ClaimDetailScreen() {
 
         {/* Scores */}
         <View style={styles.scoresRow}>
-          <View style={styles.scoreBox}>
+          <View style={styles.confidenceBox}>
             <Text style={styles.scoreLabel}>CONFIDENCE</Text>
-            <Text style={styles.scoreValue}>
-              {confidence != null ? Number(confidence).toFixed(1) : '—'}
-            </Text>
-            {confidence != null && (
+            <View style={styles.confidenceValueRow}>
+              <Text style={styles.confidenceValue}>
+                {confidenceDraft != null
+                  ? confidenceDraft.toFixed(1)
+                  : confidence != null
+                  ? Number(confidence).toFixed(1)
+                  : '—'}
+              </Text>
               <Text style={styles.scoreSuffix}>/ 10</Text>
-            )}
+            </View>
+            <Slider
+              value={
+                confidenceDraft ??
+                (confidence != null ? Number(confidence) : 0)
+              }
+              minimumValue={0}
+              maximumValue={10}
+              step={0.5}
+              minimumTrackTintColor={colors.teal}
+              maximumTrackTintColor="rgba(255,255,255,0.08)"
+              thumbTintColor={colors.teal}
+              onValueChange={setConfidenceDraft}
+              onSlidingComplete={(v) => {
+                const rounded = Math.round(v * 2) / 2;
+                setConfidenceDraft(rounded);
+                void commitConfidence(rounded);
+              }}
+              disabled={confidenceSaving}
+              style={styles.confidenceSlider}
+            />
           </View>
           <View style={styles.scoreBox}>
             <Text style={styles.scoreLabel}>CORROBORATIONS</Text>
@@ -1232,6 +1304,31 @@ const styles = StyleSheet.create({
     fontSize: 9,
     color: colors.slate,
     letterSpacing: 1,
+  },
+  confidenceBox: {
+    flex: 2,
+    backgroundColor: colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    gap: 4,
+  },
+  confidenceValueRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 6,
+  },
+  confidenceValue: {
+    fontFamily: fonts.mono.semibold,
+    fontSize: 32,
+    color: colors.teal,
+    fontVariant: ['tabular-nums'],
+    letterSpacing: -0.5,
+  },
+  confidenceSlider: {
+    width: '100%',
+    marginTop: 2,
   },
   scoreValue: {
     fontFamily: fonts.mono.semibold,
