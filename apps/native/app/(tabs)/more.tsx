@@ -3,11 +3,13 @@ import { View, Text, StyleSheet, Pressable, Alert } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { useAuth } from '../../src/lib/auth';
 import { colors, fonts, spacing, radius, gradient } from '../../src/constants/brand';
 
 export default function MoreScreen() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const { user, signOut } = useAuth();
 
   const handleSignOut = () => {
@@ -40,11 +42,19 @@ export default function MoreScreen() {
           </View>
         </View>
 
-        {/* Menu items (placeholders for Session 3+) */}
+        {/* Menu items */}
         <View style={styles.menu}>
+          <MenuItem
+            icon="analytics-outline"
+            label="Audit Trail"
+            onPress={() => router.push('/audit' as any)}
+          />
+          <MenuItem
+            icon="git-branch-outline"
+            label="Research Queue"
+            onPress={() => router.push('/research' as any)}
+          />
           <MenuItem icon="settings-outline" label="Policy Config" disabled />
-          <MenuItem icon="analytics-outline" label="Audit Trail" disabled />
-          <MenuItem icon="git-branch-outline" label="Research Queue" disabled />
           <MenuItem icon="notifications-outline" label="Notification Prefs" disabled />
         </View>
 
@@ -72,16 +82,26 @@ function MenuItem({
   icon,
   label,
   disabled,
+  onPress,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
   disabled?: boolean;
+  onPress?: () => void;
 }) {
   return (
-    <Pressable style={[styles.menuItem, disabled && styles.menuDisabled]} disabled={disabled}>
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.menuItem,
+        disabled && styles.menuDisabled,
+        pressed && !disabled && styles.menuPressed,
+      ]}
+      disabled={disabled}
+    >
       <Ionicons name={icon} size={20} color={disabled ? colors.slate : colors.silver} />
       <Text style={[styles.menuLabel, disabled && styles.menuLabelDisabled]}>{label}</Text>
-      {disabled && <Text style={styles.comingSoon}>Session 3</Text>}
+      {disabled && <Text style={styles.comingSoon}>Soon</Text>}
       <Ionicons name="chevron-forward" size={16} color={colors.slate} />
     </Pressable>
   );
@@ -150,6 +170,10 @@ const styles = StyleSheet.create({
   },
   menuDisabled: {
     opacity: 0.5,
+  },
+  menuPressed: {
+    backgroundColor: colors.surfaceCard,
+    borderColor: colors.glassBorderHover,
   },
   menuLabel: {
     fontFamily: fonts.archivo.medium,
