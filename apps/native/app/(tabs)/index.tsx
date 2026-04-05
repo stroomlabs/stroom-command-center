@@ -9,6 +9,14 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withRepeat,
+  withTiming,
+  withSequence,
+  Easing,
+} from 'react-native-reanimated';
 import { usePulseData } from '../../src/hooks/usePulseData';
 import { usePushNotifications } from '../../src/hooks/usePushNotifications';
 import { PulseMetric } from '../../src/components/PulseMetric';
@@ -37,6 +45,23 @@ export default function PulseScreen() {
   const [nowTick, setNowTick] = React.useState(0);
 
   usePushNotifications();
+
+  // LIVE dot — 2s pulse cycle (scale 1 → 1.35 and opacity 1 → 0.55)
+  const livePulse = useSharedValue(0);
+  React.useEffect(() => {
+    livePulse.value = withRepeat(
+      withSequence(
+        withTiming(1, { duration: 1000, easing: Easing.inOut(Easing.ease) }),
+        withTiming(0, { duration: 1000, easing: Easing.inOut(Easing.ease) })
+      ),
+      -1,
+      false
+    );
+  }, [livePulse]);
+  const liveDotStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: 1 + livePulse.value * 0.35 }],
+    opacity: 1 - livePulse.value * 0.45,
+  }));
 
   // Re-render the "last updated" label every 30s so the relative time stays fresh
   React.useEffect(() => {
@@ -79,7 +104,7 @@ export default function PulseScreen() {
           <Text style={styles.headerTitle}>Pulse</Text>
           <View style={styles.liveColumn}>
             <View style={styles.liveIndicator}>
-              <View style={styles.liveDot} />
+              <Animated.View style={[styles.liveDot, liveDotStyle]} />
               <Text style={styles.liveText}>LIVE</Text>
             </View>
             {lastUpdatedAt && (

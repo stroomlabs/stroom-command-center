@@ -60,13 +60,22 @@ export function ClaimCard({
   const subjectName = claim.subject_entity?.canonical_name ?? 'Unknown entity';
   const objectName = claim.object_entity?.canonical_name;
   const sourceName = claim.source?.source_name ?? 'Unknown source';
-  const trustScore = claim.source?.trust_score ?? 0;
+  const trustScore = Number(claim.source?.trust_score ?? 0);
+  const confidenceScore = Number(claim.confidence_score ?? 0);
   const predicate = claim.predicate ?? 'unknown';
 
   // Resolve display value — extract meaningful text from JSONB
   const displayValue = resolveDisplayValue(claim.value_jsonb, objectName);
   const corroborations = claim.corroboration_score ?? 0;
   const age = getRelativeTime(claim.created_at);
+
+  // Triage rail color — routine (teal) / review (amber) / high-risk (red)
+  const riskColor =
+    trustScore < 6 || confidenceScore < 6 || corroborations === 0
+      ? colors.statusReject
+      : trustScore >= 8 && confidenceScore >= 8
+      ? colors.teal
+      : colors.statusPending;
 
   // Clean predicate for display: "person.crew_chief_profile" → "Crew Chief Profile"
   const predicateLabel = formatPredicate(predicate);
@@ -196,7 +205,13 @@ export function ClaimCard({
               pressed && !selectMode && { opacity: 0.85 },
             ]}
           >
-          <GlassCard style={styles.card}>
+          <GlassCard
+            style={{
+              ...styles.card,
+              borderLeftWidth: 3,
+              borderLeftColor: riskColor,
+            }}
+          >
       {/* Header row */}
       <View style={styles.headerRow}>
         <StatusBadge status={claim.status} />
