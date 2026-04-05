@@ -211,7 +211,10 @@ function ClaimRow({
   return (
     <Pressable
       onPress={onPress}
-      style={({ pressed }) => [styles.claimRow, pressed && { opacity: 0.75 }]}
+      style={({ pressed }) => [
+        styles.claimRow,
+        pressed && { opacity: 0.75, transform: [{ scale: 0.97 }] },
+      ]}
     >
       <View style={styles.claimTop}>
         <StatusBadge status={claim.status} />
@@ -264,9 +267,9 @@ const styles = StyleSheet.create({
   },
   sourceName: {
     fontFamily: fonts.archivo.bold,
-    fontSize: 26,
+    fontSize: 34,
     color: colors.alabaster,
-    letterSpacing: -0.5,
+    letterSpacing: -0.8,
     marginBottom: spacing.sm,
   },
   metaRow: {

@@ -145,7 +145,10 @@ Focus on biography, affiliations, timeline events, relationships, and recent act
                 <View key={g.id} style={styles.row}>
                   <Pressable
                     onPress={() => openEntity(g.id)}
-                    style={({ pressed }) => [styles.rowBody, pressed && { opacity: 0.75 }]}
+                    style={({ pressed }) => [
+                      styles.rowBody,
+                      pressed && { opacity: 0.75, transform: [{ scale: 0.97 }] },
+                    ]}
                   >
                     <Text style={styles.rowName} numberOfLines={1}>
                       {g.canonical_name ?? 'Unnamed entity'}

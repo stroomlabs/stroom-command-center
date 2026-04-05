@@ -1075,9 +1075,9 @@ const styles = StyleSheet.create({
   },
   entityLink: {
     fontFamily: fonts.archivo.bold,
-    fontSize: 26,
+    fontSize: 34,
     color: colors.alabaster,
-    letterSpacing: -0.6,
+    letterSpacing: -0.8,
     marginBottom: spacing.sm,
   },
   entityLinkSmall: {

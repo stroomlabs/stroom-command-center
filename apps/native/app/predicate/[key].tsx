@@ -95,7 +95,10 @@ export default function PredicateDetailScreen() {
               onPress={() =>
                 router.push({ pathname: '/claim/[id]', params: { id: item.id } } as any)
               }
-              style={({ pressed }) => [styles.row, pressed && { opacity: 0.75 }]}
+              style={({ pressed }) => [
+                styles.row,
+                pressed && { opacity: 0.75, transform: [{ scale: 0.97 }] },
+              ]}
             >
               <View style={styles.rowTop}>
                 <StatusBadge status={item.status} />
@@ -161,9 +164,9 @@ const styles = StyleSheet.create({
   },
   title: {
     fontFamily: fonts.archivo.bold,
-    fontSize: 28,
+    fontSize: 34,
     color: colors.alabaster,
-    letterSpacing: -0.6,
+    letterSpacing: -0.8,
     textTransform: 'capitalize',
   },
   metaRow: {

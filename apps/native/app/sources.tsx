@@ -116,7 +116,10 @@ function SourceRow({
   return (
     <Pressable
       onPress={onPress}
-      style={({ pressed }) => [styles.row, pressed && { opacity: 0.75 }]}
+      style={({ pressed }) => [
+        styles.row,
+        pressed && { opacity: 0.75, transform: [{ scale: 0.97 }] },
+      ]}
     >
       <View style={styles.rowHeader}>
         <Text style={styles.rowName} numberOfLines={1}>

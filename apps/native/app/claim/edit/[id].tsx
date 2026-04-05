@@ -608,9 +608,9 @@ const styles = StyleSheet.create({
   },
   title: {
     fontFamily: fonts.archivo.bold,
-    fontSize: 28,
+    fontSize: 34,
     color: colors.alabaster,
-    letterSpacing: -0.6,
+    letterSpacing: -0.8,
     marginTop: spacing.sm,
   },
   scroll: {
