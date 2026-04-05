@@ -10,6 +10,9 @@ import { AuthProvider, useAuth } from '../src/lib/auth';
 import { OfflineBanner } from '../src/components/OfflineBanner';
 import { ErrorBoundary } from '../src/components/ErrorBoundary';
 import { BrandAlertProvider } from '../src/components/BrandAlert';
+import { BrandToastProvider } from '../src/components/BrandToast';
+import { OnboardingFlow } from '../src/components/OnboardingFlow';
+import { useOnboarding } from '../src/hooks/useOnboarding';
 import { colors, fonts, gradient } from '../src/constants/brand';
 
 // Keep splash visible while loading
@@ -20,6 +23,8 @@ function RouteGuard({ children }: { children: React.ReactNode }) {
   const segments = useSegments();
   const router = useRouter();
   const [biometricChecked, setBiometricChecked] = useState(false);
+  const sessionReady = Boolean(session && biometricPassed);
+  const { needsOnboarding, complete: completeOnboarding } = useOnboarding(sessionReady);
 
   useEffect(() => {
     if (loading) return;
@@ -64,7 +69,15 @@ function RouteGuard({ children }: { children: React.ReactNode }) {
     );
   }
 
-  return <>{children}</>;
+  return (
+    <>
+      {children}
+      <OnboardingFlow
+        visible={sessionReady && needsOnboarding}
+        onComplete={completeOnboarding}
+      />
+    </>
+  );
 }
 
 export default function RootLayout() {
@@ -104,6 +117,7 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <AuthProvider>
         <BrandAlertProvider>
+        <BrandToastProvider>
         <StatusBar style="light" />
         <RouteGuard>
           <ErrorBoundary>
@@ -134,6 +148,7 @@ export default function RootLayout() {
           </ErrorBoundary>
         </RouteGuard>
         <OfflineBanner />
+        </BrandToastProvider>
         </BrandAlertProvider>
       </AuthProvider>
     </GestureHandlerRootView>

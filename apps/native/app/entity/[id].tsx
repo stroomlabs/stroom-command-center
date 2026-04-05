@@ -149,6 +149,9 @@ export default function EntityDetailScreen() {
                 <Ionicons name="chevron-forward" size={14} color={colors.teal} />
               </Pressable>
 
+              {/* Coverage score */}
+              <CoverageScore claims={claims} />
+
               {/* Stats */}
               <View style={styles.statsRow}>
                 <View style={styles.stat}>
@@ -241,6 +244,82 @@ export default function EntityDetailScreen() {
         />
       )}
     </LinearGradient>
+  );
+}
+
+function CoverageScore({ claims }: { claims: EntityClaim[] }) {
+  const { pct, claimScore, predicateScore, corrobScore, recencyScore } =
+    React.useMemo(() => {
+      const claimCount = claims.length;
+      const uniquePredicates = new Set(
+        claims.map((c) => c.predicate).filter(Boolean)
+      ).size;
+      const corroborated = claims.filter(
+        (c) => (c.corroboration_score ?? 0) >= 1
+      ).length;
+      const latest = claims.reduce<number>((max, c) => {
+        const t = new Date(c.created_at).getTime();
+        return t > max ? t : max;
+      }, 0);
+
+      // Normalized sub-scores (0-1)
+      const claimScore = Math.min(1, claimCount / 10);
+      const predicateScore = Math.min(1, uniquePredicates / 5);
+      const corrobScore = claimCount > 0 ? corroborated / claimCount : 0;
+      const ageDays = latest > 0 ? (Date.now() - latest) / 86_400_000 : 999;
+      const recencyScore = Math.max(0, 1 - ageDays / 30);
+
+      const avg = (claimScore + predicateScore + corrobScore + recencyScore) / 4;
+      return {
+        pct: Math.round(avg * 100),
+        claimScore,
+        predicateScore,
+        corrobScore,
+        recencyScore,
+      };
+    }, [claims]);
+
+  const barColor =
+    pct >= 75
+      ? colors.statusApprove
+      : pct >= 40
+      ? colors.teal
+      : colors.statusPending;
+
+  return (
+    <View style={styles.coverageCard}>
+      <View style={styles.coverageHeader}>
+        <Text style={styles.coverageLabel}>COVERAGE SCORE</Text>
+        <Text style={[styles.coveragePct, { color: barColor }]}>{pct}%</Text>
+      </View>
+      <View style={styles.coverageTrack}>
+        <View
+          style={[
+            styles.coverageFill,
+            { width: `${pct}%`, backgroundColor: barColor },
+          ]}
+        />
+      </View>
+      <View style={styles.coverageBreakdown}>
+        <CoverageFacet label="Claims" score={claimScore} />
+        <CoverageFacet label="Variety" score={predicateScore} />
+        <CoverageFacet label="Corrob" score={corrobScore} />
+        <CoverageFacet label="Recency" score={recencyScore} />
+      </View>
+    </View>
+  );
+}
+
+function CoverageFacet({ label, score }: { label: string; score: number }) {
+  return (
+    <View style={styles.facetCell}>
+      <Text style={styles.facetLabel}>{label}</Text>
+      <View style={styles.facetTrack}>
+        <View
+          style={[styles.facetFill, { width: `${Math.round(score * 100)}%` }]}
+        />
+      </View>
+    </View>
   );
 }
 
@@ -367,6 +446,68 @@ const styles = StyleSheet.create({
     fontFamily: fonts.archivo.semibold,
     fontSize: 14,
     color: colors.teal,
+  },
+  coverageCard: {
+    backgroundColor: colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    gap: spacing.sm,
+  },
+  coverageHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
+  },
+  coverageLabel: {
+    fontFamily: fonts.archivo.medium,
+    fontSize: 10,
+    color: colors.slate,
+    letterSpacing: 1,
+  },
+  coveragePct: {
+    fontFamily: fonts.mono.semibold,
+    fontSize: 20,
+    fontVariant: ['tabular-nums'],
+  },
+  coverageTrack: {
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    overflow: 'hidden',
+  },
+  coverageFill: {
+    height: '100%',
+    borderRadius: 3,
+  },
+  coverageBreakdown: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: 4,
+  },
+  facetCell: {
+    flex: 1,
+    gap: 4,
+  },
+  facetLabel: {
+    fontFamily: fonts.archivo.medium,
+    fontSize: 9,
+    color: colors.slate,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  facetTrack: {
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    overflow: 'hidden',
+  },
+  facetFill: {
+    height: '100%',
+    backgroundColor: colors.teal,
+    borderRadius: 2,
   },
   statsRow: {
     flexDirection: 'row',

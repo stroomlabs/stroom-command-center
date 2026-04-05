@@ -20,6 +20,14 @@ import { StatusBadge, STATUS_COLORS } from '../../src/components/StatusBadge';
 import { JsonView } from '../../src/components/JsonView';
 import { RejectSheet } from '../../src/components/RejectSheet';
 import { GlowSpot } from '../../src/components/GlowSpot';
+import { useBrandToast } from '../../src/components/BrandToast';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+  withSequence,
+  Easing,
+} from 'react-native-reanimated';
 import supabase from '../../src/lib/supabase';
 import type { ClaimCorroborationDetail } from '@stroom/supabase';
 import type { RejectionReason } from '@stroom/types';
@@ -30,8 +38,23 @@ export default function ClaimDetailScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { claim, corroborations, loading, error } = useClaimDetail(id);
+  const { show: showToast } = useBrandToast();
   const [rejectVisible, setRejectVisible] = useState(false);
   const [acting, setActing] = useState(false);
+  // Local status override so the badge can animate to its new state before
+  // we navigate back. Null = fall through to claim.status.
+  const [overrideStatus, setOverrideStatus] = useState<string | null>(null);
+  const badgePulse = useSharedValue(0);
+  const badgeAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: 1 + badgePulse.value * 0.1 }],
+    opacity: 1 - badgePulse.value * 0.1,
+  }));
+  const animateBadgeSwap = () => {
+    badgePulse.value = withSequence(
+      withTiming(1, { duration: 180, easing: Easing.in(Easing.ease) }),
+      withTiming(0, { duration: 260, easing: Easing.out(Easing.ease) })
+    );
+  };
 
   const openUrl = useCallback((url: string | null | undefined) => {
     if (!url) return;
@@ -45,12 +68,16 @@ export default function ClaimDetailScreen() {
     try {
       await approveClaim(supabase, claim.id);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      router.back();
+      setOverrideStatus('approved');
+      animateBadgeSwap();
+      showToast('Claim approved', 'success');
+      setTimeout(() => router.back(), 500);
     } catch (e: any) {
       setActing(false);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      showToast(e?.message ?? 'Approve failed', 'error');
     }
-  }, [claim, acting, router]);
+  }, [claim, acting, router, showToast]);
 
   const openRejectSheet = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -65,13 +92,17 @@ export default function ClaimDetailScreen() {
       try {
         await rejectClaim(supabase, claim.id, reason, notes);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-        router.back();
+        setOverrideStatus('rejected');
+        animateBadgeSwap();
+        showToast('Claim rejected', 'warn');
+        setTimeout(() => router.back(), 500);
       } catch (e: any) {
         setActing(false);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        showToast(e?.message ?? 'Reject failed', 'error');
       }
     },
-    [claim, router]
+    [claim, router, showToast]
   );
 
   const handleCopyId = useCallback(async () => {
@@ -154,7 +185,9 @@ export default function ClaimDetailScreen() {
       >
         {/* Status + age */}
         <View style={styles.statusRow}>
-          <StatusBadge status={claim.status} />
+          <Animated.View style={badgeAnimatedStyle}>
+            <StatusBadge status={(overrideStatus ?? claim.status) as any} />
+          </Animated.View>
           <Text style={styles.age}>{formatDate(claim.created_at)}</Text>
         </View>
 
