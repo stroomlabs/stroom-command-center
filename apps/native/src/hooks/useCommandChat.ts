@@ -93,6 +93,7 @@ export function useCommandChat() {
         const body = JSON.stringify({
           messages: convo.map(({ role, content }) => ({ role, content })),
           session_id: sid,
+          stream: true,
         });
 
         await new Promise<void>((resolve, reject) => {
