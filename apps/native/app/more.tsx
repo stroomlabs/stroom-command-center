@@ -1,11 +1,12 @@
 import React from 'react';
-import { View, Text, StyleSheet, Pressable, Alert } from 'react-native';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../src/lib/auth';
 import { useGovernanceStats } from '../src/hooks/useGovernanceStats';
+import { useBrandAlert } from '../src/components/BrandAlert';
 import { colors, fonts, spacing, radius, gradient } from '../src/constants/brand';
 
 export default function MoreScreen() {
@@ -13,9 +14,10 @@ export default function MoreScreen() {
   const router = useRouter();
   const { user, signOut } = useAuth();
   const { stats, loading: statsLoading } = useGovernanceStats();
+  const { alert } = useBrandAlert();
 
   const handleSignOut = () => {
-    Alert.alert('Sign Out', 'End your Command Center session?', [
+    alert('Sign Out', 'End your Command Center session?', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Sign Out', style: 'destructive', onPress: signOut },
     ]);

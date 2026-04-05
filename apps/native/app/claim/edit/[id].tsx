@@ -9,7 +9,6 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -21,6 +20,7 @@ import type { ClaimStatus } from '@stroom/types';
 import { useClaimDetail } from '../../../src/hooks/useClaimDetail';
 import supabase from '../../../src/lib/supabase';
 import { titleCase } from '../../../src/components/JsonView';
+import { useBrandAlert } from '../../../src/components/BrandAlert';
 import { colors, fonts, spacing, radius, gradient } from '../../../src/constants/brand';
 
 const STATUS_OPTIONS: ClaimStatus[] = [
@@ -37,6 +37,7 @@ export default function ClaimEditScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { claim, loading, error } = useClaimDetail(id);
+  const { alert } = useBrandAlert();
 
   const [status, setStatus] = useState<ClaimStatus>('draft');
   const [confidence, setConfidence] = useState<string>('');
@@ -123,11 +124,11 @@ export default function ClaimEditScreen() {
   }, [claim, canSave, rawMode, rawJson, jsonbValue, confidence, status, router]);
 
   const handleDiscard = useCallback(() => {
-    Alert.alert('Discard changes?', 'Any edits will be lost.', [
+    alert('Discard changes?', 'Any edits will be lost.', [
       { text: 'Keep editing', style: 'cancel' },
       { text: 'Discard', style: 'destructive', onPress: () => router.back() },
     ]);
-  }, [router]);
+  }, [alert, router]);
 
   if (loading) {
     return (

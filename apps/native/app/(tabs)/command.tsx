@@ -10,7 +10,6 @@ import {
   Platform,
   ActivityIndicator,
   Keyboard,
-  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -23,6 +22,7 @@ import { useEntityNameMap, type EntityLookup } from '../../src/hooks/useEntityNa
 import { useSessionHistory } from '../../src/hooks/useSessionHistory';
 import { ActionSheet, type ActionSheetAction } from '../../src/components/ActionSheet';
 import { SessionHistorySheet } from '../../src/components/SessionHistorySheet';
+import { useBrandAlert } from '../../src/components/BrandAlert';
 import type { CommandSession } from '@stroom/types';
 import { colors, fonts, spacing, radius, gradient } from '../../src/constants/brand';
 
@@ -43,6 +43,7 @@ export default function CommandScreen() {
   } = useCommandChat();
   const history = useSessionHistory();
   const entityLookup = useEntityNameMap();
+  const { alert } = useBrandAlert();
 
   const handleEntityLinkPress = useCallback(
     (id: string) => {
@@ -112,7 +113,7 @@ export default function CommandScreen() {
       resetSession();
       return;
     }
-    Alert.alert(
+    alert(
       'Start new session?',
       'This will clear the current thread and rotate the session id.',
       [
@@ -127,7 +128,7 @@ export default function CommandScreen() {
         },
       ]
     );
-  }, [messages.length, resetSession]);
+  }, [alert, messages.length, resetSession]);
 
   const copyMessage = useCallback(async (content: string) => {
     if (!content) return;
