@@ -45,6 +45,41 @@ export default function OpsScreen() {
   const [refreshing, setRefreshing] = React.useState(false);
   const [sweeping, setSweeping] = React.useState(false);
   const [autoApprovedToday, setAutoApprovedToday] = React.useState(0);
+  const [lastSweep, setLastSweep] = React.useState<{
+    at: string;
+    processed: number;
+  } | null>(null);
+
+  // Query the audit_log for the most recent auto-approve burst attributable
+  // to the governance engine. A "sweep" is a contiguous run of auto_approve
+  // rows created within a short window, so we treat everything within ~5min
+  // of the most recent engine action as one sweep.
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from('audit_log')
+        .select('created_at, action_type, actor')
+        .in('actor', ['agent', 'system'])
+        .eq('action_type', 'approve')
+        .order('created_at', { ascending: false })
+        .limit(100);
+      if (cancelled || !data || data.length === 0) {
+        if (!cancelled) setLastSweep(null);
+        return;
+      }
+      const rows = data as Array<{ created_at: string }>;
+      const latest = new Date(rows[0].created_at).getTime();
+      const windowStart = latest - 5 * 60_000;
+      const processed = rows.filter(
+        (r) => new Date(r.created_at).getTime() >= windowStart
+      ).length;
+      setLastSweep({ at: rows[0].created_at, processed });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [sweeping, refreshing]);
 
   // Count of audit_log rows today where an agent/system actor approved a claim.
   React.useEffect(() => {
@@ -292,6 +327,20 @@ export default function OpsScreen() {
           </Text>
         </Pressable>
 
+        {/* Last sweep indicator */}
+        <View style={styles.lastSweepRow}>
+          <Ionicons
+            name={lastSweep ? 'time-outline' : 'information-circle-outline'}
+            size={12}
+            color={colors.slate}
+          />
+          <Text style={styles.lastSweepText}>
+            {lastSweep
+              ? `Last sweep ${formatRelative(lastSweep.at)} · ${lastSweep.processed} processed`
+              : 'No sweep run yet'}
+          </Text>
+        </View>
+
         {cards.map((card) => (
           <OpsCard
             key={card.key}
@@ -355,6 +404,17 @@ export default function OpsScreen() {
 }
 
 type SummaryTone = 'ok' | 'warn' | 'alert';
+
+function formatRelative(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const min = Math.floor(diff / 60_000);
+  if (min < 1) return 'just now';
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  const d = Math.floor(hr / 24);
+  return `${d}d ago`;
+}
 
 function SummaryCell({
   label,
@@ -521,6 +581,20 @@ const styles = StyleSheet.create({
     color: colors.slate,
     textTransform: 'uppercase',
     letterSpacing: 0.4,
+  },
+  lastSweepRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: -spacing.xs,
+    marginBottom: spacing.sm,
+  },
+  lastSweepText: {
+    fontFamily: fonts.mono.regular,
+    fontSize: 10,
+    color: colors.slate,
+    fontVariant: ['tabular-nums'],
   },
   sweepBtn: {
     flexDirection: 'row',

@@ -194,6 +194,34 @@ export default function CommandScreen() {
     return filtered.length > 0 ? filtered : null;
   }, [input]);
 
+  const handleExport = useCallback(async () => {
+    if (messages.length === 0) {
+      alert('Nothing to export', 'Start a conversation first.');
+      return;
+    }
+    const ts = new Date().toISOString();
+    const md = [
+      `# Command conversation export`,
+      ``,
+      `_Exported ${ts}_`,
+      `_Session: ${sessionId ?? 'unsaved'}_`,
+      ``,
+      '---',
+      ``,
+      ...messages.map((m) => {
+        const role = m.role === 'user' ? '**You**' : '**Claude**';
+        return `### ${role}\n\n${m.content}\n`;
+      }),
+    ].join('\n');
+    try {
+      await Clipboard.setStringAsync(md);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      alert('Copied to clipboard', `${messages.length} messages exported as Markdown.`);
+    } catch {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    }
+  }, [messages, sessionId, alert]);
+
   const openHistory = useCallback(() => {
     Keyboard.dismiss();
     Haptics.selectionAsync();
@@ -317,6 +345,14 @@ export default function CommandScreen() {
               hitSlop={8}
             >
               <Ionicons name="time-outline" size={20} color={colors.silver} />
+            </Pressable>
+            <Pressable
+              onPress={handleExport}
+              style={({ pressed }) => [styles.iconBtn, pressed && { opacity: 0.6 }]}
+              hitSlop={8}
+              accessibilityLabel="Export conversation as Markdown"
+            >
+              <Ionicons name="share-outline" size={20} color={colors.silver} />
             </Pressable>
             <Pressable
               onPress={handleReset}

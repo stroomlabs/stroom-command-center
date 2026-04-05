@@ -24,6 +24,7 @@ import Animated, {
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQueueClaims } from '../../src/hooks/useQueueClaims';
+import supabase from '../../src/lib/supabase';
 import { ClaimCard } from '../../src/components/ClaimCard';
 import { RejectSheet } from '../../src/components/RejectSheet';
 import { SkeletonClaimCard } from '../../src/components/Skeleton';
@@ -37,9 +38,10 @@ import type { QueueClaim } from '@stroom/supabase';
 import { colors, fonts, spacing, radius, gradient } from '../../src/constants/brand';
 
 type StatusFilter = 'all' | 'draft' | 'pending_review';
-type SortKey = 'newest' | 'oldest' | 'risk' | 'low_trust';
+type SortKey = 'smart' | 'newest' | 'oldest' | 'risk' | 'low_trust';
 
 const SORT_LABELS: Record<SortKey, string> = {
+  smart: 'Smart (risk · importance · age)',
   newest: 'Newest first',
   oldest: 'Oldest first',
   risk: 'Highest risk',
@@ -60,8 +62,45 @@ export default function QueueScreen() {
   const [rejectTarget, setRejectTarget] = useState<string | null>(null);
   const [filter, setFilter] = useState<StatusFilter>('all');
   const [search, setSearch] = useState('');
-  const [sort, setSort] = useState<SortKey>('newest');
+  const [sort, setSort] = useState<SortKey>('smart');
   const [sortSheetVisible, setSortSheetVisible] = useState(false);
+  const [importance, setImportance] = useState<Map<string, number>>(new Map());
+
+  // Fetch total claim count per subject entity for the current queue —
+  // powers the "importance" dimension of the Smart sort. Cheap approximation:
+  // one count query per unique entity id. Only refreshes when the set of
+  // entity ids changes.
+  const subjectEntityIds = React.useMemo(() => {
+    const ids = new Set<string>();
+    for (const c of claims) {
+      if (c.subject_entity_id) ids.add(c.subject_entity_id);
+    }
+    return Array.from(ids);
+  }, [claims]);
+
+  React.useEffect(() => {
+    if (subjectEntityIds.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      const entries: [string, number][] = await Promise.all(
+        subjectEntityIds.map(async (id) => {
+          try {
+            const { count } = await supabase
+              .from('claims')
+              .select('id', { count: 'exact', head: true })
+              .eq('subject_entity_id', id);
+            return [id, count ?? 0] as [string, number];
+          } catch {
+            return [id, 0] as [string, number];
+          }
+        })
+      );
+      if (!cancelled) setImportance(new Map(entries));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [subjectEntityIds]);
   const glow = useSharedValue(0);
   const isHot = claims.length > 100;
 
@@ -113,6 +152,18 @@ export default function QueueScreen() {
 
     const copy = [...bySearch];
     switch (sort) {
+      case 'smart': {
+        // Smart: high-risk first → entity importance → oldest first.
+        copy.sort((a, b) => {
+          const dr = riskScore(b) - riskScore(a);
+          if (dr !== 0) return dr;
+          const ia = importance.get(a.subject_entity_id ?? '') ?? 0;
+          const ib = importance.get(b.subject_entity_id ?? '') ?? 0;
+          if (ib !== ia) return ib - ia;
+          return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+        });
+        break;
+      }
       case 'oldest':
         copy.sort(
           (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
@@ -134,7 +185,7 @@ export default function QueueScreen() {
         );
     }
     return copy;
-  }, [claims, filter, search, sort]);
+  }, [claims, filter, search, sort, importance]);
 
   const sortActions: ActionSheetAction[] = (Object.keys(SORT_LABELS) as SortKey[]).map(
     (key) => ({
