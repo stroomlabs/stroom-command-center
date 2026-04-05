@@ -211,7 +211,7 @@ function ClaimCardImpl({
               selectMode && selected && styles.selectedCardWrap,
               pressed && !selectMode && {
                 opacity: 0.85,
-                transform: [{ scale: 0.98 }],
+                transform: [{ scale: 0.97 }],
               },
             ]}
           >
@@ -295,7 +295,12 @@ function ClaimCardImpl({
           disabled={!claim.source?.id || selectMode}
           style={({ pressed }) => [
             styles.sourceChip,
-            pressed && claim.source?.id && !selectMode && { opacity: 0.65 },
+            pressed &&
+              claim.source?.id &&
+              !selectMode && {
+                opacity: 0.65,
+                transform: [{ scale: 0.97 }],
+              },
           ]}
         >
           <Text style={styles.sourceLabel} numberOfLines={1}>

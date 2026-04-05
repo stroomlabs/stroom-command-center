@@ -50,37 +50,22 @@ export default function OpsScreen() {
     processed: number;
   } | null>(null);
 
-  // Query audit_log for the most recent governance_engine auto_approve
-  // burst. A "sweep" is a contiguous run of rows created within ~5min of
-  // the latest engine action. Falls back to agent/system + approve for
-  // backfilled history where the governance_engine actor isn't set yet.
+  // Query audit_log for the most recent sweep — rows tagged
+  // metadata->>'batch' = 'true' with action_type = 'auto_approve'. Treat
+  // rows within a ~5min burst window of the latest entry as one sweep.
   React.useEffect(() => {
     let cancelled = false;
     (async () => {
-      // Primary: engine-tagged rows
-      const primary = await supabase
+      const { data } = await supabase
         .from('audit_log')
-        .select('created_at, action_type, actor')
-        .eq('actor', 'governance_engine')
+        .select('created_at, metadata')
         .eq('action_type', 'auto_approve')
+        .filter('metadata->>batch', 'eq', 'true')
         .order('created_at', { ascending: false })
-        .limit(100);
-
-      let rows = (primary.data as Array<{ created_at: string }> | null) ?? [];
-
-      // Fallback: older sweeps without the engine actor label
-      if (rows.length === 0) {
-        const fallback = await supabase
-          .from('audit_log')
-          .select('created_at, action_type, actor')
-          .in('actor', ['agent', 'system'])
-          .eq('action_type', 'approve')
-          .order('created_at', { ascending: false })
-          .limit(100);
-        rows = (fallback.data as Array<{ created_at: string }> | null) ?? [];
-      }
+        .limit(200);
 
       if (cancelled) return;
+      const rows = (data as Array<{ created_at: string }> | null) ?? [];
       if (rows.length === 0) {
         setLastSweep(null);
         return;
@@ -488,7 +473,7 @@ function OpsCard({
       style={({ pressed }) => [
         styles.card,
         { borderColor: toneBorder },
-        pressed && { opacity: 0.75, transform: [{ scale: 0.985 }] },
+        pressed && { opacity: 0.75, transform: [{ scale: 0.97 }] },
       ]}
     >
       <View style={[styles.cardIcon, { borderColor: toneBorder }]}>

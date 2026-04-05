@@ -452,6 +452,7 @@ const styles = StyleSheet.create({
   menuPressed: {
     backgroundColor: colors.surfaceCard,
     borderColor: colors.glassBorderHover,
+    transform: [{ scale: 0.97 }],
   },
   menuLabel: {
     fontFamily: fonts.archivo.medium,
