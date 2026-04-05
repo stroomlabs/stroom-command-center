@@ -736,6 +736,60 @@ function makeHourBuckets(): HourBucket[] {
   return Array.from({ length: 24 }, (_, i) => ({ hour: i, count: 0 }));
 }
 
+// ── Top entities by claim count ──
+
+export interface TopEntity {
+  id: string;
+  canonical_name: string | null;
+  entity_type: string | null;
+  claim_count: number;
+}
+
+// Pulls the single subject_entity_id column from claims, tallies client-side,
+// then resolves the top N to their canonical names.
+export async function fetchTopEntities(
+  client: SupabaseClient,
+  limit = 5
+): Promise<TopEntity[]> {
+  const { data, error } = await client.from('claims').select('subject_entity_id');
+  if (error) throw error;
+
+  const counts = new Map<string, number>();
+  for (const row of (data as { subject_entity_id: string | null }[] | null) ?? []) {
+    const id = row.subject_entity_id;
+    if (!id) continue;
+    counts.set(id, (counts.get(id) ?? 0) + 1);
+  }
+
+  const top = Array.from(counts.entries())
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, limit);
+  if (top.length === 0) return [];
+
+  const ids = top.map(([id]) => id);
+  const { data: entityRows, error: entErr } = await client
+    .from('entities')
+    .select('id, canonical_name, entity_type')
+    .in('id', ids);
+  if (entErr) throw entErr;
+
+  const byId = new Map<string, { canonical_name: string | null; entity_type: string | null }>();
+  for (const e of (entityRows as {
+    id: string;
+    canonical_name: string | null;
+    entity_type: string | null;
+  }[] | null) ?? []) {
+    byId.set(e.id, { canonical_name: e.canonical_name, entity_type: e.entity_type });
+  }
+
+  return top.map(([id, count]) => ({
+    id,
+    canonical_name: byId.get(id)?.canonical_name ?? null,
+    entity_type: byId.get(id)?.entity_type ?? null,
+    claim_count: count,
+  }));
+}
+
 // ── Entity name map (for Command inline links) ──
 
 export interface EntityNameEntry {

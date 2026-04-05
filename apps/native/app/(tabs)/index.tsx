@@ -14,8 +14,10 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { usePulseData } from '../../src/hooks/usePulseData';
 import { usePushNotifications } from '../../src/hooks/usePushNotifications';
+import { useTopEntities } from '../../src/hooks/useTopEntities';
 import { PulseMetric } from '../../src/components/PulseMetric';
 import { GlassCard } from '../../src/components/GlassCard';
+import { SkeletonMetricCard } from '../../src/components/Skeleton';
 import { colors, fonts, spacing, radius, gradient } from '../../src/constants/brand';
 
 function formatLastUpdated(at: Date, _tick: number): string {
@@ -34,6 +36,7 @@ export default function PulseScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { data, loading, error, refresh, lastUpdatedAt } = usePulseData();
+  const topEntities = useTopEntities(5);
   const [refreshing, setRefreshing] = React.useState(false);
   const [nowTick, setNowTick] = React.useState(0);
 
@@ -90,9 +93,21 @@ export default function PulseScreen() {
         <Text style={styles.headerSub}>StroomHelix Intelligence Graph</Text>
 
         {loading && !data ? (
-          <View style={styles.loadingWrap}>
-            <ActivityIndicator color={colors.teal} size="large" />
-          </View>
+          <>
+            <View style={styles.grid}>
+              <SkeletonMetricCard />
+              <SkeletonMetricCard />
+            </View>
+            <View style={styles.grid}>
+              <SkeletonMetricCard />
+              <SkeletonMetricCard />
+            </View>
+            <View style={styles.grid}>
+              <SkeletonMetricCard />
+              <SkeletonMetricCard />
+              <SkeletonMetricCard />
+            </View>
+          </>
         ) : error ? (
           <View style={styles.errorWrap}>
             <Text style={styles.errorText}>{error}</Text>
@@ -182,6 +197,53 @@ export default function PulseScreen() {
                       </View>
                     ))}
                 </View>
+              </GlassCard>
+            )}
+
+            {/* Top Entities */}
+            {(topEntities.entities.length > 0 || topEntities.loading) && (
+              <GlassCard style={styles.topEntitiesCard}>
+                <Text style={styles.breakdownTitle}>Top Entities</Text>
+                {topEntities.loading && topEntities.entities.length === 0 ? (
+                  <View style={{ gap: spacing.sm }}>
+                    <View style={styles.topEntitySkeletonRow} />
+                    <View style={styles.topEntitySkeletonRow} />
+                    <View style={styles.topEntitySkeletonRow} />
+                  </View>
+                ) : (
+                  topEntities.entities.map((e, idx) => (
+                    <Pressable
+                      key={e.id}
+                      onPress={() =>
+                        router.push({
+                          pathname: '/entity/[id]',
+                          params: { id: e.id },
+                        } as any)
+                      }
+                      style={({ pressed }) => [
+                        styles.topEntityRow,
+                        idx > 0 && styles.topEntityRowDivider,
+                        pressed && { opacity: 0.75 },
+                      ]}
+                    >
+                      <Text style={styles.topEntityRank}>{idx + 1}</Text>
+                      <View style={styles.topEntityBody}>
+                        <Text style={styles.topEntityName} numberOfLines={1}>
+                          {e.canonical_name ?? 'Unknown entity'}
+                        </Text>
+                        {e.entity_type && (
+                          <Text style={styles.topEntityType}>{e.entity_type}</Text>
+                        )}
+                      </View>
+                      <Text style={styles.topEntityCount}>{e.claim_count}</Text>
+                      <Ionicons
+                        name="chevron-forward"
+                        size={13}
+                        color={colors.slate}
+                      />
+                    </Pressable>
+                  ))
+                )}
               </GlassCard>
             )}
 
@@ -290,6 +352,54 @@ const styles = StyleSheet.create({
   },
   breakdownCard: {
     marginTop: spacing.sm,
+  },
+  topEntitiesCard: {
+    marginTop: spacing.sm,
+  },
+  topEntityRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: 10,
+  },
+  topEntityRowDivider: {
+    borderTopWidth: 1,
+    borderTopColor: colors.glassBorder,
+  },
+  topEntityRank: {
+    width: 22,
+    fontFamily: fonts.mono.semibold,
+    fontSize: 12,
+    color: colors.slate,
+    fontVariant: ['tabular-nums'],
+    textAlign: 'center',
+  },
+  topEntityBody: {
+    flex: 1,
+    gap: 2,
+  },
+  topEntityName: {
+    fontFamily: fonts.archivo.semibold,
+    fontSize: 14,
+    color: colors.alabaster,
+  },
+  topEntityType: {
+    fontFamily: fonts.mono.regular,
+    fontSize: 10,
+    color: colors.slate,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  topEntityCount: {
+    fontFamily: fonts.mono.semibold,
+    fontSize: 13,
+    color: colors.teal,
+    fontVariant: ['tabular-nums'],
+  },
+  topEntitySkeletonRow: {
+    height: 32,
+    borderRadius: radius.sm,
+    backgroundColor: 'rgba(255,255,255,0.04)',
   },
   breakdownTitle: {
     fontFamily: fonts.archivo.medium,

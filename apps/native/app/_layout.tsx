@@ -8,6 +8,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { AuthProvider, useAuth } from '../src/lib/auth';
 import { OfflineBanner } from '../src/components/OfflineBanner';
+import { ErrorBoundary } from '../src/components/ErrorBoundary';
 import { colors, fonts, gradient } from '../src/constants/brand';
 
 // Keep splash visible while loading
@@ -103,6 +104,7 @@ export default function RootLayout() {
       <AuthProvider>
         <StatusBar style="light" />
         <RouteGuard>
+          <ErrorBoundary>
           <Stack
           screenOptions={{
             headerShown: false,
@@ -123,6 +125,7 @@ export default function RootLayout() {
           <Stack.Screen name="predicate/[key]" />
           <Stack.Screen name="digest" />
         </Stack>
+          </ErrorBoundary>
         </RouteGuard>
         <OfflineBanner />
       </AuthProvider>

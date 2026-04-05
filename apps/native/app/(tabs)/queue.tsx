@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQueueClaims } from '../../src/hooks/useQueueClaims';
 import { ClaimCard } from '../../src/components/ClaimCard';
 import { RejectSheet } from '../../src/components/RejectSheet';
+import { SkeletonClaimCard } from '../../src/components/Skeleton';
 import type { RejectionReason, ClaimStatus } from '@stroom/types';
 import type { QueueClaim } from '@stroom/supabase';
 import { colors, fonts, spacing, radius, gradient } from '../../src/constants/brand';
@@ -199,9 +200,15 @@ export default function QueueScreen() {
       </ScrollView>
 
       {loading && claims.length === 0 ? (
-        <View style={styles.loadingWrap}>
-          <ActivityIndicator color={colors.teal} size="large" />
-        </View>
+        <ScrollView
+          contentContainerStyle={styles.list}
+          showsVerticalScrollIndicator={false}
+        >
+          <SkeletonClaimCard />
+          <SkeletonClaimCard />
+          <SkeletonClaimCard />
+          <SkeletonClaimCard />
+        </ScrollView>
       ) : filteredClaims.length === 0 ? (
         <ScrollView
           contentContainerStyle={styles.emptyScroll}
