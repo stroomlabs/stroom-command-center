@@ -4,6 +4,7 @@ import {
   approveClaim,
   rejectClaim,
   subscribeToClaimChanges,
+  batchApproveClaims,
 } from '@stroom/supabase';
 import type { QueueClaim } from '@stroom/supabase';
 import type { RejectionReason } from '@stroom/types';
@@ -95,5 +96,34 @@ export function useQueueClaims() {
     [refresh]
   );
 
-  return { claims, loading, error, refresh, approve, reject, acting };
+  const batchApprove = useCallback(
+    async (claimIds: string[]) => {
+      if (claimIds.length === 0) return;
+      const idSet = new Set(claimIds);
+      // Optimistic remove
+      setActing((prev) => {
+        const next = new Set(prev);
+        claimIds.forEach((id) => next.add(id));
+        return next;
+      });
+      setClaims((prev) => prev.filter((c) => !idSet.has(c.id)));
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+      try {
+        await batchApproveClaims(supabase, claimIds);
+      } catch (e: any) {
+        refresh();
+        setError(e.message);
+      } finally {
+        setActing((prev) => {
+          const next = new Set(prev);
+          claimIds.forEach((id) => next.delete(id));
+          return next;
+        });
+      }
+    },
+    [refresh]
+  );
+
+  return { claims, loading, error, refresh, approve, reject, batchApprove, acting };
 }

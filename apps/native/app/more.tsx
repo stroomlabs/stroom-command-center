@@ -62,8 +62,12 @@ export default function MoreScreen() {
             label="Research Queue"
             onPress={() => router.push('/research' as any)}
           />
+          <MenuItem
+            icon="notifications-outline"
+            label="Notification Prefs"
+            onPress={() => router.push('/notification-prefs' as any)}
+          />
           <MenuItem icon="settings-outline" label="Policy Config" disabled />
-          <MenuItem icon="notifications-outline" label="Notification Prefs" disabled />
         </View>
 
         {/* App info */}

@@ -212,6 +212,44 @@ export async function approveClaim(
   if (auditError) throw auditError;
 }
 
+export async function batchApproveClaims(
+  client: SupabaseClient,
+  claimIds: string[]
+): Promise<void> {
+  if (claimIds.length === 0) return;
+
+  // Read current statuses for accurate audit trail
+  const { data: current } = await client
+    .from('claims')
+    .select('id, status')
+    .in('id', claimIds);
+
+  const statusById = new Map<string, string>();
+  for (const row of (current as { id: string; status: string }[] | null) ?? []) {
+    statusById.set(row.id, row.status);
+  }
+
+  const { error: updateError } = await client
+    .from('claims')
+    .update({ status: 'approved' })
+    .in('id', claimIds);
+
+  if (updateError) throw updateError;
+
+  const auditRows = claimIds.map((id) => ({
+    entity_id: id,
+    entity_table: 'claims',
+    actor: 'operator' as AuditActor,
+    action_type: 'approve' as AuditActionType,
+    old_state: { status: statusById.get(id) ?? 'draft' },
+    new_state: { status: 'approved' },
+    metadata: { batch: true, batch_size: claimIds.length },
+  }));
+
+  const { error: auditError } = await client.from('audit_log').insert(auditRows);
+  if (auditError) throw auditError;
+}
+
 export async function rejectClaim(
   client: SupabaseClient,
   claimId: string,

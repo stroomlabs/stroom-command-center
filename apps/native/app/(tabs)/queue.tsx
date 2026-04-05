@@ -9,6 +9,8 @@ import {
   ScrollView,
   Pressable,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQueueClaims } from '../../src/hooks/useQueueClaims';
@@ -28,10 +30,13 @@ const FILTERS: { key: StatusFilter; label: string }[] = [
 
 export default function QueueScreen() {
   const insets = useSafeAreaInsets();
-  const { claims, loading, error, refresh, approve, reject } = useQueueClaims();
+  const { claims, loading, error, refresh, approve, reject, batchApprove } =
+    useQueueClaims();
   const [refreshing, setRefreshing] = useState(false);
   const [rejectTarget, setRejectTarget] = useState<string | null>(null);
   const [filter, setFilter] = useState<StatusFilter>('all');
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const filteredClaims = useMemo(
     () =>
@@ -57,15 +62,45 @@ export default function QueueScreen() {
     [rejectTarget, reject]
   );
 
+  const enterSelectMode = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setSelectMode(true);
+  }, []);
+
+  const exitSelectMode = useCallback(() => {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+  }, []);
+
+  const toggleSelect = useCallback((id: string) => {
+    Haptics.selectionAsync();
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const handleBatchApprove = useCallback(async () => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    await batchApprove(ids);
+    exitSelectMode();
+  }, [selectedIds, batchApprove, exitSelectMode]);
+
   const renderItem = useCallback(
     ({ item }: { item: QueueClaim }) => (
       <ClaimCard
         claim={item}
         onApprove={() => approve(item.id)}
         onReject={() => setRejectTarget(item.id)}
+        selectMode={selectMode}
+        selected={selectedIds.has(item.id)}
+        onToggleSelect={() => toggleSelect(item.id)}
       />
     ),
-    [approve]
+    [approve, selectMode, selectedIds, toggleSelect]
   );
 
   const keyExtractor = useCallback((item: QueueClaim) => item.id, []);
@@ -80,9 +115,21 @@ export default function QueueScreen() {
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + spacing.lg }]}>
         <Text style={styles.headerTitle}>Queue</Text>
-        <View style={styles.countBadge}>
-          <Text style={styles.countText}>{filteredClaims.length}</Text>
-        </View>
+        <Pressable
+          onLongPress={enterSelectMode}
+          delayLongPress={400}
+          style={({ pressed }) => [
+            styles.countBadge,
+            selectMode && styles.countBadgeActive,
+            pressed && { opacity: 0.7 },
+          ]}
+        >
+          <Text
+            style={[styles.countText, selectMode && styles.countTextActive]}
+          >
+            {filteredClaims.length}
+          </Text>
+        </Pressable>
       </View>
       <Text style={styles.headerSub}>Claims pending governance review</Text>
 
@@ -183,6 +230,39 @@ export default function QueueScreen() {
         onDismiss={() => setRejectTarget(null)}
         onReject={handleReject}
       />
+
+      {selectMode && (
+        <View
+          style={[
+            styles.batchBar,
+            { paddingBottom: Math.max(insets.bottom + spacing.sm, spacing.lg) },
+          ]}
+        >
+          <Pressable
+            onPress={exitSelectMode}
+            style={({ pressed }) => [
+              styles.batchCancelBtn,
+              pressed && { opacity: 0.7 },
+            ]}
+          >
+            <Text style={styles.batchCancelText}>Cancel</Text>
+          </Pressable>
+          <Pressable
+            onPress={handleBatchApprove}
+            disabled={selectedIds.size === 0}
+            style={({ pressed }) => [
+              styles.batchApproveBtn,
+              selectedIds.size === 0 && styles.batchApproveDisabled,
+              pressed && selectedIds.size > 0 && { opacity: 0.85 },
+            ]}
+          >
+            <Ionicons name="checkmark-done" size={18} color={colors.obsidian} />
+            <Text style={styles.batchApproveText}>
+              Approve {selectedIds.size || ''}
+            </Text>
+          </Pressable>
+        </View>
+      )}
     </LinearGradient>
   );
 }
@@ -211,11 +291,65 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(0, 161, 155, 0.2)',
   },
+  countBadgeActive: {
+    backgroundColor: colors.teal,
+    borderColor: colors.teal,
+  },
   countText: {
     fontFamily: fonts.mono.semibold,
     fontSize: 13,
     color: colors.teal,
     fontVariant: ['tabular-nums'],
+  },
+  countTextActive: {
+    color: colors.obsidian,
+  },
+  batchBar: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    flexDirection: 'row',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    backgroundColor: colors.surfaceElevated,
+    borderTopWidth: 1,
+    borderTopColor: colors.glassBorder,
+  },
+  batchCancelBtn: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: 14,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    backgroundColor: colors.surfaceCard,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  batchCancelText: {
+    fontFamily: fonts.archivo.semibold,
+    fontSize: 14,
+    color: colors.silver,
+  },
+  batchApproveBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    gap: spacing.sm,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 14,
+    borderRadius: radius.md,
+    backgroundColor: colors.teal,
+  },
+  batchApproveDisabled: {
+    opacity: 0.35,
+  },
+  batchApproveText: {
+    fontFamily: fonts.archivo.bold,
+    fontSize: 15,
+    color: colors.obsidian,
+    letterSpacing: -0.2,
   },
   headerSub: {
     fontFamily: fonts.archivo.regular,

@@ -24,9 +24,19 @@ interface ClaimCardProps {
   claim: QueueClaim;
   onApprove: () => void;
   onReject: () => void;
+  selectMode?: boolean;
+  selected?: boolean;
+  onToggleSelect?: () => void;
 }
 
-export function ClaimCard({ claim, onApprove, onReject }: ClaimCardProps) {
+export function ClaimCard({
+  claim,
+  onApprove,
+  onReject,
+  selectMode = false,
+  selected = false,
+  onToggleSelect,
+}: ClaimCardProps) {
   const subjectName = claim.subject_entity?.canonical_name ?? 'Unknown entity';
   const objectName = claim.object_entity?.canonical_name;
   const sourceName = claim.source?.source_name ?? 'Unknown source';
@@ -51,6 +61,7 @@ export function ClaimCard({ claim, onApprove, onReject }: ClaimCardProps) {
   };
 
   const panGesture = Gesture.Pan()
+    .enabled(!selectMode)
     .activeOffsetX([-15, 15])
     .failOffsetY([-15, 15])
     .onUpdate((e) => {
@@ -102,15 +113,23 @@ export function ClaimCard({ claim, onApprove, onReject }: ClaimCardProps) {
   return (
     <View style={styles.swipeWrap}>
       {/* Green reveal layer (behind the card) */}
-      <View style={styles.revealLayer} pointerEvents="none">
-        <Animated.View style={[styles.revealInner, revealAnimatedStyle]}>
-          <Ionicons name="checkmark-circle" size={28} color={colors.statusApprove} />
-          <Text style={styles.revealText}>Approve</Text>
-        </Animated.View>
-      </View>
+      {!selectMode && (
+        <View style={styles.revealLayer} pointerEvents="none">
+          <Animated.View style={[styles.revealInner, revealAnimatedStyle]}>
+            <Ionicons name="checkmark-circle" size={28} color={colors.statusApprove} />
+            <Text style={styles.revealText}>Approve</Text>
+          </Animated.View>
+        </View>
+      )}
 
       <GestureDetector gesture={panGesture}>
         <Animated.View style={cardAnimatedStyle}>
+          <Pressable
+            onPress={selectMode ? onToggleSelect : undefined}
+            style={
+              selectMode && selected ? styles.selectedCardWrap : undefined
+            }
+          >
           <GlassCard style={styles.card}>
       {/* Header row */}
       <View style={styles.headerRow}>
@@ -158,7 +177,8 @@ export function ClaimCard({ claim, onApprove, onReject }: ClaimCardProps) {
         )}
       </View>
 
-      {/* Action buttons */}
+      {/* Action buttons — hidden in batch select mode */}
+      {!selectMode && (
       <View style={styles.actions}>
         <Pressable
           onPress={onReject}
@@ -188,7 +208,26 @@ export function ClaimCard({ claim, onApprove, onReject }: ClaimCardProps) {
           </Text>
         </Pressable>
       </View>
+      )}
           </GlassCard>
+          {selectMode && (
+            <View
+              style={[
+                styles.selectOverlay,
+                selected && styles.selectOverlayActive,
+              ]}
+              pointerEvents="none"
+            >
+              <View
+                style={[styles.checkbox, selected && styles.checkboxActive]}
+              >
+                {selected && (
+                  <Ionicons name="checkmark" size={16} color={colors.obsidian} />
+                )}
+              </View>
+            </View>
+          )}
+          </Pressable>
         </Animated.View>
       </GestureDetector>
     </View>
@@ -289,6 +328,39 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.statusApprove,
     letterSpacing: -0.2,
+  },
+  selectedCardWrap: {
+    borderRadius: radius.lg,
+    borderWidth: 2,
+    borderColor: colors.teal,
+    shadowColor: colors.teal,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+  selectOverlay: {
+    position: 'absolute',
+    top: spacing.md,
+    right: spacing.md,
+    zIndex: 10,
+  },
+  selectOverlayActive: {
+    // kept for future state-dependent tweaks
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: colors.slate,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  checkboxActive: {
+    borderColor: colors.teal,
+    backgroundColor: colors.teal,
   },
   card: {
     marginBottom: 0,
