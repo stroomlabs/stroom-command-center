@@ -11,7 +11,6 @@ import {
   ActivityIndicator,
   Keyboard,
   Alert,
-  ActionSheetIOS,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -20,6 +19,7 @@ import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import * as Clipboard from 'expo-clipboard';
 import { useCommandChat, type ChatMessage } from '../../src/hooks/useCommandChat';
+import { ActionSheet, type ActionSheetAction } from '../../src/components/ActionSheet';
 import { colors, fonts, spacing, radius, gradient } from '../../src/constants/brand';
 
 export default function CommandScreen() {
@@ -28,6 +28,7 @@ export default function CommandScreen() {
   const { messages, sending, error, send, resetSession, deleteMessage, retryFrom } =
     useCommandChat();
   const [input, setInput] = useState('');
+  const [menuTarget, setMenuTarget] = useState<ChatMessage | null>(null);
   const scrollRef = useRef<ScrollView>(null);
 
   // Auto-scroll to bottom on new messages
@@ -75,54 +76,41 @@ export default function CommandScreen() {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   }, []);
 
-  const showMessageMenu = useCallback(
-    (message: ChatMessage) => {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      const canRetry = message.role === 'assistant' && !sending;
-      const options = canRetry
-        ? ['Copy', 'Retry', 'Delete', 'Cancel']
-        : ['Copy', 'Delete', 'Cancel'];
-      const destructiveIndex = canRetry ? 2 : 1;
-      const cancelIndex = options.length - 1;
+  const showMessageMenu = useCallback((message: ChatMessage) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setMenuTarget(message);
+  }, []);
 
-      const handle = (index: number) => {
-        if (index === 0) {
-          copyMessage(message.content);
-        } else if (canRetry && index === 1) {
-          retryFrom(message.id);
-        } else if (index === destructiveIndex) {
-          deleteMessage(message.id);
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-        }
-      };
-
-      if (Platform.OS === 'ios') {
-        ActionSheetIOS.showActionSheetWithOptions(
-          {
-            options,
-            cancelButtonIndex: cancelIndex,
-            destructiveButtonIndex: destructiveIndex,
-            userInterfaceStyle: 'dark',
-          },
-          handle
-        );
-      } else {
-        Alert.alert('Message', undefined, [
-          { text: 'Copy', onPress: () => handle(0) },
-          ...(canRetry
-            ? [{ text: 'Retry', onPress: () => handle(1) }]
-            : []),
-          {
-            text: 'Delete',
-            style: 'destructive',
-            onPress: () => handle(destructiveIndex),
-          },
-          { text: 'Cancel', style: 'cancel' },
-        ]);
-      }
-    },
-    [sending, copyMessage, retryFrom, deleteMessage]
-  );
+  const menuActions: ActionSheetAction[] = React.useMemo(() => {
+    if (!menuTarget) return [];
+    const canRetry = menuTarget.role === 'assistant' && !sending;
+    const actions: ActionSheetAction[] = [
+      {
+        label: 'Copy',
+        icon: 'copy-outline',
+        tone: 'accent',
+        onPress: () => copyMessage(menuTarget.content),
+      },
+    ];
+    if (canRetry) {
+      actions.push({
+        label: 'Retry',
+        icon: 'refresh',
+        tone: 'accent',
+        onPress: () => retryFrom(menuTarget.id),
+      });
+    }
+    actions.push({
+      label: 'Delete',
+      icon: 'trash-outline',
+      tone: 'destructive',
+      onPress: () => {
+        deleteMessage(menuTarget.id);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      },
+    });
+    return actions;
+  }, [menuTarget, sending, copyMessage, retryFrom, deleteMessage]);
 
   const showTypingIndicator =
     sending &&
@@ -237,6 +225,14 @@ export default function CommandScreen() {
           </View>
         </View>
       </KeyboardAvoidingView>
+
+      <ActionSheet
+        visible={menuTarget !== null}
+        title="Message"
+        subtitle={menuTarget?.role === 'assistant' ? 'Assistant reply' : 'Your message'}
+        actions={menuActions}
+        onDismiss={() => setMenuTarget(null)}
+      />
     </LinearGradient>
   );
 }
