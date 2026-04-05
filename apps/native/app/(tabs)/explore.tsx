@@ -226,13 +226,13 @@ function PredicatesView({
   error: string | null;
   onPress: (p: Predicate) => void;
 }) {
-  // Group by domain
+  // Group by category
   const grouped = React.useMemo(() => {
     const map = new Map<string, Predicate[]>();
     for (const p of predicates) {
-      const arr = map.get(p.domain) ?? [];
+      const arr = map.get(p.category) ?? [];
       arr.push(p);
-      map.set(p.domain, arr);
+      map.set(p.category, arr);
     }
     return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]));
   }, [predicates]);
@@ -265,14 +265,14 @@ function PredicatesView({
       contentContainerStyle={styles.predicateList}
       showsVerticalScrollIndicator={false}
     >
-      {grouped.map(([domain, preds]) => (
-        <View key={domain} style={styles.predicateGroup}>
-          <Text style={styles.predicateDomain}>{domain}</Text>
+      {grouped.map(([category, preds]) => (
+        <View key={category} style={styles.predicateGroup}>
+          <Text style={styles.predicateDomain}>{category}</Text>
           {preds.map((p) => {
             const count = counts.get(p.predicate_key) ?? 0;
             return (
               <Pressable
-                key={p.id}
+                key={p.predicate_key}
                 onPress={() => onPress(p)}
                 style={({ pressed }) => [
                   styles.predicateRow,
@@ -281,7 +281,7 @@ function PredicatesView({
               >
                 <View style={styles.predicateBody}>
                   <Text style={styles.predicateLabel} numberOfLines={1}>
-                    {p.label ?? formatKey(p.predicate_key)}
+                    {p.display_name}
                   </Text>
                   <Text style={styles.predicateKey} numberOfLines={1}>
                     {p.predicate_key}
@@ -300,10 +300,6 @@ function PredicatesView({
   );
 }
 
-function formatKey(key: string): string {
-  const last = key.includes('.') ? key.split('.').pop()! : key;
-  return last.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-}
 
 function FilterChip({
   label,

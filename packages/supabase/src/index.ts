@@ -581,9 +581,11 @@ export async function fetchAllPredicates(
 ): Promise<Predicate[]> {
   const { data, error } = await client
     .from('predicate_registry')
-    .select('*')
-    .order('domain', { ascending: true })
-    .order('predicate_key', { ascending: true });
+    .select(
+      'predicate_key, display_name, category, description, risk_level, freshness_days, value_type, applicable_domains, applicable_entity_types'
+    )
+    .order('category', { ascending: true })
+    .order('display_name', { ascending: true });
   if (error) throw error;
   return (data as Predicate[]) ?? [];
 }

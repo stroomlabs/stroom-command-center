@@ -73,14 +73,15 @@ export interface Source {
 
 // ── intel.predicate_registry ──
 export interface Predicate {
-  id: string;
   predicate_key: string;
-  domain: string;
-  label: string | null;
+  display_name: string;
+  category: string;
   description: string | null;
+  risk_level: string | null;
+  freshness_days: number | null;
   value_type: string;
-  metadata: Record<string, unknown> | null;
-  created_at: string;
+  applicable_domains: string[] | null;
+  applicable_entity_types: string[] | null;
 }
 
 // ── intel.claim_corroborations ──
