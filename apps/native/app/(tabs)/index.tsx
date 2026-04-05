@@ -6,15 +6,17 @@ import {
   StyleSheet,
   RefreshControl,
   ActivityIndicator,
+  Pressable,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { usePulseData } from '../../src/hooks/usePulseData';
 import { usePushNotifications } from '../../src/hooks/usePushNotifications';
 import { PulseMetric } from '../../src/components/PulseMetric';
 import { GlassCard } from '../../src/components/GlassCard';
-import { colors, fonts, spacing, gradient } from '../../src/constants/brand';
+import { colors, fonts, spacing, radius, gradient } from '../../src/constants/brand';
 
 function formatLastUpdated(at: Date, _tick: number): string {
   const diffMs = Date.now() - at.getTime();
@@ -183,6 +185,19 @@ export default function PulseScreen() {
               </GlassCard>
             )}
 
+            {/* Daily digest link */}
+            <Pressable
+              onPress={() => router.push('/digest' as any)}
+              style={({ pressed }) => [
+                styles.digestBtn,
+                pressed && { opacity: 0.75 },
+              ]}
+            >
+              <Ionicons name="calendar-outline" size={16} color={colors.teal} />
+              <Text style={styles.digestText}>Today's Digest</Text>
+              <Ionicons name="chevron-forward" size={14} color={colors.slate} />
+            </Pressable>
+
             {/* Timestamp */}
             <Text style={styles.timestamp}>
               Last updated {new Date().toLocaleTimeString()}
@@ -321,5 +336,23 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: spacing.lg,
     fontVariant: ['tabular-nums'],
+  },
+  digestBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.tealDim,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 161, 155, 0.3)',
+    borderRadius: radius.md,
+    paddingVertical: 12,
+    paddingHorizontal: spacing.md,
+    marginTop: spacing.md,
+  },
+  digestText: {
+    flex: 1,
+    fontFamily: fonts.archivo.semibold,
+    fontSize: 14,
+    color: colors.teal,
   },
 });

@@ -120,6 +120,8 @@ export default function RootLayout() {
           <Stack.Screen name="notification-prefs" />
           <Stack.Screen name="source/[id]" />
           <Stack.Screen name="sources" />
+          <Stack.Screen name="predicate/[key]" />
+          <Stack.Screen name="digest" />
         </Stack>
         </RouteGuard>
         <OfflineBanner />

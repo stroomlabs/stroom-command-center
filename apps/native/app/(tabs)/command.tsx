@@ -19,6 +19,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import * as Clipboard from 'expo-clipboard';
 import { useCommandChat, type ChatMessage } from '../../src/hooks/useCommandChat';
+import { useEntityNameMap, type EntityLookup } from '../../src/hooks/useEntityNameMap';
 import { useSessionHistory } from '../../src/hooks/useSessionHistory';
 import { ActionSheet, type ActionSheetAction } from '../../src/components/ActionSheet';
 import { SessionHistorySheet } from '../../src/components/SessionHistorySheet';
@@ -41,6 +42,14 @@ export default function CommandScreen() {
     retryFrom,
   } = useCommandChat();
   const history = useSessionHistory();
+  const entityLookup = useEntityNameMap();
+
+  const handleEntityLinkPress = useCallback(
+    (id: string) => {
+      router.push({ pathname: '/entity/[id]', params: { id } } as any);
+    },
+    [router]
+  );
   const [input, setInput] = useState('');
   const [menuTarget, setMenuTarget] = useState<ChatMessage | null>(null);
   const [historyVisible, setHistoryVisible] = useState(false);
@@ -228,6 +237,8 @@ export default function CommandScreen() {
               showTyping={showTypingIndicator && i === messages.length - 1}
               onCopy={() => copyMessage(msg.content)}
               onLongPress={() => showMessageMenu(msg)}
+              entityLookup={entityLookup}
+              onEntityPress={handleEntityLinkPress}
             />
           ))}
 
@@ -338,11 +349,15 @@ function MessageBubble({
   showTyping,
   onCopy,
   onLongPress,
+  entityLookup,
+  onEntityPress,
 }: {
   message: ChatMessage;
   showTyping: boolean;
   onCopy: () => void;
   onLongPress: () => void;
+  entityLookup: EntityLookup | null;
+  onEntityPress: (id: string) => void;
 }) {
   const isUser = message.role === 'user';
 
@@ -371,7 +386,12 @@ function MessageBubble({
           pressed && handlePress && styles.bubblePressed,
         ]}
       >
-        <RichContent content={message.content} isUser={isUser} />
+        <RichContent
+          content={message.content}
+          isUser={isUser}
+          entityLookup={entityLookup}
+          onEntityPress={onEntityPress}
+        />
       </Pressable>
     </View>
   );
@@ -380,11 +400,21 @@ function MessageBubble({
 // Markdown renderer for assistant messages — supports headers (# ## ###),
 // bold (**text**), inline code (`code`), fenced code blocks (```), and
 // bullet lists (-/*). User messages render as plain text.
-function RichContent({ content, isUser }: { content: string; isUser: boolean }) {
+function RichContent({
+  content,
+  isUser,
+  entityLookup,
+  onEntityPress,
+}: {
+  content: string;
+  isUser: boolean;
+  entityLookup: EntityLookup | null;
+  onEntityPress: (id: string) => void;
+}) {
   if (isUser) {
     return <Text style={styles.userText}>{content}</Text>;
   }
-  return <>{renderMarkdownBlocks(content)}</>;
+  return <>{renderMarkdownBlocks(content, entityLookup, onEntityPress)}</>;
 }
 
 type Block =
@@ -461,7 +491,11 @@ function parseMarkdown(src: string): Block[] {
   return blocks;
 }
 
-function renderMarkdownBlocks(src: string): React.ReactNode[] {
+function renderMarkdownBlocks(
+  src: string,
+  entityLookup: EntityLookup | null,
+  onEntityPress: (id: string) => void
+): React.ReactNode[] {
   const blocks = parseMarkdown(src);
   return blocks.map((block, idx) => {
     switch (block.kind) {
@@ -480,7 +514,7 @@ function renderMarkdownBlocks(src: string): React.ReactNode[] {
             : styles.h3;
         return (
           <Text key={idx} style={style}>
-            {renderInline(block.text)}
+            {renderInline(block.text, entityLookup, onEntityPress)}
           </Text>
         );
       }
@@ -490,7 +524,9 @@ function renderMarkdownBlocks(src: string): React.ReactNode[] {
             {block.items.map((item, j) => (
               <View key={j} style={styles.listItem}>
                 <Text style={styles.bullet}>•</Text>
-                <Text style={styles.assistantText}>{renderInline(item)}</Text>
+                <Text style={styles.assistantText}>
+                  {renderInline(item, entityLookup, onEntityPress)}
+                </Text>
               </View>
             ))}
           </View>
@@ -499,24 +535,34 @@ function renderMarkdownBlocks(src: string): React.ReactNode[] {
       default:
         return (
           <Text key={idx} style={styles.assistantText}>
-            {renderInline(block.text)}
+            {renderInline(block.text, entityLookup, onEntityPress)}
           </Text>
         );
     }
   });
 }
 
-// Inline parser: **bold**, `code`
-function renderInline(text: string): React.ReactNode[] {
+// Inline parser: **bold**, `code`, and (after extraction) entity links in plain text runs.
+function renderInline(
+  text: string,
+  entityLookup: EntityLookup | null,
+  onEntityPress: (id: string) => void
+): React.ReactNode[] {
   const tokens: React.ReactNode[] = [];
   const regex = /(\*\*[^*]+\*\*|`[^`]+`)/g;
   let lastIndex = 0;
   let key = 0;
   let match: RegExpExecArray | null;
 
+  const pushText = (segment: string) => {
+    const linked = linkifyEntities(segment, entityLookup, onEntityPress, key);
+    key += linked.consumed;
+    for (const node of linked.nodes) tokens.push(node);
+  };
+
   while ((match = regex.exec(text)) !== null) {
     if (match.index > lastIndex) {
-      tokens.push(text.slice(lastIndex, match.index));
+      pushText(text.slice(lastIndex, match.index));
     }
     const token = match[0];
     if (token.startsWith('**')) {
@@ -535,9 +581,73 @@ function renderInline(text: string): React.ReactNode[] {
     lastIndex = match.index + token.length;
   }
   if (lastIndex < text.length) {
-    tokens.push(text.slice(lastIndex));
+    pushText(text.slice(lastIndex));
   }
   return tokens;
+}
+
+// Walks a plain-text segment looking for entity name substrings (case-insensitive,
+// longest-first). Splits it into literal text and tappable teal entity spans.
+function linkifyEntities(
+  segment: string,
+  lookup: EntityLookup | null,
+  onEntityPress: (id: string) => void,
+  startKey: number
+): { nodes: React.ReactNode[]; consumed: number } {
+  if (!lookup || lookup.sortedNames.length === 0 || !segment) {
+    return { nodes: segment ? [segment] : [], consumed: 0 };
+  }
+
+  const lower = segment.toLowerCase();
+  const nodes: React.ReactNode[] = [];
+  let cursor = 0;
+  let key = startKey;
+
+  while (cursor < segment.length) {
+    // Find the earliest match of any name at position >= cursor
+    let bestIdx = -1;
+    let bestLen = 0;
+    let bestId: string | null = null;
+    for (const name of lookup.sortedNames) {
+      const idx = lower.indexOf(name, cursor);
+      if (idx < 0) continue;
+      // Ensure word boundary-ish: char before and after must not be a letter/digit
+      const before = idx === 0 ? '' : segment[idx - 1];
+      const after = idx + name.length >= segment.length ? '' : segment[idx + name.length];
+      const isWord = (c: string) => /[A-Za-z0-9]/.test(c);
+      if (before && isWord(before)) continue;
+      if (after && isWord(after)) continue;
+      if (bestIdx === -1 || idx < bestIdx || (idx === bestIdx && name.length > bestLen)) {
+        bestIdx = idx;
+        bestLen = name.length;
+        bestId = lookup.map.get(name) ?? null;
+      }
+    }
+
+    if (bestIdx === -1 || !bestId) {
+      nodes.push(segment.slice(cursor));
+      break;
+    }
+
+    if (bestIdx > cursor) {
+      nodes.push(segment.slice(cursor, bestIdx));
+    }
+    const display = segment.slice(bestIdx, bestIdx + bestLen);
+    const targetId = bestId;
+    nodes.push(
+      <Text
+        key={`e${key++}`}
+        style={styles.entityLink}
+        onPress={() => onEntityPress(targetId)}
+        suppressHighlighting
+      >
+        {display}
+      </Text>
+    );
+    cursor = bestIdx + bestLen;
+  }
+
+  return { nodes, consumed: key - startKey };
 }
 
 function TypingDots() {
@@ -724,6 +834,11 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.teal,
     backgroundColor: 'rgba(0, 161, 155, 0.1)',
+  },
+  entityLink: {
+    color: colors.teal,
+    textDecorationLine: 'underline',
+    textDecorationColor: 'rgba(0, 161, 155, 0.4)',
   },
   list: {
     gap: 3,

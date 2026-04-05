@@ -15,16 +15,20 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useExploreSearch } from '../../src/hooks/useExploreSearch';
+import { usePredicatesList } from '../../src/hooks/usePredicatesList';
 import { EntityRow } from '../../src/components/EntityRow';
 import type { EntitySearchResult } from '@stroom/supabase';
+import type { Predicate } from '@stroom/types';
 import { colors, fonts, spacing, radius, gradient } from '../../src/constants/brand';
 
 export default function ExploreScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const [segment, setSegment] = useState<'entities' | 'predicates'>('entities');
   const [query, setQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
   const { results, loading, error } = useExploreSearch(query);
+  const predicates = usePredicatesList();
 
   // Unique entity types present in the current result set
   const availableTypes = useMemo(() => {
@@ -77,10 +81,45 @@ export default function ExploreScreen() {
       <View style={[styles.header, { paddingTop: insets.top + spacing.lg }]}>
         <Text style={styles.headerTitle}>Explore</Text>
         <Text style={styles.headerSub}>
-          {trimmed ? `Results for "${trimmed}"` : 'Recent entities'}
+          {segment === 'entities'
+            ? trimmed
+              ? `Results for "${trimmed}"`
+              : 'Recent entities'
+            : `${predicates.predicates.length} predicates across the graph`}
         </Text>
 
-        {/* Search box */}
+        {/* Segment control */}
+        <View style={styles.segment}>
+          <Pressable
+            onPress={() => setSegment('entities')}
+            style={[styles.segmentBtn, segment === 'entities' && styles.segmentBtnActive]}
+          >
+            <Text
+              style={[
+                styles.segmentText,
+                segment === 'entities' && styles.segmentTextActive,
+              ]}
+            >
+              Entities
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={() => setSegment('predicates')}
+            style={[styles.segmentBtn, segment === 'predicates' && styles.segmentBtnActive]}
+          >
+            <Text
+              style={[
+                styles.segmentText,
+                segment === 'predicates' && styles.segmentTextActive,
+              ]}
+            >
+              Predicates
+            </Text>
+          </Pressable>
+        </View>
+
+        {/* Search box — entities only */}
+        {segment === 'entities' && (
         <View style={styles.searchWrap}>
           <Ionicons name="search" size={18} color={colors.slate} />
           <TextInput
@@ -100,9 +139,10 @@ export default function ExploreScreen() {
             </Pressable>
           )}
         </View>
+        )}
 
         {/* Entity type filter chips */}
-        {availableTypes.length > 0 && (
+        {segment === 'entities' && availableTypes.length > 0 && (
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -125,36 +165,144 @@ export default function ExploreScreen() {
         )}
       </View>
 
-      {loading && results.length === 0 ? (
-        <View style={styles.loadingWrap}>
-          <ActivityIndicator color={colors.teal} size="large" />
-        </View>
-      ) : error && results.length === 0 ? (
-        <View style={styles.emptyWrap}>
-          <Text style={styles.errorText}>{error}</Text>
-        </View>
-      ) : filteredResults.length === 0 ? (
-        <View style={styles.emptyWrap}>
-          <Ionicons name="search-outline" size={40} color={colors.slate} />
-          <Text style={styles.emptyTitle}>No matches</Text>
-          <Text style={styles.emptyBody}>
-            {typeFilter
-              ? `No ${typeFilter} entities match "${trimmed}".`
-              : 'Try a different search term or part of an entity name.'}
-          </Text>
-        </View>
+      {segment === 'entities' ? (
+        loading && results.length === 0 ? (
+          <View style={styles.loadingWrap}>
+            <ActivityIndicator color={colors.teal} size="large" />
+          </View>
+        ) : error && results.length === 0 ? (
+          <View style={styles.emptyWrap}>
+            <Text style={styles.errorText}>{error}</Text>
+          </View>
+        ) : filteredResults.length === 0 ? (
+          <View style={styles.emptyWrap}>
+            <Ionicons name="search-outline" size={40} color={colors.slate} />
+            <Text style={styles.emptyTitle}>No matches</Text>
+            <Text style={styles.emptyBody}>
+              {typeFilter
+                ? `No ${typeFilter} entities match "${trimmed}".`
+                : 'Try a different search term or part of an entity name.'}
+            </Text>
+          </View>
+        ) : (
+          <FlatList
+            data={filteredResults}
+            renderItem={renderItem}
+            keyExtractor={keyExtractor}
+            contentContainerStyle={styles.list}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          />
+        )
       ) : (
-        <FlatList
-          data={filteredResults}
-          renderItem={renderItem}
-          keyExtractor={keyExtractor}
-          contentContainerStyle={styles.list}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
+        <PredicatesView
+          predicates={predicates.predicates}
+          counts={predicates.counts}
+          loading={predicates.loading}
+          error={predicates.error}
+          onPress={(p) => {
+            Keyboard.dismiss();
+            router.push({
+              pathname: '/predicate/[key]',
+              params: { key: p.predicate_key },
+            } as any);
+          }}
         />
       )}
     </LinearGradient>
   );
+}
+
+function PredicatesView({
+  predicates,
+  counts,
+  loading,
+  error,
+  onPress,
+}: {
+  predicates: Predicate[];
+  counts: Map<string, number>;
+  loading: boolean;
+  error: string | null;
+  onPress: (p: Predicate) => void;
+}) {
+  // Group by domain
+  const grouped = React.useMemo(() => {
+    const map = new Map<string, Predicate[]>();
+    for (const p of predicates) {
+      const arr = map.get(p.domain) ?? [];
+      arr.push(p);
+      map.set(p.domain, arr);
+    }
+    return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+  }, [predicates]);
+
+  if (loading && predicates.length === 0) {
+    return (
+      <View style={styles.loadingWrap}>
+        <ActivityIndicator color={colors.teal} size="large" />
+      </View>
+    );
+  }
+  if (error && predicates.length === 0) {
+    return (
+      <View style={styles.emptyWrap}>
+        <Text style={styles.errorText}>{error}</Text>
+      </View>
+    );
+  }
+  if (predicates.length === 0) {
+    return (
+      <View style={styles.emptyWrap}>
+        <Ionicons name="git-network-outline" size={40} color={colors.slate} />
+        <Text style={styles.emptyTitle}>No predicates</Text>
+      </View>
+    );
+  }
+
+  return (
+    <ScrollView
+      contentContainerStyle={styles.predicateList}
+      showsVerticalScrollIndicator={false}
+    >
+      {grouped.map(([domain, preds]) => (
+        <View key={domain} style={styles.predicateGroup}>
+          <Text style={styles.predicateDomain}>{domain}</Text>
+          {preds.map((p) => {
+            const count = counts.get(p.predicate_key) ?? 0;
+            return (
+              <Pressable
+                key={p.id}
+                onPress={() => onPress(p)}
+                style={({ pressed }) => [
+                  styles.predicateRow,
+                  pressed && { opacity: 0.75 },
+                ]}
+              >
+                <View style={styles.predicateBody}>
+                  <Text style={styles.predicateLabel} numberOfLines={1}>
+                    {p.label ?? formatKey(p.predicate_key)}
+                  </Text>
+                  <Text style={styles.predicateKey} numberOfLines={1}>
+                    {p.predicate_key}
+                  </Text>
+                </View>
+                <View style={styles.predicateCountChip}>
+                  <Text style={styles.predicateCountText}>{count}</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={14} color={colors.slate} />
+              </Pressable>
+            );
+          })}
+        </View>
+      ))}
+    </ScrollView>
+  );
+}
+
+function formatKey(key: string): string {
+  const last = key.includes('.') ? key.split('.').pop()! : key;
+  return last.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 function FilterChip({
@@ -200,6 +348,91 @@ const styles = StyleSheet.create({
     color: colors.slate,
     marginTop: spacing.xs,
     marginBottom: spacing.md,
+  },
+  segment: {
+    flexDirection: 'row',
+    backgroundColor: colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    borderRadius: radius.md,
+    padding: 3,
+    marginBottom: spacing.md,
+  },
+  segmentBtn: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: radius.sm,
+    alignItems: 'center',
+  },
+  segmentBtnActive: {
+    backgroundColor: colors.tealDim,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 161, 155, 0.3)',
+  },
+  segmentText: {
+    fontFamily: fonts.archivo.semibold,
+    fontSize: 13,
+    color: colors.slate,
+  },
+  segmentTextActive: {
+    color: colors.teal,
+  },
+  predicateList: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xxl,
+    gap: spacing.md,
+  },
+  predicateGroup: {
+    gap: spacing.xs,
+  },
+  predicateDomain: {
+    fontFamily: fonts.archivo.semibold,
+    fontSize: 11,
+    color: colors.slate,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    marginBottom: 4,
+    marginTop: spacing.xs,
+  },
+  predicateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    borderRadius: radius.md,
+    paddingVertical: 10,
+    paddingHorizontal: spacing.md,
+  },
+  predicateBody: {
+    flex: 1,
+    gap: 2,
+  },
+  predicateLabel: {
+    fontFamily: fonts.archivo.semibold,
+    fontSize: 14,
+    color: colors.alabaster,
+  },
+  predicateKey: {
+    fontFamily: fonts.mono.regular,
+    fontSize: 10,
+    color: colors.slate,
+  },
+  predicateCountChip: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: radius.sm,
+    backgroundColor: 'rgba(0, 161, 155, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(0, 161, 155, 0.25)',
+  },
+  predicateCountText: {
+    fontFamily: fonts.mono.semibold,
+    fontSize: 11,
+    color: colors.teal,
+    fontVariant: ['tabular-nums'],
   },
   searchWrap: {
     flexDirection: 'row',

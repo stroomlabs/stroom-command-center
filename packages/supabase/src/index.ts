@@ -6,6 +6,7 @@ import type {
   AuditLogEntry,
   ResearchQueueItem,
   PulseData,
+  Predicate,
   ClaimStatus,
   AuditActor,
   AuditActionType,
@@ -571,6 +572,194 @@ export async function fetchClaimsForSource(
     .limit(limit);
   if (error) throw error;
   return ((data as unknown) as SourceClaim[]) ?? [];
+}
+
+// ── Predicates ──
+
+export async function fetchAllPredicates(
+  client: SupabaseClient
+): Promise<Predicate[]> {
+  const { data, error } = await client
+    .from('predicate_registry')
+    .select('*')
+    .order('domain', { ascending: true })
+    .order('predicate_key', { ascending: true });
+  if (error) throw error;
+  return (data as Predicate[]) ?? [];
+}
+
+export async function fetchClaimCountsByPredicate(
+  client: SupabaseClient
+): Promise<Map<string, number>> {
+  const { data, error } = await client.from('claims').select('predicate');
+  if (error) throw error;
+  const counts = new Map<string, number>();
+  for (const row of (data as { predicate: string | null }[] | null) ?? []) {
+    const p = row.predicate;
+    if (!p) continue;
+    counts.set(p, (counts.get(p) ?? 0) + 1);
+  }
+  return counts;
+}
+
+export interface PredicateClaim {
+  id: string;
+  predicate: string | null;
+  value_jsonb: Record<string, unknown> | null;
+  status: ClaimStatus;
+  confidence_score: number | null;
+  created_at: string;
+  subject_entity: { id: string; canonical_name: string | null } | null;
+  object_entity: { id: string; canonical_name: string | null } | null;
+  source: { id: string; source_name: string; trust_score: number } | null;
+}
+
+export async function fetchClaimsByPredicate(
+  client: SupabaseClient,
+  predicateKey: string,
+  limit = 100
+): Promise<PredicateClaim[]> {
+  const { data, error } = await client
+    .from('claims')
+    .select(
+      `
+      id,
+      predicate,
+      value_jsonb,
+      status,
+      confidence_score,
+      created_at,
+      subject_entity:entities!claims_subject_entity_id_fkey(id, canonical_name),
+      object_entity:entities!claims_object_entity_id_fkey(id, canonical_name),
+      source:sources!claims_asserted_source_id_fkey(id, source_name, trust_score)
+    `
+    )
+    .eq('predicate', predicateKey)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return ((data as unknown) as PredicateClaim[]) ?? [];
+}
+
+// ── Daily digest ──
+
+export interface HourBucket {
+  hour: number; // 0..23 local
+  count: number;
+}
+
+export interface DailyDigest {
+  claimsTotal: number;
+  claimsByHour: HourBucket[];
+  approvalsTotal: number;
+  rejectionsTotal: number;
+  actionsByHour: HourBucket[];
+  sourcesTotal: number;
+  sourcesByHour: HourBucket[];
+}
+
+export async function fetchDailyDigest(
+  client: SupabaseClient
+): Promise<DailyDigest> {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
+
+  const [claimsRes, auditRes] = await Promise.all([
+    client
+      .from('claims')
+      .select('created_at, asserted_source_id')
+      .gte('created_at', start.toISOString())
+      .lt('created_at', end.toISOString()),
+    client
+      .from('audit_log')
+      .select('action_type, created_at')
+      .eq('actor', 'operator')
+      .in('action_type', ['approve', 'reject'])
+      .gte('created_at', start.toISOString())
+      .lt('created_at', end.toISOString()),
+  ]);
+
+  if (claimsRes.error) throw claimsRes.error;
+  if (auditRes.error) throw auditRes.error;
+
+  const claimsByHour = makeHourBuckets();
+  const sourcesByHour = makeHourBuckets();
+  const actionsByHour = makeHourBuckets();
+
+  const sourcesSeenGlobal = new Set<string>();
+  const sourcesSeenByHour: Set<string>[] = Array.from({ length: 24 }, () => new Set());
+
+  let claimsTotal = 0;
+  for (const row of (claimsRes.data as {
+    created_at: string;
+    asserted_source_id: string | null;
+  }[] | null) ?? []) {
+    const d = new Date(row.created_at);
+    const h = d.getHours();
+    claimsByHour[h].count++;
+    claimsTotal++;
+    const sid = row.asserted_source_id;
+    if (sid && !sourcesSeenByHour[h].has(sid)) {
+      sourcesSeenByHour[h].add(sid);
+      sourcesByHour[h].count++;
+    }
+    if (sid) sourcesSeenGlobal.add(sid);
+  }
+
+  let approvalsTotal = 0;
+  let rejectionsTotal = 0;
+  for (const row of (auditRes.data as {
+    action_type: string;
+    created_at: string;
+  }[] | null) ?? []) {
+    const d = new Date(row.created_at);
+    const h = d.getHours();
+    actionsByHour[h].count++;
+    if (row.action_type === 'approve') approvalsTotal++;
+    else if (row.action_type === 'reject') rejectionsTotal++;
+  }
+
+  return {
+    claimsTotal,
+    claimsByHour,
+    approvalsTotal,
+    rejectionsTotal,
+    actionsByHour,
+    sourcesTotal: sourcesSeenGlobal.size,
+    sourcesByHour,
+  };
+}
+
+function makeHourBuckets(): HourBucket[] {
+  return Array.from({ length: 24 }, (_, i) => ({ hour: i, count: 0 }));
+}
+
+// ── Entity name map (for Command inline links) ──
+
+export interface EntityNameEntry {
+  id: string;
+  name: string; // canonical_name (fallback to name)
+}
+
+export async function fetchEntityNameMap(
+  client: SupabaseClient,
+  limit = 1000
+): Promise<EntityNameEntry[]> {
+  const { data, error } = await client
+    .from('entities')
+    .select('id, canonical_name, name, updated_at')
+    .order('updated_at', { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  const rows = (data as { id: string; canonical_name: string | null; name: string | null }[] | null) ?? [];
+  return rows
+    .map((r) => ({
+      id: r.id,
+      name: (r.canonical_name ?? r.name ?? '').trim(),
+    }))
+    .filter((e) => e.name.length >= 3); // avoid noisy 1-2 char matches
 }
 
 // ── Entity connections ──
