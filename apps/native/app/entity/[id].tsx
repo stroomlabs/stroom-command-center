@@ -17,6 +17,7 @@ import { useEntityDetail } from '../../src/hooks/useEntityDetail';
 import { useSimilarEntities } from '../../src/hooks/useSimilarEntities';
 import { useEntityActivity } from '../../src/hooks/useEntityActivity';
 import { useRecentlyViewed } from '../../src/hooks/useRecentlyViewed';
+import { EntityMiniMap } from '../../src/components/EntityMiniMap';
 import { ClaimListItem } from '../../src/components/ClaimListItem';
 import { EntityCompareSheet } from '../../src/components/EntityCompareSheet';
 import type { EntityClaim, EntityConnection } from '@stroom/supabase';
@@ -511,6 +512,16 @@ export default function EntityDetailScreen() {
                       }
                     />
                   ))}
+                  <EntityMiniMap
+                    centerName={entity.canonical_name ?? entity.name ?? 'Entity'}
+                    connections={connections}
+                    onNodePress={(otherId) =>
+                      router.push({
+                        pathname: '/entity/[id]',
+                        params: { id: otherId },
+                      } as any)
+                    }
+                  />
                 </View>
               )}
               {activityRows.length > 0 && (

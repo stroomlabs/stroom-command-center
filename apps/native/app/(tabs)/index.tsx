@@ -21,6 +21,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { usePulseData } from '../../src/hooks/usePulseData';
 import { usePushNotifications } from '../../src/hooks/usePushNotifications';
+import supabase from '../../src/lib/supabase';
 import { PulseMetric } from '../../src/components/PulseMetric';
 import { GlassCard } from '../../src/components/GlassCard';
 import { SkeletonMetricCard } from '../../src/components/Skeleton';
@@ -48,6 +49,28 @@ export default function PulseScreen() {
   const [nowTick, setNowTick] = React.useState(0);
 
   usePushNotifications();
+
+  // Realtime signal for the Claims metric. We listen for Postgres INSERT
+  // events on intel.claims and bump `claimFlashKey` to retrigger the
+  // PulseMetric border flash + count animation. usePulseData already
+  // refreshes on the broadcast channel, which updates data.totalClaims;
+  // this subscription only drives the visual pulse.
+  const [claimFlashKey, setClaimFlashKey] = React.useState(0);
+  React.useEffect(() => {
+    const channel = supabase
+      .channel('pulse:claims-inserts')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'intel', table: 'claims' },
+        () => {
+          setClaimFlashKey((k) => k + 1);
+        }
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   // LIVE dot — 2s pulse cycle (scale 1 → 1.35 and opacity 1 → 0.55)
   const livePulse = useSharedValue(0);
@@ -166,6 +189,8 @@ export default function PulseScreen() {
               <PulseMetric
                 label="Claims"
                 value={data.totalClaims}
+                animate
+                flashKey={claimFlashKey}
                 onPress={() => router.push('/(tabs)/explore' as any)}
               />
               <PulseMetric label="Entities" value={data.totalEntities} />

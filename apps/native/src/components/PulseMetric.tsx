@@ -1,7 +1,14 @@
 import React from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+  withSequence,
+  Easing,
+} from 'react-native-reanimated';
 import { GlassCard } from './GlassCard';
-import { colors, fonts, spacing } from '../constants/brand';
+import { colors, fonts, spacing, radius } from '../constants/brand';
 
 interface PulseMetricProps {
   label: string;
@@ -11,6 +18,48 @@ interface PulseMetricProps {
   suffix?: string;
   compact?: boolean;
   onPress?: () => void;
+  // When true, numeric values tween from the previous number to the new
+  // number over 500ms whenever `value` changes. Non-numeric values still
+  // render directly.
+  animate?: boolean;
+  // Bump to trigger a one-shot teal border flash. Caller typically
+  // increments a counter on realtime inserts.
+  flashKey?: number;
+}
+
+// Interpolates a numeric value from its previous render to the current one
+// over 500ms, driven by rAF via setInterval. Returns the formatted string
+// to display on every frame.
+function useAnimatedCount(value: number, enabled: boolean): number {
+  const [display, setDisplay] = React.useState(value);
+  const prevRef = React.useRef(value);
+
+  React.useEffect(() => {
+    if (!enabled || value === prevRef.current) {
+      prevRef.current = value;
+      setDisplay(value);
+      return;
+    }
+    const start = prevRef.current;
+    const end = value;
+    const duration = 500;
+    const startedAt = Date.now();
+    let raf = 0;
+    const tick = () => {
+      const elapsed = Date.now() - startedAt;
+      const t = Math.min(1, elapsed / duration);
+      // ease-out cubic
+      const eased = 1 - Math.pow(1 - t, 3);
+      const next = Math.round(start + (end - start) * eased);
+      setDisplay(next);
+      if (t < 1) raf = requestAnimationFrame(tick) as unknown as number;
+      else prevRef.current = end;
+    };
+    raf = requestAnimationFrame(tick) as unknown as number;
+    return () => cancelAnimationFrame(raf);
+  }, [value, enabled]);
+
+  return display;
 }
 
 export function PulseMetric({
@@ -21,14 +70,42 @@ export function PulseMetric({
   suffix,
   compact = false,
   onPress,
+  animate = false,
+  flashKey = 0,
 }: PulseMetricProps) {
-  const displayValue = typeof value === 'number' ? formatNumber(value) : value;
+  const isNumeric = typeof value === 'number';
+  const numericValue = isNumeric ? value : parseFloat(String(value));
+  const animatedNumber = useAnimatedCount(
+    Number.isNaN(numericValue) ? 0 : numericValue,
+    animate && isNumeric
+  );
+  const shownNumber = animate && isNumeric ? animatedNumber : numericValue;
+  const displayValue = isNumeric
+    ? formatNumber(shownNumber)
+    : (value as string);
 
-  // Muted treatment when the metric is zero-ish so empty states recede
-  // instead of shouting for attention.
-  const numericValue = typeof value === 'number' ? value : parseFloat(String(value));
+  // Muted treatment when the metric is zero-ish so empty states recede.
   const isZero = !Number.isNaN(numericValue) && numericValue === 0;
   const effectiveAccent = isZero ? colors.slate : accent;
+
+  // Border flash — runs when `flashKey` bumps. borderProgress ramps 0→1→0
+  // over ~900ms and drives an absolute-position overlay border so we don't
+  // have to animate GlassCard's own border directly.
+  const borderProgress = useSharedValue(0);
+  const firstFlashRef = React.useRef(true);
+  React.useEffect(() => {
+    if (firstFlashRef.current) {
+      firstFlashRef.current = false;
+      return;
+    }
+    borderProgress.value = withSequence(
+      withTiming(1, { duration: 180, easing: Easing.out(Easing.ease) }),
+      withTiming(0, { duration: 720, easing: Easing.in(Easing.ease) })
+    );
+  }, [flashKey, borderProgress]);
+  const flashOverlayStyle = useAnimatedStyle(() => ({
+    opacity: borderProgress.value,
+  }));
 
   const cardStyle = compact ? styles.compact : styles.card;
   const labelStyle = compact ? styles.labelCompact : styles.label;
@@ -37,46 +114,52 @@ export function PulseMetric({
   const suffixStyle = compact ? styles.suffixCompact : styles.suffix;
 
   const inner = (
-    <GlassCard
-      style={[
-        onPress ? styles.innerFill : cardStyle,
-        compact && styles.compactCard,
-        isZero && styles.mutedCard,
-      ]}
-    >
-      {compact ? (
-        <View style={styles.compactRow}>
-          <Text
-            numberOfLines={1}
-            style={[labelStyle, isZero && { color: 'rgba(86, 95, 100, 0.7)' }]}
-          >
-            {label}
-          </Text>
-          <Text
-            numberOfLines={1}
-            ellipsizeMode="clip"
-            style={[valueStyle, styles.compactValueInline, { color: effectiveAccent }]}
-          >
-            {prefix ?? ''}
-            {displayValue}
-            {suffix ? ` ${suffix}` : ''}
-          </Text>
-        </View>
-      ) : (
-        <>
-          <Text style={labelStyle}>{label}</Text>
-          <View style={styles.valueRow}>
-            {prefix && (
-              <Text style={[prefixStyle, { color: effectiveAccent }]}>{prefix}</Text>
-            )}
-            <Text style={[valueStyle, { color: effectiveAccent }]}>{displayValue}</Text>
-            {suffix && (
-              <Text style={[suffixStyle, { color: colors.slate }]}>{suffix}</Text>
-            )}
+    <View style={styles.cardWrap}>
+      <GlassCard
+        style={[
+          onPress ? styles.innerFill : cardStyle,
+          compact && styles.compactCard,
+          isZero && styles.mutedCard,
+        ]}
+      >
+        {compact ? (
+          <View style={styles.compactRow}>
+            <Text
+              numberOfLines={1}
+              style={[labelStyle, isZero && { color: 'rgba(86, 95, 100, 0.7)' }]}
+            >
+              {label}
+            </Text>
+            <Text
+              numberOfLines={1}
+              ellipsizeMode="clip"
+              style={[valueStyle, styles.compactValueInline, { color: effectiveAccent }]}
+            >
+              {prefix ?? ''}
+              {displayValue}
+              {suffix ? ` ${suffix}` : ''}
+            </Text>
           </View>
-        </>
-      )}
-    </GlassCard>
+        ) : (
+          <>
+            <Text style={labelStyle}>{label}</Text>
+            <View style={styles.valueRow}>
+              {prefix && (
+                <Text style={[prefixStyle, { color: effectiveAccent }]}>{prefix}</Text>
+              )}
+              <Text style={[valueStyle, { color: effectiveAccent }]}>{displayValue}</Text>
+              {suffix && (
+                <Text style={[suffixStyle, { color: colors.slate }]}>{suffix}</Text>
+              )}
+            </View>
+          </>
+        )}
+      </GlassCard>
+      <Animated.View
+        pointerEvents="none"
+        style={[styles.flashOverlay, flashOverlayStyle]}
+      />
+    </View>
   );
 
   if (!onPress) return inner;
@@ -107,6 +190,20 @@ const styles = StyleSheet.create({
   compact: {
     flex: 1,
     minWidth: '30%',
+  },
+  cardWrap: {
+    flex: 1,
+    position: 'relative',
+  },
+  flashOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: radius.lg,
+    borderWidth: 1.5,
+    borderColor: colors.teal,
+    shadowColor: colors.teal,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 12,
   },
   compactCard: {
     paddingVertical: 0,
@@ -167,7 +264,6 @@ const styles = StyleSheet.create({
   value: {
     fontFamily: fonts.mono.semibold,
     fontSize: 28,
-    // tabular-nums via fontVariant
     fontVariant: ['tabular-nums'],
   },
   valueCompact: {

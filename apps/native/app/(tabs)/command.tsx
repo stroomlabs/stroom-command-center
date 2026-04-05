@@ -20,6 +20,7 @@ import * as Clipboard from 'expo-clipboard';
 import { useCommandChat, type ChatMessage } from '../../src/hooks/useCommandChat';
 import supabase from '../../src/lib/supabase';
 import { usePinnedMessages } from '../../src/hooks/usePinnedMessages';
+import { suggestFollowups } from '../../src/lib/suggestFollowups';
 import Animated, {
   FadeIn,
   useSharedValue,
@@ -354,6 +355,18 @@ export default function CommandScreen() {
     sessionId,
   ]);
 
+  // Derive follow-up chips from the most recent completed assistant reply.
+  // Hidden while streaming or when the last message is a user turn.
+  const followupSuggestions = React.useMemo(() => {
+    if (sending || messages.length === 0) return [];
+    const last = messages[messages.length - 1];
+    if (last.role !== 'assistant' || last.content.trim().length === 0) return [];
+    const lastUser = [...messages]
+      .reverse()
+      .find((m) => m.role === 'user')?.content;
+    return suggestFollowups(last.content, { lastUserMessage: lastUser });
+  }, [messages, sending]);
+
   const showTypingIndicator =
     sending &&
     messages.length > 0 &&
@@ -506,6 +519,30 @@ export default function CommandScreen() {
               />
             );
           })}
+
+          {followupSuggestions.length > 0 && (
+            <View style={styles.followupRow}>
+              {followupSuggestions.map((s) => (
+                <Pressable
+                  key={s.kind + s.label}
+                  onPress={() => {
+                    Haptics.selectionAsync();
+                    send(s.prompt);
+                  }}
+                  style={({ pressed }) => [
+                    styles.followupChip,
+                    pressed && {
+                      opacity: 0.75,
+                      transform: [{ scale: 0.97 }],
+                    },
+                  ]}
+                >
+                  <Ionicons name="arrow-forward" size={11} color={colors.teal} />
+                  <Text style={styles.followupChipText}>{s.label}</Text>
+                </Pressable>
+              ))}
+            </View>
+          )}
 
           {error && (
             <View style={styles.errorBubble}>
@@ -1146,6 +1183,30 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.glassBorder,
     borderBottomLeftRadius: 4,
+  },
+  followupRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+    marginTop: -spacing.xs,
+    marginBottom: spacing.md,
+    paddingHorizontal: 2,
+  },
+  followupChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 8,
+    borderRadius: radius.full,
+    backgroundColor: colors.tealDim,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 161, 155, 0.35)',
+  },
+  followupChipText: {
+    fontFamily: fonts.archivo.semibold,
+    fontSize: 12,
+    color: colors.teal,
   },
   pinnedCard: {
     backgroundColor: colors.tealDim,
