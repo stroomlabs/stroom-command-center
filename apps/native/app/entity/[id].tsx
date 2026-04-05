@@ -59,6 +59,60 @@ export default function EntityDetailScreen() {
   const [viewMode, setViewMode] = useState<'list' | 'timeline'>('list');
   const [filter, setFilter] = useState<StatusFilter>('all');
   const [refreshing, setRefreshing] = useState(false);
+  const flatListRef = React.useRef<FlatList>(null);
+  const coverageOffsetRef = React.useRef<number>(0);
+
+  const buildResearchPrompt = useCallback(() => {
+    if (!entity) return '';
+    const name = entity.canonical_name || entity.name || 'this entity';
+    const type = entity.entity_type ?? 'entity';
+    const predCounts = new Map<string, number>();
+    for (const c of claims) {
+      if (!c.predicate) continue;
+      const key = c.predicate.split('.').pop() ?? c.predicate;
+      predCounts.set(key, (predCounts.get(key) ?? 0) + 1);
+    }
+    const topPredicates = Array.from(predCounts.entries())
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 5)
+      .map(([k, n]) => `${k.replace(/_/g, ' ')} (${n})`)
+      .join(', ');
+    return [
+      `Research ${name} (${type}).`,
+      '',
+      'Context from our graph:',
+      `- ${claims.length} existing claims`,
+      topPredicates ? `- Top predicates: ${topPredicates}` : null,
+      '',
+      'Pull fresh facts we do not already have, surface any contradictions with existing claims, and suggest the highest-value research next steps.',
+    ]
+      .filter(Boolean)
+      .join('\n');
+  }, [entity, claims]);
+
+  const handleResearch = useCallback(() => {
+    const prompt = buildResearchPrompt();
+    if (!prompt) return;
+    router.push({
+      pathname: '/(tabs)/command',
+      params: { prompt },
+    } as any);
+  }, [buildResearchPrompt, router]);
+
+  const handleScrollToCoverage = useCallback(() => {
+    flatListRef.current?.scrollToOffset({
+      offset: Math.max(0, coverageOffsetRef.current - 40),
+      animated: true,
+    });
+  }, []);
+
+  const handleToggleTimeline = useCallback(() => {
+    setViewMode((prev) => (prev === 'timeline' ? 'list' : 'timeline'));
+  }, []);
+
+  const handleCompareFirst = useCallback(() => {
+    if (similar.length > 0) setCompareId(similar[0].id);
+  }, [similar]);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -137,6 +191,7 @@ export default function EntityDetailScreen() {
         </View>
       ) : (
         <FlatList
+          ref={flatListRef}
           data={viewMode === 'timeline' ? timelineOrdered : filtered}
           renderItem={renderItem}
           keyExtractor={keyExtractor}
@@ -168,6 +223,33 @@ export default function EntityDetailScreen() {
               {entity.description && (
                 <Text style={styles.description}>{entity.description}</Text>
               )}
+
+              {/* Quick actions */}
+              <View style={styles.quickActionRow}>
+                <QuickActionPill
+                  icon="sparkles"
+                  label="Research"
+                  onPress={handleResearch}
+                />
+                <QuickActionPill
+                  icon="speedometer-outline"
+                  label="Coverage"
+                  onPress={handleScrollToCoverage}
+                />
+                <QuickActionPill
+                  icon="time-outline"
+                  label={viewMode === 'timeline' ? 'List' : 'Timeline'}
+                  onPress={handleToggleTimeline}
+                  active={viewMode === 'timeline'}
+                />
+                {similar.length > 0 && (
+                  <QuickActionPill
+                    icon="git-compare-outline"
+                    label="Compare"
+                    onPress={handleCompareFirst}
+                  />
+                )}
+              </View>
 
               {/* Ask Command */}
               <Pressable
@@ -246,7 +328,13 @@ export default function EntityDetailScreen() {
               </Pressable>
 
               {/* Coverage score */}
-              <CoverageScore claims={claims} />
+              <View
+                onLayout={(e) => {
+                  coverageOffsetRef.current = e.nativeEvent.layout.y;
+                }}
+              >
+                <CoverageScore claims={claims} />
+              </View>
 
               {/* Claim distribution by predicate category */}
               <ClaimDistribution claims={claims} />
@@ -658,6 +746,40 @@ function CoverageFacet({ label, score }: { label: string; score: number }) {
   );
 }
 
+function QuickActionPill({
+  icon,
+  label,
+  onPress,
+  active,
+}: {
+  icon: React.ComponentProps<typeof Ionicons>['name'];
+  label: string;
+  onPress: () => void;
+  active?: boolean;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.quickPill,
+        active && styles.quickPillActive,
+        pressed && { opacity: 0.75, transform: [{ scale: 0.97 }] },
+      ]}
+    >
+      <Ionicons
+        name={icon}
+        size={13}
+        color={active ? colors.teal : colors.silver}
+      />
+      <Text
+        style={[styles.quickPillText, active && { color: colors.teal }]}
+      >
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
 function ActivityRow({
   row,
   onPress,
@@ -811,6 +933,32 @@ const styles = StyleSheet.create({
     fontFamily: fonts.mono.regular,
     fontSize: 11,
     color: colors.slate,
+  },
+  quickActionRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+    marginTop: spacing.md,
+  },
+  quickPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 8,
+    borderRadius: radius.full,
+    backgroundColor: colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+  },
+  quickPillActive: {
+    backgroundColor: colors.tealDim,
+    borderColor: colors.teal,
+  },
+  quickPillText: {
+    fontFamily: fonts.archivo.semibold,
+    fontSize: 12,
+    color: colors.silver,
   },
   description: {
     fontFamily: fonts.archivo.regular,

@@ -19,7 +19,15 @@ import * as Haptics from 'expo-haptics';
 import * as Clipboard from 'expo-clipboard';
 import { useCommandChat, type ChatMessage } from '../../src/hooks/useCommandChat';
 import supabase from '../../src/lib/supabase';
-import Animated, { FadeIn } from 'react-native-reanimated';
+import Animated, {
+  FadeIn,
+  useSharedValue,
+  useAnimatedStyle,
+  withRepeat,
+  withSequence,
+  withTiming,
+  Easing,
+} from 'react-native-reanimated';
 import { useEntityNameMap, type EntityLookup } from '../../src/hooks/useEntityNameMap';
 import { useSessionHistory } from '../../src/hooks/useSessionHistory';
 import { ActionSheet, type ActionSheetAction } from '../../src/components/ActionSheet';
@@ -389,17 +397,26 @@ export default function CommandScreen() {
             />
           )}
 
-          {messages.map((msg, i) => (
-            <MessageBubble
-              key={msg.id}
-              message={msg}
-              showTyping={showTypingIndicator && i === messages.length - 1}
-              onCopy={() => copyMessage(msg.content)}
-              onLongPress={() => showMessageMenu(msg)}
-              entityLookup={entityLookup}
-              onEntityPress={handleEntityLinkPress}
-            />
-          ))}
+          {messages.map((msg, i) => {
+            const isLast = i === messages.length - 1;
+            return (
+              <MessageBubble
+                key={msg.id}
+                message={msg}
+                showTyping={showTypingIndicator && isLast}
+                streaming={
+                  sending &&
+                  isLast &&
+                  msg.role === 'assistant' &&
+                  msg.content.length > 0
+                }
+                onCopy={() => copyMessage(msg.content)}
+                onLongPress={() => showMessageMenu(msg)}
+                entityLookup={entityLookup}
+                onEntityPress={handleEntityLinkPress}
+              />
+            );
+          })}
 
           {error && (
             <View style={styles.errorBubble}>
@@ -545,21 +562,44 @@ function Suggestion({
   );
 }
 
-function MessageBubble({
-  message,
-  showTyping,
-  onCopy,
-  onLongPress,
-  entityLookup,
-  onEntityPress,
-}: {
+// Thin blinking teal cursor shown at the end of the assistant bubble while
+// the response is still streaming. Fades between 1 and 0.2 opacity on a
+// 600ms cycle. Unmounts as soon as `sending` drops.
+function StreamingCursor() {
+  const opacity = useSharedValue(1);
+  React.useEffect(() => {
+    opacity.value = withRepeat(
+      withSequence(
+        withTiming(0.2, { duration: 500, easing: Easing.inOut(Easing.ease) }),
+        withTiming(1, { duration: 500, easing: Easing.inOut(Easing.ease) })
+      ),
+      -1,
+      false
+    );
+  }, [opacity]);
+  const style = useAnimatedStyle(() => ({ opacity: opacity.value }));
+  return <Animated.View style={[styles.streamCursor, style]} />;
+}
+
+interface MessageBubbleProps {
   message: ChatMessage;
   showTyping: boolean;
+  streaming: boolean;
   onCopy: () => void;
   onLongPress: () => void;
   entityLookup: EntityLookup | null;
   onEntityPress: (id: string) => void;
-}) {
+}
+
+function MessageBubble({
+  message,
+  showTyping,
+  streaming,
+  onCopy,
+  onLongPress,
+  entityLookup,
+  onEntityPress,
+}: MessageBubbleProps) {
   const isUser = message.role === 'user';
 
   if (showTyping && !message.content) {
@@ -593,6 +633,7 @@ function MessageBubble({
           entityLookup={entityLookup}
           onEntityPress={onEntityPress}
         />
+        {streaming && <StreamingCursor />}
       </Pressable>
     </View>
   );
@@ -995,6 +1036,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.glassBorder,
     borderBottomLeftRadius: 4,
+  },
+  streamCursor: {
+    width: 2,
+    height: 14,
+    backgroundColor: colors.teal,
+    marginTop: 4,
+    borderRadius: 1,
   },
   bubblePressed: {
     opacity: 0.7,

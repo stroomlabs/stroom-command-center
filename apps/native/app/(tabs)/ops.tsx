@@ -82,24 +82,25 @@ export default function OpsScreen() {
     };
   }, [sweeping, refreshing]);
 
-  // Count of audit_log rows today where an agent/system actor approved a claim.
+  // Count of audit_log rows today with action_type = 'auto_approve'. Uses
+  // an exact head-only count so we get the full number regardless of page
+  // size, and re-runs on sweep + manual refresh so the value stays live.
   React.useEffect(() => {
     let cancelled = false;
     (async () => {
       const start = new Date();
       start.setHours(0, 0, 0, 0);
-      const { data } = await supabase
+      const { count } = await supabase
         .from('audit_log')
-        .select('id', { count: 'exact', head: false })
-        .in('actor', ['agent', 'system'])
-        .eq('action_type', 'approve')
+        .select('id', { count: 'exact', head: true })
+        .eq('action_type', 'auto_approve')
         .gte('created_at', start.toISOString());
-      if (!cancelled) setAutoApprovedToday((data as any[] | null)?.length ?? 0);
+      if (!cancelled) setAutoApprovedToday(count ?? 0);
     })();
     return () => {
       cancelled = true;
     };
-  }, [sweeping]);
+  }, [sweeping, refreshing]);
 
   const handleSweep = async () => {
     if (sweeping) return;
