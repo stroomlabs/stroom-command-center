@@ -11,6 +11,9 @@ import type {
   AuditActor,
   AuditActionType,
   RejectionReason,
+  GovernancePolicy,
+  GovernanceAction,
+  AutoGovernanceSweepResult,
 } from '@stroom/types';
 
 // ── Config ──
@@ -1017,6 +1020,176 @@ export async function fetchAllSources(
     .limit(limit);
   if (error) throw error;
   return (data as Source[]) ?? [];
+}
+
+// ── Command chat operator context ──
+
+export interface CommandOperatorContext {
+  recentActions: Array<{
+    action: string;
+    entity_table: string | null;
+    entity_id: string | null;
+    at: string;
+  }>;
+  queueByEntityType: Record<string, number>;
+  queueByCategory: Record<string, number>;
+  queueTotal: number;
+}
+
+// Fetches a compact snapshot used to prime the Command chat Edge Function:
+//   - last 5 operator audit_log entries
+//   - queue composition by subject entity type and predicate category
+export async function fetchCommandOperatorContext(
+  client: SupabaseClient
+): Promise<CommandOperatorContext> {
+  const [auditRes, queueRes, registryRes] = await Promise.all([
+    client
+      .from('audit_log')
+      .select('action_type, entity_table, entity_id, created_at')
+      .eq('actor', 'operator')
+      .order('created_at', { ascending: false })
+      .limit(5),
+    client
+      .from('claims')
+      .select(
+        'predicate, subject_entity:entities!claims_subject_entity_id_fkey(entity_type)'
+      )
+      .in('status', ['draft', 'pending_review']),
+    client
+      .from('predicate_registry')
+      .select('predicate_key, category'),
+  ]);
+
+  if (auditRes.error) throw auditRes.error;
+  if (queueRes.error) throw queueRes.error;
+  if (registryRes.error) throw registryRes.error;
+
+  const categoryByKey = new Map<string, string>();
+  for (const r of (registryRes.data as { predicate_key: string; category: string }[] | null) ?? []) {
+    categoryByKey.set(r.predicate_key, r.category);
+  }
+
+  const queueByEntityType: Record<string, number> = {};
+  const queueByCategory: Record<string, number> = {};
+  let queueTotal = 0;
+  for (const row of (queueRes.data as any[] | null) ?? []) {
+    queueTotal++;
+    const type = row.subject_entity?.entity_type ?? 'unknown';
+    queueByEntityType[type] = (queueByEntityType[type] ?? 0) + 1;
+    const category = categoryByKey.get(row.predicate) ?? 'uncategorized';
+    queueByCategory[category] = (queueByCategory[category] ?? 0) + 1;
+  }
+
+  const recentActions = (
+    (auditRes.data as {
+      action_type: string;
+      entity_table: string | null;
+      entity_id: string | null;
+      created_at: string;
+    }[] | null) ?? []
+  ).map((r) => ({
+    action: r.action_type,
+    entity_table: r.entity_table,
+    entity_id: r.entity_id,
+    at: r.created_at,
+  }));
+
+  return { recentActions, queueByEntityType, queueByCategory, queueTotal };
+}
+
+export function buildOperatorContextMessage(
+  ctx: CommandOperatorContext
+): string {
+  const lines: string[] = ['# Operator context (auto-injected)'];
+
+  lines.push('');
+  lines.push('## Recent operator actions (last 5)');
+  if (ctx.recentActions.length === 0) {
+    lines.push('- (none in recent history)');
+  } else {
+    for (const a of ctx.recentActions) {
+      const when = new Date(a.at).toISOString().slice(0, 16).replace('T', ' ');
+      const target =
+        a.entity_table && a.entity_id
+          ? `${a.entity_table}:${a.entity_id.slice(0, 8)}`
+          : a.entity_table ?? '';
+      lines.push(`- [${when}] ${a.action} ${target}`.trim());
+    }
+  }
+
+  lines.push('');
+  lines.push(`## Queue composition (${ctx.queueTotal} pending)`);
+  const typeEntries = Object.entries(ctx.queueByEntityType).sort(
+    ([, a], [, b]) => b - a
+  );
+  if (typeEntries.length === 0) {
+    lines.push('- (queue empty)');
+  } else {
+    lines.push('### By entity type');
+    for (const [t, c] of typeEntries) lines.push(`- ${t}: ${c}`);
+  }
+  const catEntries = Object.entries(ctx.queueByCategory).sort(
+    ([, a], [, b]) => b - a
+  );
+  if (catEntries.length > 0) {
+    lines.push('### By predicate category');
+    for (const [c, n] of catEntries) lines.push(`- ${c}: ${n}`);
+  }
+
+  return lines.join('\n');
+}
+
+// ── Governance policies ──
+
+export async function fetchGovernancePolicies(
+  client: SupabaseClient
+): Promise<GovernancePolicy[]> {
+  const { data, error } = await client
+    .from('governance_policies')
+    .select(
+      'id, name, description, is_active, min_trust_score, min_confidence_score, min_corroborations, action, applies_to_predicates, applies_to_entity_types'
+    )
+    .order('name', { ascending: true });
+  if (error) throw error;
+  return (data as GovernancePolicy[]) ?? [];
+}
+
+export async function updateGovernancePolicy(
+  client: SupabaseClient,
+  id: string,
+  patch: Partial<Omit<GovernancePolicy, 'id'>>
+): Promise<void> {
+  const { error } = await client
+    .from('governance_policies')
+    .update(patch)
+    .eq('id', id);
+  if (error) throw error;
+}
+
+export async function createGovernancePolicy(
+  client: SupabaseClient,
+  policy: Omit<GovernancePolicy, 'id'>
+): Promise<GovernancePolicy> {
+  const { data, error } = await client
+    .from('governance_policies')
+    .insert(policy)
+    .select()
+    .single();
+  if (error) throw error;
+  return data as GovernancePolicy;
+}
+
+export async function runAutoGovernance(
+  client: SupabaseClient
+): Promise<AutoGovernanceSweepResult> {
+  const { data, error } = await client.rpc('run_auto_governance');
+  if (error) throw error;
+  const row = Array.isArray(data) ? data[0] : data;
+  return {
+    approved: Number(row?.approved ?? 0),
+    flagged: Number(row?.flagged ?? 0),
+    rejected: Number(row?.rejected ?? 0),
+  };
 }
 
 export { SUPABASE_URL, SUPABASE_ANON_KEY };

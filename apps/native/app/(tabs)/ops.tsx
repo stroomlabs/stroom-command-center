@@ -126,6 +126,13 @@ export default function OpsScreen() {
       summary: sourcesSummary,
       route: '/sources',
     },
+    {
+      key: 'policies',
+      icon: 'shield-checkmark-outline',
+      title: 'Policies',
+      summary: 'Auto-governance rules',
+      route: '/policies',
+    },
   ];
 
   return (

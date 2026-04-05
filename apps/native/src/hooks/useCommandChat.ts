@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { SUPABASE_URL, SUPABASE_ANON_KEY } from '@stroom/supabase';
+import {
+  SUPABASE_URL,
+  SUPABASE_ANON_KEY,
+  fetchCommandOperatorContext,
+  buildOperatorContextMessage,
+} from '@stroom/supabase';
 import supabase from '../lib/supabase';
 
 export type ChatRole = 'user' | 'assistant' | 'system';
@@ -90,8 +95,27 @@ export function useCommandChat() {
         const { data: sess } = await supabase.auth.getSession();
         const accessToken = sess?.session?.access_token ?? SUPABASE_ANON_KEY;
 
+        // Prime the model with a compact operator snapshot (recent actions +
+        // queue composition). Best-effort — if the context fetch fails we
+        // still send the conversation through.
+        let contextMessage: { role: 'system'; content: string } | null = null;
+        try {
+          const ctx = await fetchCommandOperatorContext(supabase);
+          contextMessage = {
+            role: 'system',
+            content: buildOperatorContextMessage(ctx),
+          };
+        } catch {
+          // swallow — context is an enhancement, not a requirement
+        }
+
+        const payloadMessages = [
+          ...(contextMessage ? [contextMessage] : []),
+          ...convo.map(({ role, content }) => ({ role, content })),
+        ];
+
         const body = JSON.stringify({
-          messages: convo.map(({ role, content }) => ({ role, content })),
+          messages: payloadMessages,
           session_id: sid,
           stream: true,
         });

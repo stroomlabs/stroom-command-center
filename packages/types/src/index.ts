@@ -152,6 +152,28 @@ export type ResearchStatus =
   | 'failed'
   | 'cancelled';
 
+// ── intel.governance_policies ──
+export type GovernanceAction = 'auto_approve' | 'auto_flag' | 'auto_reject';
+
+export interface GovernancePolicy {
+  id: string;
+  name: string;
+  description: string | null;
+  is_active: boolean;
+  min_trust_score: number | null;
+  min_confidence_score: number | null;
+  min_corroborations: number | null;
+  action: GovernanceAction;
+  applies_to_predicates: string[] | null;
+  applies_to_entity_types: string[] | null;
+}
+
+export interface AutoGovernanceSweepResult {
+  approved: number;
+  flagged: number;
+  rejected: number;
+}
+
 // ── intel.policy_config ──
 export interface PolicyConfig {
   id: string;
