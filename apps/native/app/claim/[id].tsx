@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   View,
   Text,
@@ -12,10 +12,15 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
+import { approveClaim, rejectClaim } from '@stroom/supabase';
 import { useClaimDetail } from '../../src/hooks/useClaimDetail';
 import { StatusBadge } from '../../src/components/StatusBadge';
 import { JsonView } from '../../src/components/JsonView';
+import { RejectSheet } from '../../src/components/RejectSheet';
+import supabase from '../../src/lib/supabase';
 import type { ClaimCorroborationDetail } from '@stroom/supabase';
+import type { RejectionReason } from '@stroom/types';
 import { colors, fonts, spacing, radius, gradient } from '../../src/constants/brand';
 
 export default function ClaimDetailScreen() {
@@ -23,11 +28,52 @@ export default function ClaimDetailScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { claim, corroborations, loading, error } = useClaimDetail(id);
+  const [rejectVisible, setRejectVisible] = useState(false);
+  const [acting, setActing] = useState(false);
 
   const openUrl = useCallback((url: string | null | undefined) => {
     if (!url) return;
     Linking.openURL(url).catch(() => {});
   }, []);
+
+  const handleApprove = useCallback(async () => {
+    if (!claim || acting) return;
+    setActing(true);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    try {
+      await approveClaim(supabase, claim.id);
+      router.back();
+    } catch (e: any) {
+      setActing(false);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    }
+  }, [claim, acting, router]);
+
+  const handleReject = useCallback(
+    async (reason: RejectionReason, notes?: string) => {
+      if (!claim) return;
+      setRejectVisible(false);
+      setActing(true);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      try {
+        await rejectClaim(supabase, claim.id, reason, notes);
+        router.back();
+      } catch (e: any) {
+        setActing(false);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      }
+    },
+    [claim, router]
+  );
+
+  const handleEdit = useCallback(() => {
+    if (!claim) return;
+    Haptics.selectionAsync();
+    router.push({
+      pathname: '/claim/edit/[id]',
+      params: { id: claim.id },
+    } as any);
+  }, [claim, router]);
 
   if (loading) {
     return (
@@ -77,7 +123,10 @@ export default function ClaimDetailScreen() {
       </View>
 
       <ScrollView
-        contentContainerStyle={styles.scroll}
+        contentContainerStyle={[
+          styles.scroll,
+          { paddingBottom: 96 + Math.max(insets.bottom, spacing.md) },
+        ]}
         showsVerticalScrollIndicator={false}
       >
         {/* Status + age */}
@@ -133,8 +182,11 @@ export default function ClaimDetailScreen() {
           <View style={styles.scoreBox}>
             <Text style={styles.scoreLabel}>CONFIDENCE</Text>
             <Text style={styles.scoreValue}>
-              {confidence != null ? (Number(confidence) * 100).toFixed(0) + '%' : '—'}
+              {confidence != null ? Number(confidence).toFixed(1) : '—'}
             </Text>
+            {confidence != null && (
+              <Text style={styles.scoreSuffix}>/ 10</Text>
+            )}
           </View>
           <View style={styles.scoreBox}>
             <Text style={styles.scoreLabel}>CORROBORATIONS</Text>
@@ -242,6 +294,67 @@ export default function ClaimDetailScreen() {
           <MetaRow label="Claim ID" value={claim.id} mono />
         </View>
       </ScrollView>
+
+      {/* Sticky action bar */}
+      <View
+        style={[
+          styles.actionBar,
+          { paddingBottom: Math.max(insets.bottom, spacing.md) },
+        ]}
+      >
+        <Pressable
+          onPress={() => setRejectVisible(true)}
+          disabled={acting}
+          style={({ pressed }) => [
+            styles.actionBtn,
+            styles.rejectBtn,
+            (pressed || acting) && { opacity: 0.7 },
+          ]}
+        >
+          <Ionicons name="close" size={18} color={colors.statusReject} />
+          <Text style={[styles.actionText, { color: colors.statusReject }]}>
+            Reject
+          </Text>
+        </Pressable>
+
+        <Pressable
+          onPress={handleEdit}
+          disabled={acting}
+          style={({ pressed }) => [
+            styles.actionBtn,
+            styles.editBtn,
+            (pressed || acting) && { opacity: 0.7 },
+          ]}
+        >
+          <Ionicons name="create-outline" size={18} color={colors.teal} />
+          <Text style={[styles.actionText, { color: colors.teal }]}>Edit</Text>
+        </Pressable>
+
+        <Pressable
+          onPress={handleApprove}
+          disabled={acting}
+          style={({ pressed }) => [
+            styles.actionBtn,
+            styles.approveBtn,
+            (pressed || acting) && { opacity: 0.7 },
+          ]}
+        >
+          {acting ? (
+            <ActivityIndicator size="small" color={colors.statusApprove} />
+          ) : (
+            <Ionicons name="checkmark" size={18} color={colors.statusApprove} />
+          )}
+          <Text style={[styles.actionText, { color: colors.statusApprove }]}>
+            Approve
+          </Text>
+        </Pressable>
+      </View>
+
+      <RejectSheet
+        visible={rejectVisible}
+        onDismiss={() => setRejectVisible(false)}
+        onReject={handleReject}
+      />
     </LinearGradient>
   );
 }
@@ -446,6 +559,52 @@ const styles = StyleSheet.create({
     fontSize: 22,
     color: colors.alabaster,
     fontVariant: ['tabular-nums'],
+  },
+  scoreSuffix: {
+    fontFamily: fonts.mono.regular,
+    fontSize: 10,
+    color: colors.slate,
+    marginTop: 2,
+  },
+  actionBar: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    flexDirection: 'row',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    backgroundColor: colors.surfaceElevated,
+    borderTopWidth: 1,
+    borderTopColor: colors.glassBorder,
+  },
+  actionBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 14,
+    borderRadius: radius.md,
+    borderWidth: 1,
+  },
+  approveBtn: {
+    backgroundColor: 'rgba(34, 197, 94, 0.12)',
+    borderColor: 'rgba(34, 197, 94, 0.4)',
+  },
+  rejectBtn: {
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+    borderColor: 'rgba(239, 68, 68, 0.35)',
+  },
+  editBtn: {
+    backgroundColor: colors.tealDim,
+    borderColor: 'rgba(0, 161, 155, 0.35)',
+  },
+  actionText: {
+    fontFamily: fonts.archivo.bold,
+    fontSize: 14,
+    letterSpacing: -0.2,
   },
   section: {
     marginBottom: spacing.lg,

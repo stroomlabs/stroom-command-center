@@ -116,6 +116,7 @@ export default function RootLayout() {
           <Stack.Screen name="login" />
           <Stack.Screen name="entity/[id]" />
           <Stack.Screen name="claim/[id]" />
+          <Stack.Screen name="claim/edit/[id]" />
           <Stack.Screen name="audit" />
           <Stack.Screen name="research" />
           <Stack.Screen name="more" />

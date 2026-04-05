@@ -213,6 +213,46 @@ export async function approveClaim(
   if (auditError) throw auditError;
 }
 
+export interface ClaimUpdatePatch {
+  value_jsonb?: Record<string, unknown> | null;
+  status?: ClaimStatus;
+  confidence_score?: number | null;
+}
+
+export async function updateClaim(
+  client: SupabaseClient,
+  claimId: string,
+  patch: ClaimUpdatePatch
+): Promise<void> {
+  // Read current status so we can audit any status transition
+  const { data: current } = await client
+    .from('claims')
+    .select('status')
+    .eq('id', claimId)
+    .single();
+
+  const oldStatus = current?.status ?? 'draft';
+
+  const { error: updateError } = await client
+    .from('claims')
+    .update(patch)
+    .eq('id', claimId);
+  if (updateError) throw updateError;
+
+  const { error: auditError } = await client.from('audit_log').insert({
+    entity_id: claimId,
+    entity_table: 'claims',
+    actor: 'operator' as AuditActor,
+    action_type: 'update' as AuditActionType,
+    old_state: { status: oldStatus },
+    new_state: {
+      status: patch.status ?? oldStatus,
+      fields: Object.keys(patch),
+    },
+  });
+  if (auditError) throw auditError;
+}
+
 export async function batchApproveClaims(
   client: SupabaseClient,
   claimIds: string[]
