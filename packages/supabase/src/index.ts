@@ -1022,6 +1022,49 @@ export async function fetchAllSources(
   return (data as Source[]) ?? [];
 }
 
+// ── Corrections / supersedes ──
+
+export interface SupersedingClaim {
+  id: string;
+  predicate: string | null;
+  status: ClaimStatus;
+  created_at: string;
+  confidence_score: number | null;
+  source: { source_name: string; trust_score: number } | null;
+}
+
+// Given a claim, return any claim with the same (subject_entity_id, predicate)
+// that was created AFTER this claim. These are the rows that would "supersede"
+// the current claim in a corrections chain.
+export async function fetchSupersedingClaims(
+  client: SupabaseClient,
+  claimId: string,
+  subjectEntityId: string | null,
+  predicate: string | null,
+  createdAt: string
+): Promise<SupersedingClaim[]> {
+  if (!subjectEntityId || !predicate) return [];
+  const { data, error } = await client
+    .from('claims')
+    .select(
+      `
+      id,
+      predicate,
+      status,
+      created_at,
+      confidence_score,
+      source:sources!claims_asserted_source_id_fkey(source_name, trust_score)
+    `
+    )
+    .eq('subject_entity_id', subjectEntityId)
+    .eq('predicate', predicate)
+    .gt('created_at', createdAt)
+    .neq('id', claimId)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return ((data as unknown) as SupersedingClaim[]) ?? [];
+}
+
 // ── Command chat operator context ──
 
 export interface CommandOperatorContext {

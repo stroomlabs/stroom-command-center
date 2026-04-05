@@ -14,7 +14,12 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import * as Clipboard from 'expo-clipboard';
-import { approveClaim, rejectClaim } from '@stroom/supabase';
+import {
+  approveClaim,
+  rejectClaim,
+  fetchSupersedingClaims,
+  type SupersedingClaim,
+} from '@stroom/supabase';
 import { useClaimDetail } from '../../src/hooks/useClaimDetail';
 import { StatusBadge, STATUS_COLORS } from '../../src/components/StatusBadge';
 import { JsonView } from '../../src/components/JsonView';
@@ -39,6 +44,35 @@ export default function ClaimDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { claim, corroborations, loading, error } = useClaimDetail(id);
   const { show: showToast } = useBrandToast();
+  const [supersedes, setSupersedes] = useState<SupersedingClaim[]>([]);
+
+  // Fetch any newer claims with the same (subject, predicate) — the
+  // "Corrections" chain shown on claims flagged as corrected/superseded.
+  React.useEffect(() => {
+    if (!claim) return;
+    if (claim.status !== 'corrected' && claim.status !== 'superseded') {
+      setSupersedes([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const rows = await fetchSupersedingClaims(
+          supabase,
+          claim.id,
+          claim.subject_entity_id,
+          claim.predicate,
+          claim.created_at
+        );
+        if (!cancelled) setSupersedes(rows);
+      } catch {
+        if (!cancelled) setSupersedes([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [claim]);
   const [rejectVisible, setRejectVisible] = useState(false);
   const [acting, setActing] = useState(false);
   // Local status override so the badge can animate to its new state before
@@ -313,6 +347,45 @@ export default function ClaimDetailScreen() {
             </Text>
             {corroborations.map((c) => (
               <CorroborationRow key={c.id} corrob={c} onOpen={openUrl} />
+            ))}
+          </View>
+        )}
+
+        {/* Corrections */}
+        {supersedes.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionHeader}>
+              CORRECTIONS ({supersedes.length})
+            </Text>
+            {supersedes.map((s) => (
+              <Pressable
+                key={s.id}
+                onPress={() =>
+                  router.push({ pathname: '/claim/[id]', params: { id: s.id } } as any)
+                }
+                style={({ pressed }) => [
+                  styles.correctionRow,
+                  pressed && { opacity: 0.7 },
+                ]}
+              >
+                <View style={styles.correctionBody}>
+                  <View style={styles.correctionTop}>
+                    <StatusBadge status={s.status as any} />
+                    <Text style={styles.correctionAge}>
+                      {formatDate(s.created_at)}
+                    </Text>
+                  </View>
+                  {s.source && (
+                    <Text style={styles.correctionSource} numberOfLines={1}>
+                      {s.source.source_name} · trust{' '}
+                      {Number(s.source.trust_score).toFixed(1)}
+                      {s.confidence_score != null &&
+                        ` · conf ${Number(s.confidence_score).toFixed(1)}`}
+                    </Text>
+                  )}
+                </View>
+                <Ionicons name="chevron-forward" size={14} color={colors.slate} />
+              </Pressable>
             ))}
           </View>
         )}
@@ -631,6 +704,36 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: colors.slate,
     marginTop: 2,
+  },
+  correctionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    borderRadius: radius.md,
+    padding: spacing.sm + 2,
+    marginBottom: spacing.xs,
+  },
+  correctionBody: {
+    flex: 1,
+    gap: 4,
+  },
+  correctionTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  correctionAge: {
+    fontFamily: fonts.mono.regular,
+    fontSize: 10,
+    color: colors.slate,
+  },
+  correctionSource: {
+    fontFamily: fonts.archivo.regular,
+    fontSize: 11,
+    color: colors.silver,
   },
   copyIdBtn: {
     flexDirection: 'row',

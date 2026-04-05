@@ -18,6 +18,7 @@ import supabase from '../../src/lib/supabase';
 import { usePulseData } from '../../src/hooks/usePulseData';
 import { useGraphHealth } from '../../src/hooks/useGraphHealth';
 import { useQueueClaims } from '../../src/hooks/useQueueClaims';
+import { useSourcesList, pickUnhealthySources } from '../../src/hooks/useSourcesList';
 import { GlowSpot } from '../../src/components/GlowSpot';
 import { useBrandAlert } from '../../src/components/BrandAlert';
 import { colors, fonts, spacing, radius, gradient } from '../../src/constants/brand';
@@ -37,6 +38,8 @@ export default function OpsScreen() {
   const { data: pulse, refresh: refreshPulse } = usePulseData();
   const { health, refresh: refreshHealth } = useGraphHealth();
   const { refresh: refreshQueue } = useQueueClaims();
+  const { sources } = useSourcesList();
+  const unhealthy = useMemo(() => pickUnhealthySources(sources).slice(0, 6), [sources]);
   const { alert } = useBrandAlert();
   const [refreshing, setRefreshing] = React.useState(false);
   const [sweeping, setSweeping] = React.useState(false);
@@ -237,6 +240,55 @@ export default function OpsScreen() {
             onPress={() => router.push(card.route as any)}
           />
         ))}
+
+        {/* Source health monitoring */}
+        {unhealthy.length > 0 && (
+          <View style={styles.healthBlock}>
+            <Text style={styles.healthHeader}>SOURCE HEALTH</Text>
+            {unhealthy.map((u) => {
+              const tone =
+                u.issue === 'failing'
+                  ? colors.statusReject
+                  : u.issue === 'low-trust'
+                  ? colors.statusReject
+                  : colors.statusPending;
+              const label =
+                u.issue === 'failing'
+                  ? 'FAILING'
+                  : u.issue === 'stale'
+                  ? 'STALE'
+                  : 'LOW TRUST';
+              return (
+                <View key={u.source.id} style={styles.healthRow}>
+                  <View style={[styles.healthDot, { backgroundColor: tone }]} />
+                  <View style={styles.healthBody}>
+                    <Text style={styles.healthName} numberOfLines={1}>
+                      {u.source.source_name}
+                    </Text>
+                    <Text style={[styles.healthIssue, { color: tone }]}>
+                      {label} · trust {Number(u.source.trust_score).toFixed(1)}
+                    </Text>
+                  </View>
+                  <Pressable
+                    onPress={() =>
+                      router.push({
+                        pathname: '/source/[id]',
+                        params: { id: u.source.id },
+                      } as any)
+                    }
+                    style={({ pressed }) => [
+                      styles.healthCheckBtn,
+                      pressed && { opacity: 0.7 },
+                    ]}
+                  >
+                    <Text style={styles.healthCheckText}>Check</Text>
+                    <Ionicons name="chevron-forward" size={12} color={colors.teal} />
+                  </Pressable>
+                </View>
+              );
+            })}
+          </View>
+        )}
       </ScrollView>
     </LinearGradient>
   );
@@ -348,6 +400,64 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: colors.obsidian,
     letterSpacing: -0.2,
+  },
+  healthBlock: {
+    marginTop: spacing.lg,
+    backgroundColor: colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    borderRadius: radius.lg,
+    padding: spacing.md,
+  },
+  healthHeader: {
+    fontFamily: fonts.archivo.medium,
+    fontSize: 10,
+    color: colors.slate,
+    letterSpacing: 1.2,
+    marginBottom: spacing.sm,
+  },
+  healthRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: colors.glassBorder,
+  },
+  healthDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  healthBody: {
+    flex: 1,
+    gap: 2,
+  },
+  healthName: {
+    fontFamily: fonts.archivo.semibold,
+    fontSize: 13,
+    color: colors.alabaster,
+  },
+  healthIssue: {
+    fontFamily: fonts.mono.medium,
+    fontSize: 10,
+    letterSpacing: 0.5,
+  },
+  healthCheckBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: radius.sm,
+    backgroundColor: colors.tealDim,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 161, 155, 0.35)',
+  },
+  healthCheckText: {
+    fontFamily: fonts.archivo.semibold,
+    fontSize: 11,
+    color: colors.teal,
   },
   card: {
     flexDirection: 'row',
