@@ -11,6 +11,7 @@ import { OfflineBanner } from '../src/components/OfflineBanner';
 import { ErrorBoundary } from '../src/components/ErrorBoundary';
 import { BrandAlertProvider } from '../src/components/BrandAlert';
 import { BrandToastProvider } from '../src/components/BrandToast';
+import { BrandSplash } from '../src/components/BrandSplash';
 import { OnboardingFlow } from '../src/components/OnboardingFlow';
 import { useOnboarding } from '../src/hooks/useOnboarding';
 import { colors, fonts, gradient } from '../src/constants/brand';
@@ -82,6 +83,7 @@ function RouteGuard({ children }: { children: React.ReactNode }) {
 
 export default function RootLayout() {
   const [fontsLoaded, setFontsLoaded] = useState(false);
+  const [splashDone, setSplashDone] = useState(false);
 
   useEffect(() => {
     async function loadFonts() {
@@ -102,6 +104,9 @@ export default function RootLayout() {
         console.warn('Font loading failed, falling back to system fonts:', e);
       } finally {
         setFontsLoaded(true);
+        // Hand off from the native expo-splash-screen (which is covering the
+        // screen with splash-icon.png on #0E0F14) to the custom BrandSplash
+        // component now that fonts are ready to render.
         SplashScreen.hideAsync();
       }
     }
@@ -154,6 +159,9 @@ export default function RootLayout() {
         </BrandToastProvider>
         </BrandAlertProvider>
       </AuthProvider>
+      {!splashDone && (
+        <BrandSplash ready={fontsLoaded} onDone={() => setSplashDone(true)} />
+      )}
     </GestureHandlerRootView>
   );
 }

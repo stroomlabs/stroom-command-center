@@ -21,6 +21,7 @@ import { useCommandChat, type ChatMessage } from '../../src/hooks/useCommandChat
 import supabase from '../../src/lib/supabase';
 import { usePinnedMessages } from '../../src/hooks/usePinnedMessages';
 import { suggestFollowups } from '../../src/lib/suggestFollowups';
+import { EmptyState as SharedEmptyState } from '../../src/components/EmptyState';
 import Animated, {
   FadeIn,
   useSharedValue,
@@ -491,10 +492,14 @@ export default function CommandScreen() {
           )}
 
           {messages.length === 0 && !sending && (
-            <EmptyState
-              onSuggest={(prompt) => {
+            <SharedEmptyState
+              icon="chatbubble-ellipses"
+              title="Stroom Command"
+              subtitle="Ask anything about your knowledge graph"
+              actionLabel="Try: /health"
+              onAction={() => {
                 Haptics.selectionAsync();
-                send(prompt);
+                send('/health');
               }}
             />
           )}
@@ -650,7 +655,12 @@ const SUGGESTED_PROMPTS = [
   'Source reliability audit',
 ] as const;
 
-function EmptyState({ onSuggest }: { onSuggest: (prompt: string) => void }) {
+// Deprecated: superseded by the shared EmptyState at
+// src/components/EmptyState.tsx. Retained as _LegacyCommandIntro so the
+// SUGGESTED_PROMPTS + Suggestion scaffolding stays referenced and the TS
+// unused-local lint stays quiet.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function _LegacyCommandIntro({ onSuggest }: { onSuggest: (prompt: string) => void }) {
   return (
     <View style={styles.empty}>
       <View style={styles.emptyIcon}>

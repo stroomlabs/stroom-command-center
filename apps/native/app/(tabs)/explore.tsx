@@ -9,6 +9,7 @@ import {
   Pressable,
   Keyboard,
   ScrollView,
+  RefreshControl,
 } from 'react-native';
 import Animated, {
   useSharedValue,
@@ -27,6 +28,7 @@ import { useExploreSearch } from '../../src/hooks/useExploreSearch';
 import { usePredicatesList } from '../../src/hooks/usePredicatesList';
 import { EntityRow } from '../../src/components/EntityRow';
 import { MultiCompareSheet } from '../../src/components/MultiCompareSheet';
+import { EmptyState } from '../../src/components/EmptyState';
 import { useRecentlyViewed } from '../../src/hooks/useRecentlyViewed';
 import * as Haptics from 'expo-haptics';
 import type { EntitySearchResult } from '@stroom/supabase';
@@ -42,9 +44,18 @@ export default function ExploreScreen() {
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [compareOpen, setCompareOpen] = useState(false);
-  const { results, loading, error } = useExploreSearch(query);
+  const { results, loading, error, refresh: refreshSearch } =
+    useExploreSearch(query);
   const predicates = usePredicatesList();
   const { recent: recentlyViewed } = useRecentlyViewed();
+  const [refreshing, setRefreshing] = useState(false);
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await refreshSearch();
+    // Give the search debounce a tick to resolve before dropping the spinner.
+    setTimeout(() => setRefreshing(false), 400);
+  }, [refreshSearch]);
 
   const toggleSelectMode = useCallback(() => {
     Haptics.selectionAsync();
@@ -300,14 +311,24 @@ export default function ExploreScreen() {
           <ScrollView
             contentContainerStyle={styles.emptyWrap}
             keyboardShouldPersistTaps="handled"
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={handleRefresh}
+                tintColor={colors.teal}
+              />
+            }
           >
-            <Ionicons name="search-outline" size={40} color={colors.slate} />
-            <Text style={styles.emptyTitle}>No matches</Text>
-            <Text style={styles.emptyBody}>
-              {typeFilter
-                ? `No ${typeFilter} entities match "${trimmed}".`
-                : 'Try a different search term or part of an entity name.'}
-            </Text>
+            <EmptyState
+              icon="search"
+              title="No Results"
+              subtitle={
+                typeFilter
+                  ? `No ${typeFilter} entities match "${trimmed}".`
+                  : 'Try a different search term or filter'
+              }
+              compact
+            />
             {trimmed.length >= 4 && (
               <Pressable
                 onPress={() => setQuery(trimmed.slice(0, Math.max(2, trimmed.length - 2)))}
@@ -352,8 +373,22 @@ export default function ExploreScreen() {
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="on-drag"
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={handleRefresh}
+                tintColor={colors.teal}
+              />
+            }
             ListHeaderComponent={
-              !trimmed && !selectMode && recentlyViewed.length > 0 ? (
+              !trimmed && !selectMode && recentlyViewed.length === 0 ? (
+                <EmptyState
+                  icon="time"
+                  title="No Recent Entities"
+                  subtitle="Entities you view will appear here"
+                  compact
+                />
+              ) : !trimmed && !selectMode && recentlyViewed.length > 0 ? (
                 <View style={styles.recentBlock}>
                   <Text style={styles.recentHeader}>RECENTLY VIEWED</Text>
                   {recentlyViewed.map((r) => (

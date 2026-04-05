@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useAuditLog, type AuditLogRow } from '../src/hooks/useAuditLog';
+import { EmptyState } from '../src/components/EmptyState';
 import { colors, fonts, spacing, radius, gradient } from '../src/constants/brand';
 
 export default function AuditTrailScreen() {
@@ -58,10 +59,11 @@ export default function AuditTrailScreen() {
           <Text style={styles.errorText}>{error}</Text>
         </View>
       ) : rows.length === 0 ? (
-        <View style={styles.centered}>
-          <Ionicons name="file-tray-outline" size={40} color={colors.slate} />
-          <Text style={styles.emptyTitle}>No audit entries</Text>
-        </View>
+        <EmptyState
+          icon="document-text"
+          title="No Audit Events"
+          subtitle="Governance actions will appear here"
+        />
       ) : (
         <FlatList
           data={rows}

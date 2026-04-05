@@ -17,6 +17,7 @@ import * as Clipboard from 'expo-clipboard';
 import type { CoverageGapEntity } from '@stroom/supabase';
 import { useCoverageGaps } from '../src/hooks/useCoverageGaps';
 import { useBrandToast } from '../src/components/BrandToast';
+import { EmptyState } from '../src/components/EmptyState';
 import { colors, fonts, spacing, radius, gradient } from '../src/constants/brand';
 
 export default function CoverageGapsScreen() {
@@ -113,13 +114,11 @@ Focus on biography, affiliations, timeline events, relationships, and recent act
           <Text style={styles.errorText}>{error}</Text>
         </View>
       ) : gaps.length === 0 ? (
-        <View style={styles.centered}>
-          <Ionicons name="checkmark-circle-outline" size={40} color={colors.statusApprove} />
-          <Text style={styles.emptyTitle}>No coverage gaps</Text>
-          <Text style={styles.emptyBody}>
-            Every entity has 3 or more claims. Nice work.
-          </Text>
-        </View>
+        <EmptyState
+          icon="analytics"
+          title="Full Coverage"
+          subtitle="No coverage gaps detected"
+        />
       ) : (
         <ScrollView
           contentContainerStyle={styles.content}

@@ -14,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import type { ResearchQueueItem } from '@stroom/types';
 import { useResearchQueue } from '../src/hooks/useResearchQueue';
+import { EmptyState } from '../src/components/EmptyState';
 import { colors, fonts, spacing, radius, gradient } from '../src/constants/brand';
 
 export default function ResearchQueueScreen() {
@@ -65,10 +66,11 @@ export default function ResearchQueueScreen() {
           <Text style={styles.errorText}>{error}</Text>
         </View>
       ) : items.length === 0 ? (
-        <View style={styles.centered}>
-          <Ionicons name="flask-outline" size={40} color={colors.slate} />
-          <Text style={styles.emptyTitle}>No research items</Text>
-        </View>
+        <EmptyState
+          icon="flask"
+          title="No Active Research"
+          subtitle="Research batches will appear here"
+        />
       ) : (
         <FlatList
           data={items}

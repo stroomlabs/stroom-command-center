@@ -29,6 +29,7 @@ import { ClaimCard } from '../../src/components/ClaimCard';
 import { RejectSheet } from '../../src/components/RejectSheet';
 import { SkeletonClaimCard } from '../../src/components/Skeleton';
 import { ScreenTransition } from '../../src/components/ScreenTransition';
+import { EmptyState } from '../../src/components/EmptyState';
 import {
   ActionSheet,
   type ActionSheetAction,
@@ -385,28 +386,23 @@ export default function QueueScreen() {
           }
         >
           {error ? (
-            <>
-              <Text style={styles.emptyIcon}>!</Text>
-              <Text style={styles.emptyTitle}>Couldn't load queue</Text>
-              <Text style={styles.errorText}>{error}</Text>
-            </>
+            <EmptyState
+              icon="alert-circle"
+              title="Couldn't load queue"
+              subtitle={error}
+            />
           ) : claims.length === 0 ? (
-            <>
-              <Text style={styles.emptyIcon}>✓</Text>
-              <Text style={styles.emptyTitle}>Queue clear</Text>
-              <Text style={styles.emptyBody}>
-                No claims pending review. Pull to refresh — new claims will
-                also appear here in real time.
-              </Text>
-            </>
+            <EmptyState
+              icon="checkmark-circle"
+              title="Queue Clear"
+              subtitle="All claims have been processed"
+            />
           ) : (
-            <>
-              <Text style={styles.emptyIcon}>·</Text>
-              <Text style={styles.emptyTitle}>No matches</Text>
-              <Text style={styles.emptyBody}>
-                No claims match this filter. Try a different status.
-              </Text>
-            </>
+            <EmptyState
+              icon="funnel"
+              title="No matches"
+              subtitle="No claims match this filter. Try a different status."
+            />
           )}
         </ScrollView>
       ) : (

@@ -22,6 +22,7 @@ import { useSourcesList, pickUnhealthySources } from '../../src/hooks/useSources
 import { GlowSpot } from '../../src/components/GlowSpot';
 import { ScreenTransition } from '../../src/components/ScreenTransition';
 import { useBrandAlert } from '../../src/components/BrandAlert';
+import { EmptyState } from '../../src/components/EmptyState';
 import { colors, fonts, spacing, radius, gradient } from '../../src/constants/brand';
 
 interface OpsCardSpec {
@@ -49,6 +50,83 @@ export default function OpsScreen() {
     at: string;
     processed: number;
   } | null>(null);
+
+  // Analytics sections — each loads independently so a slow RPC never
+  // blocks the rest of the Ops screen.
+  const [ingestion, setIngestion] = React.useState<
+    Array<{ day: string; claims_added: number }> | null
+  >(null);
+  const [sweepHistory, setSweepHistory] = React.useState<
+    Array<{
+      ran_at: string;
+      approved: number;
+      flagged: number;
+      drafts_remaining: number;
+    }> | null
+  >(null);
+  const [verticals, setVerticals] = React.useState<
+    Array<{ domain: string; claim_count: number }> | null
+  >(null);
+  const [tooltip, setTooltip] = React.useState<{
+    day: string;
+    count: number;
+  } | null>(null);
+
+  // Fetch ingestion timeline (14 days)
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await supabase.rpc('get_ingestion_timeline', {
+          days: 14,
+        });
+        if (!cancelled) setIngestion((data as any[]) ?? []);
+      } catch {
+        if (!cancelled) setIngestion([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshing]);
+
+  // Fetch sweep history (last 5)
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await supabase.rpc('get_sweep_history', { limit_n: 5 });
+        if (!cancelled) setSweepHistory((data as any[]) ?? []);
+      } catch {
+        if (!cancelled) setSweepHistory([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshing, sweeping]);
+
+  // Fetch vertical breakdown
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await supabase.rpc('get_vertical_breakdown');
+        if (!cancelled) {
+          // RPC may return { claims_by_domain: [...] } or a bare array.
+          const rows = Array.isArray(data)
+            ? (data as any[])
+            : ((data as any)?.claims_by_domain ?? []);
+          setVerticals(rows);
+        }
+      } catch {
+        if (!cancelled) setVerticals([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshing]);
 
   // Query audit_log for the most recent sweep — rows tagged
   // metadata->>'batch' = 'true' with action_type = 'auto_approve'. Treat
@@ -358,6 +436,19 @@ export default function OpsScreen() {
           />
         ))}
 
+        {/* Ingestion Activity */}
+        <IngestionActivity
+          data={ingestion}
+          tooltip={tooltip}
+          onTooltipChange={setTooltip}
+        />
+
+        {/* Sweep History */}
+        <SweepHistorySection data={sweepHistory} />
+
+        {/* Vertical Breakdown */}
+        <VerticalBreakdownSection data={verticals} />
+
         {/* Source health monitoring */}
         {unhealthy.length > 0 && (
           <View style={styles.healthBlock}>
@@ -498,6 +589,241 @@ function OpsCard({
   );
 }
 
+const DAY_ABBREV = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+function IngestionActivity({
+  data,
+  tooltip,
+  onTooltipChange,
+}: {
+  data: Array<{ day: string; claims_added: number }> | null;
+  tooltip: { day: string; count: number } | null;
+  onTooltipChange: (t: { day: string; count: number } | null) => void;
+}) {
+  const CHART_HEIGHT = 100;
+  const BAR_GAP = 4;
+
+  if (data === null) {
+    return (
+      <View style={styles.analyticsCard}>
+        <View style={styles.analyticsHeaderRow}>
+          <Text style={styles.analyticsHeader}>Ingestion Activity</Text>
+          <View style={styles.analyticsChip}>
+            <Text style={styles.analyticsChipText}>14d</Text>
+          </View>
+        </View>
+        <ActivityIndicator
+          color={colors.teal}
+          style={{ marginVertical: spacing.lg }}
+        />
+      </View>
+    );
+  }
+
+  const max = data.reduce((m, b) => Math.max(m, b.claims_added ?? 0), 0);
+
+  return (
+    <View style={styles.analyticsCard}>
+      <View style={styles.analyticsHeaderRow}>
+        <Text style={styles.analyticsHeader}>Ingestion Activity</Text>
+        <View style={styles.analyticsChip}>
+          <Text style={styles.analyticsChipText}>14d</Text>
+        </View>
+      </View>
+
+      {data.length === 0 ? (
+        <EmptyState
+          icon="trending-up"
+          title="No Ingestion Data"
+          subtitle="Claims will appear here as they land"
+          compact
+        />
+      ) : (
+        <>
+          {tooltip && (
+            <View style={styles.chartTooltip}>
+              <Text style={styles.chartTooltipText}>
+                {tooltip.day} · {tooltip.count} claims
+              </Text>
+            </View>
+          )}
+          <View style={[styles.chartRow, { height: CHART_HEIGHT + 20 }]}>
+            {data.map((b, i) => {
+              const pct = max > 0 ? (b.claims_added ?? 0) / max : 0;
+              const dayLabel = (() => {
+                try {
+                  const d = new Date(b.day);
+                  return DAY_ABBREV[d.getDay()];
+                } catch {
+                  return '';
+                }
+              })();
+              const active = tooltip?.day === dayLabel;
+              return (
+                <Pressable
+                  key={b.day + i}
+                  onPress={() =>
+                    onTooltipChange(
+                      active
+                        ? null
+                        : {
+                            day: dayLabel,
+                            count: b.claims_added ?? 0,
+                          }
+                    )
+                  }
+                  style={[
+                    styles.chartBarCol,
+                    { marginHorizontal: BAR_GAP / 2 },
+                  ]}
+                >
+                  <View style={{ height: CHART_HEIGHT, justifyContent: 'flex-end' }}>
+                    <View
+                      style={[
+                        styles.chartBar,
+                        {
+                          height: Math.max(2, pct * CHART_HEIGHT),
+                          backgroundColor: active ? colors.teal : 'rgba(0,161,155,0.7)',
+                        },
+                      ]}
+                    />
+                  </View>
+                  <Text style={styles.chartDayLabel}>{dayLabel}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </>
+      )}
+    </View>
+  );
+}
+
+function SweepHistorySection({
+  data,
+}: {
+  data: Array<{
+    ran_at: string;
+    approved: number;
+    flagged: number;
+    drafts_remaining: number;
+  }> | null;
+}) {
+  if (data === null) {
+    return (
+      <View style={styles.analyticsCard}>
+        <Text style={styles.analyticsHeader}>Sweep History</Text>
+        <ActivityIndicator
+          color={colors.teal}
+          style={{ marginVertical: spacing.lg }}
+        />
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.analyticsCard}>
+      <Text style={styles.analyticsHeader}>Sweep History</Text>
+      {data.length === 0 ? (
+        <EmptyState
+          icon="sparkles"
+          title="No Sweeps Yet"
+          subtitle="Governance sweep runs will appear here"
+          compact
+        />
+      ) : (
+        <View style={{ gap: spacing.sm, marginTop: spacing.sm }}>
+          {data.map((s, i) => (
+            <View key={s.ran_at + i} style={styles.sweepHistoryRow}>
+              <Text style={styles.sweepHistoryTime}>
+                {formatRelative(s.ran_at)}
+              </Text>
+              <View style={styles.sweepHistoryStats}>
+                <Text style={[styles.sweepHistoryStat, { color: colors.statusApprove }]}>
+                  {s.approved ?? 0} approved
+                </Text>
+                <Text style={[styles.sweepHistoryStat, { color: colors.statusPending }]}>
+                  {s.flagged ?? 0} flagged
+                </Text>
+                <Text style={[styles.sweepHistoryStat, { color: colors.slate }]}>
+                  {s.drafts_remaining ?? 0} left
+                </Text>
+              </View>
+            </View>
+          ))}
+        </View>
+      )}
+    </View>
+  );
+}
+
+function VerticalBreakdownSection({
+  data,
+}: {
+  data: Array<{ domain: string; claim_count: number }> | null;
+}) {
+  if (data === null) {
+    return (
+      <View style={styles.analyticsCard}>
+        <Text style={styles.analyticsHeader}>Coverage by Vertical</Text>
+        <ActivityIndicator
+          color={colors.teal}
+          style={{ marginVertical: spacing.lg }}
+        />
+      </View>
+    );
+  }
+
+  // Cap to top 6 and collapse the rest into "Other".
+  const sorted = [...data].sort((a, b) => (b.claim_count ?? 0) - (a.claim_count ?? 0));
+  const top = sorted.slice(0, 6);
+  const rest = sorted.slice(6);
+  const otherCount = rest.reduce((acc, r) => acc + (r.claim_count ?? 0), 0);
+  const rows =
+    otherCount > 0
+      ? [...top, { domain: 'Other', claim_count: otherCount }]
+      : top;
+  const max = rows.reduce((m, r) => Math.max(m, r.claim_count ?? 0), 0);
+
+  return (
+    <View style={styles.analyticsCard}>
+      <Text style={styles.analyticsHeader}>Coverage by Vertical</Text>
+      {rows.length === 0 ? (
+        <EmptyState
+          icon="layers"
+          title="No Vertical Data"
+          subtitle="Domain breakdown will appear here"
+          compact
+        />
+      ) : (
+        <View style={{ gap: spacing.sm, marginTop: spacing.sm }}>
+          {rows.map((r) => {
+            const pct = max > 0 ? (r.claim_count ?? 0) / max : 0;
+            return (
+              <View key={r.domain} style={styles.verticalRow}>
+                <Text style={styles.verticalLabel} numberOfLines={1}>
+                  {r.domain}
+                </Text>
+                <View style={styles.verticalBarTrack}>
+                  <View
+                    style={[
+                      styles.verticalBarFill,
+                      { width: `${Math.max(2, pct * 100)}%` },
+                    ]}
+                  />
+                </View>
+                <Text style={styles.verticalCount}>
+                  {(r.claim_count ?? 0).toLocaleString()}
+                </Text>
+              </View>
+            );
+          })}
+        </View>
+      )}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   container: { flex: 1 },
   header: {
@@ -590,6 +916,134 @@ const styles = StyleSheet.create({
     color: colors.slate,
     textTransform: 'uppercase',
     letterSpacing: 0.4,
+  },
+  analyticsCard: {
+    backgroundColor: colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    gap: spacing.xs,
+  },
+  analyticsHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  analyticsHeader: {
+    fontFamily: fonts.archivo.semibold,
+    fontSize: 13,
+    color: colors.alabaster,
+    letterSpacing: -0.2,
+  },
+  analyticsChip: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: radius.sm,
+    backgroundColor: colors.tealDim,
+    borderWidth: 1,
+    borderColor: 'rgba(0,161,155,0.35)',
+  },
+  analyticsChipText: {
+    fontFamily: fonts.mono.semibold,
+    fontSize: 10,
+    color: colors.teal,
+    letterSpacing: 0.5,
+  },
+  chartRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    marginTop: spacing.sm,
+  },
+  chartBarCol: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 4,
+  },
+  chartBar: {
+    width: '100%',
+    borderTopLeftRadius: 3,
+    borderTopRightRadius: 3,
+  },
+  chartDayLabel: {
+    fontFamily: fonts.mono.regular,
+    fontSize: 9,
+    color: colors.slate,
+  },
+  chartTooltip: {
+    alignSelf: 'center',
+    backgroundColor: colors.surfaceCard,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.teal,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    marginTop: spacing.xs,
+  },
+  chartTooltipText: {
+    fontFamily: fonts.mono.medium,
+    fontSize: 11,
+    color: colors.teal,
+  },
+  sweepHistoryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+    backgroundColor: colors.surfaceCard,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 8,
+  },
+  sweepHistoryTime: {
+    fontFamily: fonts.mono.medium,
+    fontSize: 11,
+    color: colors.silver,
+    flex: 1,
+  },
+  sweepHistoryStats: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  sweepHistoryStat: {
+    fontFamily: fonts.mono.semibold,
+    fontSize: 11,
+    fontVariant: ['tabular-nums'],
+  },
+  verticalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  verticalLabel: {
+    fontFamily: fonts.archivo.medium,
+    fontSize: 11,
+    color: colors.silver,
+    width: 90,
+    textTransform: 'capitalize',
+  },
+  verticalBarTrack: {
+    flex: 1,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    overflow: 'hidden',
+  },
+  verticalBarFill: {
+    height: '100%',
+    backgroundColor: colors.teal,
+    borderRadius: 3,
+  },
+  verticalCount: {
+    fontFamily: fonts.mono.semibold,
+    fontSize: 11,
+    color: colors.alabaster,
+    width: 44,
+    textAlign: 'right',
+    fontVariant: ['tabular-nums'],
   },
   lastSweepRow: {
     flexDirection: 'row',

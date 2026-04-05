@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { searchEntities, type EntitySearchResult } from '@stroom/supabase';
 import supabase from '../lib/supabase';
 
@@ -6,6 +6,7 @@ export function useExploreSearch(query: string) {
   const [results, setResults] = useState<EntitySearchResult[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [version, setVersion] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -29,7 +30,12 @@ export function useExploreSearch(query: string) {
       cancelled = true;
       clearTimeout(handle);
     };
-  }, [query]);
+  }, [query, version]);
 
-  return { results, loading, error };
+  // Force a re-run of the current query (used by pull-to-refresh).
+  const refresh = useCallback(async () => {
+    setVersion((v) => v + 1);
+  }, []);
+
+  return { results, loading, error, refresh };
 }
