@@ -325,39 +325,90 @@ export function useCommandChat() {
 
 // Parse a (potentially partial) streaming response body.
 //
-// Supports:
-//   - Server-Sent Events frames: lines starting with `data: ` containing either
-//     a JSON object with {delta|content|text|content_block_delta.text} or raw text.
-//     Handles `[DONE]` sentinel.
-//   - Plain text streams: returned as-is.
+// Primary shape is Anthropic SSE: an interleaved sequence of `event:` and
+// `data:` lines where each data line is a JSON frame. We only accumulate
+// text_delta content from content_block_delta frames; all other frame
+// types (message_start, content_block_start/stop, message_delta,
+// message_stop, ping, etc.) are ignored. OpenAI-style `choices[0].delta.
+// content` and generic wrappers are supported as fallbacks so the same
+// parser works regardless of which upstream the edge function wires.
 //
-// Returns null if the body *looks* like a complete JSON response (starts with
-// `{` and has no `data:` prefix) so the caller can fall back to JSON.parse.
+// Never pushes raw SSE text on JSON parse failure — a partially received
+// chunk is dropped until the next onprogress tick delivers the full line.
+//
+// Returns null if the body *looks* like a complete JSON envelope (starts
+// with `{` and has no data: prefix) so the caller can fall back to
+// JSON.parse for non-streaming responses.
 function parseStreamChunk(raw: string): string | null {
   if (!raw) return '';
   const trimmedStart = raw.trimStart();
 
-  if (trimmedStart.includes('data:')) {
-    // SSE path
+  const looksLikeSse =
+    trimmedStart.includes('data:') || trimmedStart.startsWith('event:');
+
+  if (looksLikeSse) {
     const out: string[] = [];
     for (const line of raw.split(/\r?\n/)) {
+      // Ignore event:, id:, retry:, blank lines — only data: carries JSON.
       if (!line.startsWith('data:')) continue;
       const payload = line.slice(5).trim();
       if (!payload || payload === '[DONE]') continue;
+
+      let obj: any;
       try {
-        const obj = JSON.parse(payload);
-        const delta =
-          obj.delta ??
-          obj.content ??
-          obj.text ??
-          obj.content_block_delta?.text ??
-          obj.choices?.[0]?.delta?.content ??
-          '';
-        if (typeof delta === 'string') out.push(delta);
+        obj = JSON.parse(payload);
       } catch {
-        // Not JSON — treat payload as literal text
-        out.push(payload);
+        // Partial JSON from a chunk boundary — skip this line; it will
+        // re-appear on the next onprogress tick with the rest of the
+        // bytes. Never fall through to pushing raw SSE text.
+        continue;
       }
+
+      // ── Anthropic streaming ──
+      // content_block_delta → { type, index, delta: { type: 'text_delta', text } }
+      if (
+        obj?.type === 'content_block_delta' &&
+        obj.delta?.type === 'text_delta' &&
+        typeof obj.delta.text === 'string'
+      ) {
+        out.push(obj.delta.text);
+        continue;
+      }
+      // Explicitly drop non-text Anthropic frames.
+      if (
+        obj?.type === 'message_start' ||
+        obj?.type === 'message_delta' ||
+        obj?.type === 'message_stop' ||
+        obj?.type === 'content_block_start' ||
+        obj?.type === 'content_block_stop' ||
+        obj?.type === 'ping' ||
+        obj?.type === 'error'
+      ) {
+        continue;
+      }
+
+      // ── OpenAI streaming ──
+      // { choices: [{ delta: { content: '...' } }] }
+      const openaiDelta = obj?.choices?.[0]?.delta?.content;
+      if (typeof openaiDelta === 'string') {
+        out.push(openaiDelta);
+        continue;
+      }
+
+      // ── Generic wrappers returned by lightweight edge function shims ──
+      if (typeof obj?.delta === 'string') {
+        out.push(obj.delta);
+        continue;
+      }
+      if (typeof obj?.content === 'string') {
+        out.push(obj.content);
+        continue;
+      }
+      if (typeof obj?.text === 'string') {
+        out.push(obj.text);
+        continue;
+      }
+      // Anything else — including unknown event types — is ignored.
     }
     return out.join('');
   }
