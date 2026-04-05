@@ -22,8 +22,8 @@ export default function LoginScreen() {
   return (
     <LinearGradient colors={['#000000', '#0A0D0F']} start={{ x: 0, y: 0 }} end={{ x: 0.5, y: 1 }} style={s.container}>
       {/* Large diffused teal halo behind the logo mark */}
-      <GlowSpot size={560} opacity={0.08} style={s.logoGlow} />
-      <GlowSpot size={320} opacity={0.06} style={s.logoGlowInner} />
+      <GlowSpot size={560} opacity={0.08} style={s.logoGlow} breathe />
+      <GlowSpot size={320} opacity={0.08} style={s.logoGlowInner} breathe />
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={s.inner}>
         <View style={s.logoArea}>
           <Text style={s.logoMark}>S</Text>

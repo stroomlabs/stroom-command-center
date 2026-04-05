@@ -187,7 +187,7 @@ export default function CommandScreen() {
       style={styles.container}
     >
       {/* Soft teal glow behind the header */}
-      <GlowSpot size={360} opacity={0.07} top={insets.top - 80} left={-80} />
+      <GlowSpot size={360} opacity={0.08} top={insets.top - 80} left={-80} breathe />
 
       <KeyboardAvoidingView
         style={styles.container}

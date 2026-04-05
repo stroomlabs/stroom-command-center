@@ -83,8 +83,8 @@ export default function PulseScreen() {
       style={styles.container}
     >
       {/* Atmospheric glow spots — behind metrics + status breakdown */}
-      <GlowSpot size={520} opacity={0.06} top={insets.top + 40} left={-120} />
-      <GlowSpot size={360} opacity={0.04} top={insets.top + 480} right={-100} />
+      <GlowSpot size={520} opacity={0.08} top={insets.top + 40} left={-120} breathe />
+      <GlowSpot size={360} opacity={0.06} top={insets.top + 480} right={-100} breathe />
 
       <ScrollView
         contentContainerStyle={[
