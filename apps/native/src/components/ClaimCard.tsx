@@ -455,12 +455,10 @@ const styles = StyleSheet.create({
   },
   quickActions: {
     flexDirection: 'row',
-    gap: 6,
+    alignItems: 'center',
+    gap: 14,
   },
   quickBtn: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
     borderWidth: 1,
     justifyContent: 'center',
     alignItems: 'center',
@@ -470,10 +468,16 @@ const styles = StyleSheet.create({
     transform: [{ scale: 0.94 }],
   },
   quickApproveBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: 'rgba(34, 197, 94, 0.15)',
     borderColor: colors.statusApprove,
   },
   quickRejectBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     backgroundColor: 'rgba(239, 68, 68, 0.15)',
     borderColor: colors.statusReject,
   },
