@@ -28,6 +28,7 @@ import { StatusBadge, STATUS_COLORS } from '../../src/components/StatusBadge';
 import { JsonView } from '../../src/components/JsonView';
 import { RejectSheet } from '../../src/components/RejectSheet';
 import { ClaimDiffSheet } from '../../src/components/ClaimDiffSheet';
+import { RetryCard } from '../../src/components/RetryCard';
 import { GlowSpot } from '../../src/components/GlowSpot';
 import { useBrandToast } from '../../src/components/BrandToast';
 import Animated, {
@@ -46,7 +47,8 @@ export default function ClaimDetailScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { claim, corroborations, loading, error } = useClaimDetail(id);
+  const { claim, corroborations, loading, error, refresh: refreshClaim } =
+    useClaimDetail(id);
   const { show: showToast } = useBrandToast();
   const [supersedes, setSupersedes] = useState<SupersedingClaim[]>([]);
   const [diffTargetId, setDiffTargetId] = useState<string | null>(null);
@@ -318,7 +320,15 @@ export default function ClaimDetailScreen() {
           <BackButton onPress={() => router.back()} />
         </View>
         <View style={styles.centered}>
-          <Text style={styles.errorText}>{error ?? 'Claim not found'}</Text>
+          {error ? (
+            <RetryCard
+              message="Couldn't load claim"
+              detail={error}
+              onRetry={refreshClaim}
+            />
+          ) : (
+            <Text style={styles.errorText}>Claim not found</Text>
+          )}
         </View>
       </LinearGradient>
     );
@@ -1076,7 +1086,7 @@ const styles = StyleSheet.create({
   entityLink: {
     fontFamily: fonts.archivo.bold,
     fontSize: 34,
-    color: colors.alabaster,
+    color: colors.teal,
     letterSpacing: -0.8,
     marginBottom: spacing.sm,
   },
@@ -1491,7 +1501,7 @@ const styles = StyleSheet.create({
   sourceName: {
     fontFamily: fonts.archivo.semibold,
     fontSize: 13,
-    color: colors.alabaster,
+    color: colors.teal,
     flex: 1,
   },
   trustScore: {

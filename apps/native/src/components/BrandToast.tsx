@@ -18,6 +18,7 @@ import Animated, {
   runOnJS,
 } from 'react-native-reanimated';
 import { BlurView } from 'expo-blur';
+import * as Haptics from 'expo-haptics';
 import { colors, fonts, spacing, radius } from '../constants/brand';
 
 export type BrandToastTone = 'success' | 'warn' | 'error' | 'info';
@@ -65,6 +66,16 @@ export function BrandToastProvider({ children }: { children: React.ReactNode }) 
   const show = useCallback(
     (message: string, tone: BrandToastTone = 'success') => {
       clearTimer();
+      // Intentional toast feedback — error tones get a warning/error
+      // notification haptic so failures don't feel the same as successes;
+      // every other tone uses a light impact.
+      if (tone === 'error') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      } else if (tone === 'warn') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      } else {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      }
       setState({ message, tone });
       opacity.value = withTiming(1, { duration: 220, easing: Easing.out(Easing.ease) });
       translateY.value = withTiming(0, {

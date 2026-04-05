@@ -15,6 +15,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import type { SourceClaim } from '@stroom/supabase';
 import { useSourceDetail } from '../../src/hooks/useSourceDetail';
+import { RetryCard } from '../../src/components/RetryCard';
 import { StatusBadge } from '../../src/components/StatusBadge';
 import { colors, fonts, spacing, radius, gradient } from '../../src/constants/brand';
 
@@ -60,7 +61,11 @@ export default function SourceDetailScreen() {
         </View>
       ) : error ? (
         <View style={styles.centered}>
-          <Text style={styles.errorText}>{error}</Text>
+          <RetryCard
+            message="Couldn't load source"
+            detail={error}
+            onRetry={refresh}
+          />
         </View>
       ) : !source ? (
         <View style={styles.centered}>
@@ -268,7 +273,7 @@ const styles = StyleSheet.create({
   sourceName: {
     fontFamily: fonts.archivo.bold,
     fontSize: 34,
-    color: colors.alabaster,
+    color: colors.teal,
     letterSpacing: -0.8,
     marginBottom: spacing.sm,
   },

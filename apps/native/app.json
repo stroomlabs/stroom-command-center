@@ -2,10 +2,10 @@
   "expo": {
     "name": "Stroom Command",
     "slug": "stroom-command-center",
-    "version": "0.1.0",
+    "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "scheme": "stroom-command",
+    "scheme": "stroom",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "splash": {
@@ -14,18 +14,20 @@
       "backgroundColor": "#0E0F14"
     },
     "ios": {
-      "supportsTablet": true,
-      "bundleIdentifier": "com.stroomlabs.command",
+      "supportsTablet": false,
+      "requireFullScreen": true,
+      "bundleIdentifier": "com.stroomlabs.commandcenter",
       "infoPlist": {
-        "NSFaceIDUsageDescription": "Authenticate to access the Stroom Command Center"
+        "NSFaceIDUsageDescription": "Authenticate to access the Stroom Command Center",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#000000"
+        "backgroundColor": "#0E0F14"
       },
-      "package": "com.stroomlabs.command",
+      "package": "com.stroomlabs.commandcenter",
       "permissions": [
         "android.permission.USE_BIOMETRIC",
         "android.permission.USE_FINGERPRINT"

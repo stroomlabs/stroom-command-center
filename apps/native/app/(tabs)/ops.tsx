@@ -23,6 +23,7 @@ import { GlowSpot } from '../../src/components/GlowSpot';
 import { ScreenTransition } from '../../src/components/ScreenTransition';
 import { useBrandAlert } from '../../src/components/BrandAlert';
 import { EmptyState } from '../../src/components/EmptyState';
+import { RetryCard } from '../../src/components/RetryCard';
 import { colors, fonts, spacing, radius, gradient } from '../../src/constants/brand';
 
 interface OpsCardSpec {
@@ -38,7 +39,7 @@ export default function OpsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { data: pulse, refresh: refreshPulse } = usePulseData();
-  const { health, refresh: refreshHealth } = useGraphHealth();
+  const { health, error: healthError, refresh: refreshHealth } = useGraphHealth();
   const { refresh: refreshQueue } = useQueueClaims();
   const { sources } = useSourcesList();
   const unhealthy = useMemo(() => pickUnhealthySources(sources).slice(0, 6), [sources]);
@@ -51,11 +52,13 @@ export default function OpsScreen() {
     processed: number;
   } | null>(null);
 
-  // Analytics sections — each loads independently so a slow RPC never
-  // blocks the rest of the Ops screen.
+  // Analytics sections — each loads independently so a slow or failing
+  // RPC never blocks the rest of the Ops screen.
   const [ingestion, setIngestion] = React.useState<
     Array<{ day: string; claims_added: number }> | null
   >(null);
+  const [ingestionError, setIngestionError] = React.useState<string | null>(null);
+  const [ingestionBump, setIngestionBump] = React.useState(0);
   const [sweepHistory, setSweepHistory] = React.useState<
     Array<{
       ran_at: string;
@@ -64,9 +67,13 @@ export default function OpsScreen() {
       drafts_remaining: number;
     }> | null
   >(null);
+  const [sweepHistoryError, setSweepHistoryError] = React.useState<string | null>(null);
+  const [sweepHistoryBump, setSweepHistoryBump] = React.useState(0);
   const [verticals, setVerticals] = React.useState<
     Array<{ domain: string; claim_count: number }> | null
   >(null);
+  const [verticalsError, setVerticalsError] = React.useState<string | null>(null);
+  const [verticalsBump, setVerticalsBump] = React.useState(0);
   const [tooltip, setTooltip] = React.useState<{
     day: string;
     count: number;
@@ -77,56 +84,64 @@ export default function OpsScreen() {
     let cancelled = false;
     (async () => {
       try {
-        const { data } = await supabase.rpc('get_ingestion_timeline', {
+        const { data, error } = await supabase.rpc('get_ingestion_timeline', {
           days: 14,
         });
-        if (!cancelled) setIngestion((data as any[]) ?? []);
-      } catch {
-        if (!cancelled) setIngestion([]);
+        if (cancelled) return;
+        if (error) throw error;
+        setIngestion((data as any[]) ?? []);
+        setIngestionError(null);
+      } catch (e: any) {
+        if (!cancelled) setIngestionError(e?.message ?? 'RPC failed');
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [refreshing]);
+  }, [refreshing, ingestionBump]);
 
   // Fetch sweep history (last 5)
   React.useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const { data } = await supabase.rpc('get_sweep_history', { limit_n: 5 });
-        if (!cancelled) setSweepHistory((data as any[]) ?? []);
-      } catch {
-        if (!cancelled) setSweepHistory([]);
+        const { data, error } = await supabase.rpc('get_sweep_history', {
+          limit_n: 5,
+        });
+        if (cancelled) return;
+        if (error) throw error;
+        setSweepHistory((data as any[]) ?? []);
+        setSweepHistoryError(null);
+      } catch (e: any) {
+        if (!cancelled) setSweepHistoryError(e?.message ?? 'RPC failed');
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [refreshing, sweeping]);
+  }, [refreshing, sweeping, sweepHistoryBump]);
 
   // Fetch vertical breakdown
   React.useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const { data } = await supabase.rpc('get_vertical_breakdown');
-        if (!cancelled) {
-          // RPC may return { claims_by_domain: [...] } or a bare array.
-          const rows = Array.isArray(data)
-            ? (data as any[])
-            : ((data as any)?.claims_by_domain ?? []);
-          setVerticals(rows);
-        }
-      } catch {
-        if (!cancelled) setVerticals([]);
+        const { data, error } = await supabase.rpc('get_vertical_breakdown');
+        if (cancelled) return;
+        if (error) throw error;
+        const rows = Array.isArray(data)
+          ? (data as any[])
+          : ((data as any)?.claims_by_domain ?? []);
+        setVerticals(rows);
+        setVerticalsError(null);
+      } catch (e: any) {
+        if (!cancelled) setVerticalsError(e?.message ?? 'RPC failed');
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [refreshing]);
+  }, [refreshing, verticalsBump]);
 
   // Query audit_log for the most recent sweep — rows tagged
   // metadata->>'batch' = 'true' with action_type = 'auto_approve'. Treat
@@ -207,6 +222,7 @@ export default function OpsScreen() {
   };
 
   const handleRefresh = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setRefreshing(true);
     await refreshHealth();
     setRefreshing(false);
@@ -358,6 +374,15 @@ export default function OpsScreen() {
           />
         }
       >
+        {healthError && (
+          <RetryCard
+            message="Couldn't load graph health"
+            detail={healthError}
+            onRetry={refreshHealth}
+            compact
+          />
+        )}
+
         {/* Dashboard summary — 2×2 mini metrics */}
         <View style={styles.summaryGrid}>
           <SummaryCell
@@ -439,15 +464,25 @@ export default function OpsScreen() {
         {/* Ingestion Activity */}
         <IngestionActivity
           data={ingestion}
+          error={ingestionError}
+          onRetry={() => setIngestionBump((b) => b + 1)}
           tooltip={tooltip}
           onTooltipChange={setTooltip}
         />
 
         {/* Sweep History */}
-        <SweepHistorySection data={sweepHistory} />
+        <SweepHistorySection
+          data={sweepHistory}
+          error={sweepHistoryError}
+          onRetry={() => setSweepHistoryBump((b) => b + 1)}
+        />
 
         {/* Vertical Breakdown */}
-        <VerticalBreakdownSection data={verticals} />
+        <VerticalBreakdownSection
+          data={verticals}
+          error={verticalsError}
+          onRetry={() => setVerticalsBump((b) => b + 1)}
+        />
 
         {/* Source health monitoring */}
         {unhealthy.length > 0 && (
@@ -593,15 +628,38 @@ const DAY_ABBREV = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 function IngestionActivity({
   data,
+  error,
+  onRetry,
   tooltip,
   onTooltipChange,
 }: {
   data: Array<{ day: string; claims_added: number }> | null;
+  error: string | null;
+  onRetry: () => void;
   tooltip: { day: string; count: number } | null;
   onTooltipChange: (t: { day: string; count: number } | null) => void;
 }) {
   const CHART_HEIGHT = 100;
   const BAR_GAP = 4;
+
+  if (error) {
+    return (
+      <View style={styles.analyticsCard}>
+        <View style={styles.analyticsHeaderRow}>
+          <Text style={styles.analyticsHeader}>Ingestion Activity</Text>
+          <View style={styles.analyticsChip}>
+            <Text style={styles.analyticsChipText}>14d</Text>
+          </View>
+        </View>
+        <RetryCard
+          message="Couldn't load ingestion timeline"
+          detail={error}
+          onRetry={onRetry}
+          compact
+        />
+      </View>
+    );
+  }
 
   if (data === null) {
     return (
@@ -701,6 +759,8 @@ function IngestionActivity({
 
 function SweepHistorySection({
   data,
+  error,
+  onRetry,
 }: {
   data: Array<{
     ran_at: string;
@@ -708,7 +768,23 @@ function SweepHistorySection({
     flagged: number;
     drafts_remaining: number;
   }> | null;
+  error: string | null;
+  onRetry: () => void;
 }) {
+  if (error) {
+    return (
+      <View style={styles.analyticsCard}>
+        <Text style={styles.analyticsHeader}>Sweep History</Text>
+        <RetryCard
+          message="Couldn't load sweep history"
+          detail={error}
+          onRetry={onRetry}
+          compact
+        />
+      </View>
+    );
+  }
+
   if (data === null) {
     return (
       <View style={styles.analyticsCard}>
@@ -759,9 +835,27 @@ function SweepHistorySection({
 
 function VerticalBreakdownSection({
   data,
+  error,
+  onRetry,
 }: {
   data: Array<{ domain: string; claim_count: number }> | null;
+  error: string | null;
+  onRetry: () => void;
 }) {
+  if (error) {
+    return (
+      <View style={styles.analyticsCard}>
+        <Text style={styles.analyticsHeader}>Coverage by Vertical</Text>
+        <RetryCard
+          message="Couldn't load vertical breakdown"
+          detail={error}
+          onRetry={onRetry}
+          compact
+        />
+      </View>
+    );
+  }
+
   if (data === null) {
     return (
       <View style={styles.analyticsCard}>
@@ -836,7 +930,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontFamily: fonts.archivo.bold,
     fontSize: 34,
-    color: colors.alabaster,
+    color: colors.teal,
     letterSpacing: -0.8,
   },
   headerSub: {

@@ -30,6 +30,7 @@ import { RejectSheet } from '../../src/components/RejectSheet';
 import { SkeletonClaimCard } from '../../src/components/Skeleton';
 import { ScreenTransition } from '../../src/components/ScreenTransition';
 import { EmptyState } from '../../src/components/EmptyState';
+import { RetryCard } from '../../src/components/RetryCard';
 import {
   ActionSheet,
   type ActionSheetAction,
@@ -201,6 +202,7 @@ export default function QueueScreen() {
   );
 
   const handleRefresh = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setRefreshing(true);
     await refresh();
     setRefreshing(false);
@@ -386,10 +388,10 @@ export default function QueueScreen() {
           }
         >
           {error ? (
-            <EmptyState
-              icon="alert-circle"
-              title="Couldn't load queue"
-              subtitle={error}
+            <RetryCard
+              message="Couldn't load queue"
+              detail={error}
+              onRetry={refresh}
             />
           ) : claims.length === 0 ? (
             <EmptyState
@@ -487,7 +489,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontFamily: fonts.archivo.bold,
     fontSize: 34,
-    color: colors.alabaster,
+    color: colors.teal,
     letterSpacing: -0.8,
   },
   countBadge: {

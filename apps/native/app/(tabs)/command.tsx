@@ -1089,7 +1089,7 @@ const styles = StyleSheet.create({
   title: {
     fontFamily: fonts.archivo.bold,
     fontSize: 34,
-    color: colors.alabaster,
+    color: colors.teal,
     letterSpacing: -0.8,
   },
   subtitle: {

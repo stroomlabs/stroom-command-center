@@ -18,6 +18,7 @@ import { useSimilarEntities } from '../../src/hooks/useSimilarEntities';
 import { useEntityActivity } from '../../src/hooks/useEntityActivity';
 import { useRecentlyViewed } from '../../src/hooks/useRecentlyViewed';
 import { EntityMiniMap } from '../../src/components/EntityMiniMap';
+import { RetryCard } from '../../src/components/RetryCard';
 import { ClaimListItem } from '../../src/components/ClaimListItem';
 import { EntityCompareSheet } from '../../src/components/EntityCompareSheet';
 import type { EntityClaim, EntityConnection } from '@stroom/supabase';
@@ -185,7 +186,11 @@ export default function EntityDetailScreen() {
         </View>
       ) : error ? (
         <View style={styles.emptyWrap}>
-          <Text style={styles.errorText}>{error}</Text>
+          <RetryCard
+            message="Couldn't load entity"
+            detail={error}
+            onRetry={refresh}
+          />
         </View>
       ) : !entity ? (
         <View style={styles.emptyWrap}>
@@ -924,7 +929,7 @@ const styles = StyleSheet.create({
   entityName: {
     fontFamily: fonts.archivo.bold,
     fontSize: 34,
-    color: colors.alabaster,
+    color: colors.teal,
     letterSpacing: -0.8,
     marginBottom: spacing.sm,
   },

@@ -29,6 +29,7 @@ import { usePredicatesList } from '../../src/hooks/usePredicatesList';
 import { EntityRow } from '../../src/components/EntityRow';
 import { MultiCompareSheet } from '../../src/components/MultiCompareSheet';
 import { EmptyState } from '../../src/components/EmptyState';
+import { RetryCard } from '../../src/components/RetryCard';
 import { useRecentlyViewed } from '../../src/hooks/useRecentlyViewed';
 import * as Haptics from 'expo-haptics';
 import type { EntitySearchResult } from '@stroom/supabase';
@@ -51,6 +52,7 @@ export default function ExploreScreen() {
   const [refreshing, setRefreshing] = useState(false);
 
   const handleRefresh = useCallback(async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setRefreshing(true);
     await refreshSearch();
     // Give the search debounce a tick to resolve before dropping the spinner.
@@ -305,7 +307,11 @@ export default function ExploreScreen() {
           </View>
         ) : error && results.length === 0 ? (
           <View style={styles.emptyWrap}>
-            <Text style={styles.errorText}>{error}</Text>
+            <RetryCard
+              message="Search failed"
+              detail={error}
+              onRetry={refreshSearch}
+            />
           </View>
         ) : filteredResults.length === 0 ? (
           <ScrollView
@@ -660,7 +666,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontFamily: fonts.archivo.bold,
     fontSize: 34,
-    color: colors.alabaster,
+    color: colors.teal,
     letterSpacing: -0.8,
   },
   selectToggle: {

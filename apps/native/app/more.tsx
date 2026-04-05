@@ -424,7 +424,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontFamily: fonts.archivo.bold,
     fontSize: 34,
-    color: colors.alabaster,
+    color: colors.teal,
     letterSpacing: -0.8,
     marginBottom: spacing.xl,
   },
