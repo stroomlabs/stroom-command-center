@@ -1,8 +1,8 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { usePulseData } from '../../src/hooks/usePulseData';
+import { TabIcon } from '../../src/components/TabIcon';
 import { colors, fonts } from '../../src/constants/brand';
 
 // Tab switch animation: every tab screen wraps its root in <ScreenTransition>
@@ -48,8 +48,8 @@ export default function TabLayout() {
         name="index"
         options={{
           title: 'Pulse',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="pulse" size={size} color={color} />
+          tabBarIcon: ({ color, size, focused }) => (
+            <TabIcon name="pulse" size={size} color={color} focused={focused} />
           ),
         }}
       />
@@ -57,8 +57,13 @@ export default function TabLayout() {
         name="queue"
         options={{
           title: 'Queue',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="layers-outline" size={size} color={color} />
+          tabBarIcon: ({ color, size, focused }) => (
+            <TabIcon
+              name="layers-outline"
+              size={size}
+              color={color}
+              focused={focused}
+            />
           ),
           tabBarBadge: queueDepth > 0 ? queueDepth : undefined,
           tabBarBadgeStyle: {
@@ -76,8 +81,13 @@ export default function TabLayout() {
         name="explore"
         options={{
           title: 'Explore',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="search-outline" size={size} color={color} />
+          tabBarIcon: ({ color, size, focused }) => (
+            <TabIcon
+              name="search-outline"
+              size={size}
+              color={color}
+              focused={focused}
+            />
           ),
         }}
       />
@@ -85,8 +95,13 @@ export default function TabLayout() {
         name="command"
         options={{
           title: 'Command',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="sparkles" size={size} color={color} />
+          tabBarIcon: ({ color, size, focused }) => (
+            <TabIcon
+              name="sparkles"
+              size={size}
+              color={color}
+              focused={focused}
+            />
           ),
         }}
       />
@@ -94,8 +109,13 @@ export default function TabLayout() {
         name="ops"
         options={{
           title: 'Ops',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="construct-outline" size={size} color={color} />
+          tabBarIcon: ({ color, size, focused }) => (
+            <TabIcon
+              name="construct-outline"
+              size={size}
+              color={color}
+              focused={focused}
+            />
           ),
         }}
       />

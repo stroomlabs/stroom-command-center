@@ -299,11 +299,11 @@ export default function OpsScreen() {
           />
           <SummaryCell
             label="Sources Stale"
-            value={unhealthy.filter((u) => u.issue === 'stale').length}
+            value={health?.stale_sources ?? 0}
             tone={
-              unhealthy.filter((u) => u.issue === 'stale').length > 3
+              (health?.stale_sources ?? 0) > 3
                 ? 'alert'
-                : unhealthy.filter((u) => u.issue === 'stale').length > 0
+                : (health?.stale_sources ?? 0) > 0
                 ? 'warn'
                 : 'ok'
             }

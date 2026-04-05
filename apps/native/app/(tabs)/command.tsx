@@ -19,6 +19,7 @@ import * as Haptics from 'expo-haptics';
 import * as Clipboard from 'expo-clipboard';
 import { useCommandChat, type ChatMessage } from '../../src/hooks/useCommandChat';
 import supabase from '../../src/lib/supabase';
+import Animated, { FadeIn } from 'react-native-reanimated';
 import { useEntityNameMap, type EntityLookup } from '../../src/hooks/useEntityNameMap';
 import { useSessionHistory } from '../../src/hooks/useSessionHistory';
 import { ActionSheet, type ActionSheetAction } from '../../src/components/ActionSheet';
@@ -697,13 +698,17 @@ function renderMarkdownBlocks(
   onEntityPress: (id: string) => void
 ): React.ReactNode[] {
   const blocks = parseMarkdown(src);
+  // Each block is wrapped in an Animated.View with FadeIn entering so newly
+  // streamed blocks gently appear. Existing blocks keep their index key and
+  // re-render without re-mounting, so only the tail-most block fades in.
+  const lineFade = FadeIn.duration(180);
   return blocks.map((block, idx) => {
     switch (block.kind) {
       case 'code':
         return (
-          <View key={idx} style={styles.codeBlock}>
+          <Animated.View key={idx} entering={lineFade} style={styles.codeBlock}>
             <Text style={styles.codeText}>{block.text}</Text>
-          </View>
+          </Animated.View>
         );
       case 'heading': {
         const style =
@@ -713,14 +718,16 @@ function renderMarkdownBlocks(
             ? styles.h2
             : styles.h3;
         return (
-          <Text key={idx} style={style}>
-            {renderInline(block.text, entityLookup, onEntityPress)}
-          </Text>
+          <Animated.View key={idx} entering={lineFade}>
+            <Text style={style}>
+              {renderInline(block.text, entityLookup, onEntityPress)}
+            </Text>
+          </Animated.View>
         );
       }
       case 'list':
         return (
-          <View key={idx} style={styles.list}>
+          <Animated.View key={idx} entering={lineFade} style={styles.list}>
             {block.items.map((item, j) => (
               <View key={j} style={styles.listItem}>
                 <Text style={styles.bullet}>•</Text>
@@ -729,14 +736,16 @@ function renderMarkdownBlocks(
                 </Text>
               </View>
             ))}
-          </View>
+          </Animated.View>
         );
       case 'paragraph':
       default:
         return (
-          <Text key={idx} style={styles.assistantText}>
-            {renderInline(block.text, entityLookup, onEntityPress)}
-          </Text>
+          <Animated.View key={idx} entering={lineFade}>
+            <Text style={styles.assistantText}>
+              {renderInline(block.text, entityLookup, onEntityPress)}
+            </Text>
+          </Animated.View>
         );
     }
   });
