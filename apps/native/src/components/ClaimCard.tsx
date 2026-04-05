@@ -1,10 +1,24 @@
 import React from 'react';
-import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Dimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+  withTiming,
+  runOnJS,
+  interpolate,
+  Extrapolation,
+} from 'react-native-reanimated';
+import * as Haptics from 'expo-haptics';
 import type { QueueClaim } from '@stroom/supabase';
 import { GlassCard } from './GlassCard';
 import { StatusBadge } from './StatusBadge';
 import { colors, fonts, spacing, radius } from '../constants/brand';
+
+const SCREEN_WIDTH = Dimensions.get('window').width;
+const SWIPE_THRESHOLD = 120;
 
 interface ClaimCardProps {
   claim: QueueClaim;
@@ -28,8 +42,76 @@ export function ClaimCard({ claim, onApprove, onReject }: ClaimCardProps) {
   const predicateLabel = formatPredicate(predicate);
   const predicateRaw = predicate;
 
+  // Swipe-right-to-approve gesture
+  const translateX = useSharedValue(0);
+  const crossedThreshold = useSharedValue(false);
+
+  const onThresholdHaptic = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+  };
+
+  const panGesture = Gesture.Pan()
+    .activeOffsetX([-15, 15])
+    .failOffsetY([-15, 15])
+    .onUpdate((e) => {
+      // Right swipe only
+      const x = Math.max(0, e.translationX);
+      translateX.value = x;
+      if (x >= SWIPE_THRESHOLD && !crossedThreshold.value) {
+        crossedThreshold.value = true;
+        runOnJS(onThresholdHaptic)();
+      } else if (x < SWIPE_THRESHOLD && crossedThreshold.value) {
+        crossedThreshold.value = false;
+      }
+    })
+    .onEnd((e) => {
+      if (e.translationX >= SWIPE_THRESHOLD) {
+        // Fling off-screen and approve
+        translateX.value = withTiming(SCREEN_WIDTH, { duration: 220 }, () => {
+          runOnJS(onApprove)();
+        });
+      } else {
+        translateX.value = withSpring(0, { damping: 18, stiffness: 180 });
+        crossedThreshold.value = false;
+      }
+    });
+
+  const cardAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: translateX.value }],
+  }));
+
+  const revealAnimatedStyle = useAnimatedStyle(() => {
+    const opacity = interpolate(
+      translateX.value,
+      [0, SWIPE_THRESHOLD * 0.4, SWIPE_THRESHOLD],
+      [0, 0.6, 1],
+      Extrapolation.CLAMP
+    );
+    const iconScale = interpolate(
+      translateX.value,
+      [0, SWIPE_THRESHOLD],
+      [0.6, 1.1],
+      Extrapolation.CLAMP
+    );
+    return {
+      opacity,
+      transform: [{ scale: iconScale }],
+    };
+  });
+
   return (
-    <GlassCard style={styles.card}>
+    <View style={styles.swipeWrap}>
+      {/* Green reveal layer (behind the card) */}
+      <View style={styles.revealLayer} pointerEvents="none">
+        <Animated.View style={[styles.revealInner, revealAnimatedStyle]}>
+          <Ionicons name="checkmark-circle" size={28} color={colors.statusApprove} />
+          <Text style={styles.revealText}>Approve</Text>
+        </Animated.View>
+      </View>
+
+      <GestureDetector gesture={panGesture}>
+        <Animated.View style={cardAnimatedStyle}>
+          <GlassCard style={styles.card}>
       {/* Header row */}
       <View style={styles.headerRow}>
         <StatusBadge status={claim.status} />
@@ -106,7 +188,10 @@ export function ClaimCard({ claim, onApprove, onReject }: ClaimCardProps) {
           </Text>
         </Pressable>
       </View>
-    </GlassCard>
+          </GlassCard>
+        </Animated.View>
+      </GestureDetector>
+    </View>
   );
 }
 
@@ -181,8 +266,32 @@ function getRelativeTime(iso: string): string {
 }
 
 const styles = StyleSheet.create({
-  card: {
+  swipeWrap: {
+    position: 'relative',
     marginBottom: spacing.md,
+  },
+  revealLayer: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(34, 197, 94, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(34, 197, 94, 0.35)',
+    borderRadius: radius.lg,
+    justifyContent: 'center',
+    paddingLeft: spacing.lg + spacing.md,
+  },
+  revealInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  revealText: {
+    fontFamily: fonts.archivo.bold,
+    fontSize: 16,
+    color: colors.statusApprove,
+    letterSpacing: -0.2,
+  },
+  card: {
+    marginBottom: 0,
   },
   headerRow: {
     flexDirection: 'row',

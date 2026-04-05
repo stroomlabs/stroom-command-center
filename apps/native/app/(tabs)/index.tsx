@@ -16,13 +16,32 @@ import { PulseMetric } from '../../src/components/PulseMetric';
 import { GlassCard } from '../../src/components/GlassCard';
 import { colors, fonts, spacing, gradient } from '../../src/constants/brand';
 
+function formatLastUpdated(at: Date, _tick: number): string {
+  const diffMs = Date.now() - at.getTime();
+  const sec = Math.max(0, Math.floor(diffMs / 1000));
+  if (sec < 10) return 'just now';
+  if (sec < 60) return `${sec}s ago`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  return at.toLocaleTimeString();
+}
+
 export default function PulseScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { data, loading, error, refresh } = usePulseData();
+  const { data, loading, error, refresh, lastUpdatedAt } = usePulseData();
   const [refreshing, setRefreshing] = React.useState(false);
+  const [nowTick, setNowTick] = React.useState(0);
 
   usePushNotifications();
+
+  // Re-render the "last updated" label every 30s so the relative time stays fresh
+  React.useEffect(() => {
+    const id = setInterval(() => setNowTick((t) => t + 1), 30_000);
+    return () => clearInterval(id);
+  }, []);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -53,9 +72,16 @@ export default function PulseScreen() {
         {/* Header */}
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Pulse</Text>
-          <View style={styles.liveIndicator}>
-            <View style={styles.liveDot} />
-            <Text style={styles.liveText}>LIVE</Text>
+          <View style={styles.liveColumn}>
+            <View style={styles.liveIndicator}>
+              <View style={styles.liveDot} />
+              <Text style={styles.liveText}>LIVE</Text>
+            </View>
+            {lastUpdatedAt && (
+              <Text style={styles.lastUpdated}>
+                {formatLastUpdated(lastUpdatedAt, nowTick)}
+              </Text>
+            )}
           </View>
         </View>
 
@@ -175,8 +201,19 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     marginBottom: spacing.xs,
+  },
+  liveColumn: {
+    alignItems: 'flex-end',
+    gap: 4,
+    paddingTop: 8,
+  },
+  lastUpdated: {
+    fontFamily: fonts.mono.regular,
+    fontSize: 10,
+    color: colors.slate,
+    fontVariant: ['tabular-nums'],
   },
   headerTitle: {
     fontFamily: fonts.archivo.bold,

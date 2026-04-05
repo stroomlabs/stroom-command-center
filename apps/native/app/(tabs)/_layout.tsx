@@ -1,8 +1,15 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { usePulseData } from '../../src/hooks/usePulseData';
 import { colors, fonts } from '../../src/constants/brand';
+
+const tabPressListeners = {
+  tabPress: () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  },
+};
 
 export default function TabLayout() {
   const { data } = usePulseData();
@@ -10,6 +17,7 @@ export default function TabLayout() {
 
   return (
     <Tabs
+      screenListeners={tabPressListeners}
       screenOptions={{
         headerShown: false,
         tabBarStyle: {

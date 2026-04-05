@@ -128,6 +128,25 @@ export default function EntityDetailScreen() {
                 <Text style={styles.description}>{entity.description}</Text>
               )}
 
+              {/* Ask Command */}
+              <Pressable
+                onPress={() => {
+                  const name = entity.canonical_name || entity.name || 'this entity';
+                  router.push({
+                    pathname: '/(tabs)/command',
+                    params: { prompt: `Tell me about ${name}` },
+                  } as any);
+                }}
+                style={({ pressed }) => [
+                  styles.askCommandBtn,
+                  pressed && styles.askCommandPressed,
+                ]}
+              >
+                <Ionicons name="sparkles" size={16} color={colors.teal} />
+                <Text style={styles.askCommandText}>Ask Command about this entity</Text>
+                <Ionicons name="chevron-forward" size={14} color={colors.teal} />
+              </Pressable>
+
               {/* Stats */}
               <View style={styles.statsRow}>
                 <View style={styles.stat}>
@@ -262,6 +281,28 @@ const styles = StyleSheet.create({
     color: colors.silver,
     lineHeight: 20,
     marginBottom: spacing.md,
+  },
+  askCommandBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.tealDim,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 161, 155, 0.3)',
+    borderRadius: radius.md,
+    paddingVertical: 12,
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.md,
+  },
+  askCommandPressed: {
+    opacity: 0.7,
+    backgroundColor: 'rgba(0, 161, 155, 0.22)',
+  },
+  askCommandText: {
+    flex: 1,
+    fontFamily: fonts.archivo.semibold,
+    fontSize: 14,
+    color: colors.teal,
   },
   statsRow: {
     flexDirection: 'row',

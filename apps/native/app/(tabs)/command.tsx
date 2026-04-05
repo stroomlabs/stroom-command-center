@@ -15,7 +15,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import * as Clipboard from 'expo-clipboard';
 import { useCommandChat, type ChatMessage } from '../../src/hooks/useCommandChat';
@@ -25,11 +25,24 @@ import { colors, fonts, spacing, radius, gradient } from '../../src/constants/br
 export default function CommandScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const params = useLocalSearchParams<{ prompt?: string }>();
   const { messages, sending, error, send, resetSession, deleteMessage, retryFrom } =
     useCommandChat();
   const [input, setInput] = useState('');
   const [menuTarget, setMenuTarget] = useState<ChatMessage | null>(null);
   const scrollRef = useRef<ScrollView>(null);
+  const consumedPromptRef = useRef<string | null>(null);
+
+  // If navigated in with a pre-filled prompt (e.g. from entity detail), seed
+  // the composer and clear the param so back-nav doesn't re-trigger it.
+  useEffect(() => {
+    const p = params.prompt;
+    if (typeof p === 'string' && p.length > 0 && consumedPromptRef.current !== p) {
+      consumedPromptRef.current = p;
+      setInput(p);
+      router.setParams({ prompt: undefined } as any);
+    }
+  }, [params.prompt, router]);
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {

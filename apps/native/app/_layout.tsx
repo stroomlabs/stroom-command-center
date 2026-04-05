@@ -5,6 +5,7 @@ import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 import * as Font from 'expo-font';
 import { LinearGradient } from 'expo-linear-gradient';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { AuthProvider, useAuth } from '../src/lib/auth';
 import { colors, fonts, gradient } from '../src/constants/brand';
 
@@ -97,10 +98,11 @@ export default function RootLayout() {
   }
 
   return (
-    <AuthProvider>
-      <StatusBar style="light" />
-      <RouteGuard>
-        <Stack
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <AuthProvider>
+        <StatusBar style="light" />
+        <RouteGuard>
+          <Stack
           screenOptions={{
             headerShown: false,
             contentStyle: { backgroundColor: colors.black },
@@ -115,8 +117,9 @@ export default function RootLayout() {
           <Stack.Screen name="research" />
           <Stack.Screen name="more" />
         </Stack>
-      </RouteGuard>
-    </AuthProvider>
+        </RouteGuard>
+      </AuthProvider>
+    </GestureHandlerRootView>
   );
 }
 

@@ -12,6 +12,7 @@ export function usePulseData() {
   const [data, setData] = useState<ExtendedPulse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -32,6 +33,7 @@ export function usePulseData() {
         latestClaimAt: pulse.latest_claim_at ?? null,
         statusBreakdown: pulse.status_breakdown ?? {},
       });
+      setLastUpdatedAt(new Date());
       setError(null);
     } catch (e: any) {
       setError(e.message ?? 'Failed to load pulse data');
@@ -54,5 +56,5 @@ export function usePulseData() {
     };
   }, [refresh]);
 
-  return { data, loading, error, refresh };
+  return { data, loading, error, refresh, lastUpdatedAt };
 }
