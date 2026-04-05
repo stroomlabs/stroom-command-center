@@ -25,8 +25,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRouter } from 'expo-router';
 import { ScreenTransition } from '../../src/components/ScreenTransition';
 import { useExploreSearch } from '../../src/hooks/useExploreSearch';
-import { usePredicatesList } from '../../src/hooks/usePredicatesList';
+import { useClaimsSearch } from '../../src/hooks/useClaimsSearch';
+import { useSourcesSearch } from '../../src/hooks/useSourcesSearch';
 import { EntityRow } from '../../src/components/EntityRow';
+import { StatusBadge } from '../../src/components/StatusBadge';
 import { MultiCompareSheet } from '../../src/components/MultiCompareSheet';
 import { EmptyState } from '../../src/components/EmptyState';
 import { RetryCard } from '../../src/components/RetryCard';
@@ -57,7 +59,7 @@ export default function ExploreScreen() {
     return unsub;
   }, [navigation]);
 
-  const [segment, setSegment] = useState<'entities' | 'predicates'>('entities');
+  const [segment, setSegment] = useState<'entities' | 'claims' | 'sources'>('entities');
   const [query, setQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
   const [selectMode, setSelectMode] = useState(false);
@@ -65,7 +67,16 @@ export default function ExploreScreen() {
   const [compareOpen, setCompareOpen] = useState(false);
   const { results, loading, error, refresh: refreshSearch } =
     useExploreSearch(query);
-  const predicates = usePredicatesList();
+  const {
+    results: claimResults,
+    loading: claimsLoading,
+    refresh: refreshClaims,
+  } = useClaimsSearch(query, segment === 'claims');
+  const {
+    results: sourceResults,
+    loading: sourcesLoading,
+    refresh: refreshSources,
+  } = useSourcesSearch(query, segment === 'sources');
   const { recent: recentlyViewed } = useRecentlyViewed();
   const { show: showToast } = useBrandToast();
   const [menuEntity, setMenuEntity] = useState<EntitySearchResult | null>(null);
@@ -275,50 +286,63 @@ export default function ExploreScreen() {
         </View>
         <Text style={styles.headerSub}>
           {segment === 'entities'
-            ? trimmed
-              ? `Results for "${trimmed}"`
-              : 'Recent entities'
-            : `${predicates.predicates.length} predicates across the graph`}
+            ? segment === 'entities'
+              ? trimmed
+                ? `Entities matching "${trimmed}"`
+                : 'Recent entities'
+              : segment === 'claims'
+              ? trimmed
+                ? `Claims matching "${trimmed}"`
+                : 'Recent claims'
+              : trimmed
+              ? `Sources matching "${trimmed}"`
+              : 'Trusted sources'
+            : 'Search the graph'}
         </Text>
 
-        {/* Segment control */}
+        {/* Segment control — entities / claims / sources */}
         <View style={styles.segment}>
-          <Pressable
-            onPress={() => setSegment('entities')}
-            style={[styles.segmentBtn, segment === 'entities' && styles.segmentBtnActive]}
-          >
-            <Text
-              style={[
-                styles.segmentText,
-                segment === 'entities' && styles.segmentTextActive,
-              ]}
-            >
-              Entities
-            </Text>
-          </Pressable>
-          <Pressable
-            onPress={() => setSegment('predicates')}
-            style={[styles.segmentBtn, segment === 'predicates' && styles.segmentBtnActive]}
-          >
-            <Text
-              style={[
-                styles.segmentText,
-                segment === 'predicates' && styles.segmentTextActive,
-              ]}
-            >
-              Predicates
-            </Text>
-          </Pressable>
+          {(['entities', 'claims', 'sources'] as const).map((key) => {
+            const active = segment === key;
+            return (
+              <Pressable
+                key={key}
+                onPress={() => {
+                  Haptics.selectionAsync();
+                  setSegment(key);
+                }}
+                style={[styles.segmentBtn, active && styles.segmentBtnActive]}
+              >
+                <Text
+                  style={[
+                    styles.segmentText,
+                    active && styles.segmentTextActive,
+                  ]}
+                >
+                  {key === 'entities'
+                    ? 'Entities'
+                    : key === 'claims'
+                    ? 'Claims'
+                    : 'Sources'}
+                </Text>
+              </Pressable>
+            );
+          })}
         </View>
 
-        {/* Search box — entities only */}
-        {segment === 'entities' && (
+        {/* Search box — shared across all three segments */}
         <View style={styles.searchWrap}>
           <Ionicons name="search" size={18} color={colors.slate} />
           <TextInput
             value={query}
             onChangeText={setQuery}
-            placeholder="Search entities…"
+            placeholder={
+              segment === 'entities'
+                ? 'Search entities…'
+                : segment === 'claims'
+                ? 'Search claims…'
+                : 'Search sources…'
+            }
             placeholderTextColor={colors.slate}
             style={styles.searchInput}
             autoCorrect={false}
@@ -332,12 +356,14 @@ export default function ExploreScreen() {
             </Pressable>
           )}
         </View>
-        )}
-        {segment === 'entities' && (
-          <SearchLoadingBar
-            active={loading && trimmed.length > 0}
-          />
-        )}
+        <SearchLoadingBar
+          active={
+            trimmed.length > 0 &&
+            ((segment === 'entities' && loading) ||
+              (segment === 'claims' && claimsLoading) ||
+              (segment === 'sources' && sourcesLoading))
+          }
+        />
 
         {/* Entity type filter chips */}
         {segment === 'entities' && availableTypes.length > 0 && (
@@ -500,19 +526,113 @@ export default function ExploreScreen() {
             }
           />
         )
+      ) : segment === 'claims' ? (
+        <FlatList
+          data={claimResults}
+          keyExtractor={(c) => c.id}
+          contentContainerStyle={styles.list}
+          showsVerticalScrollIndicator={false}
+          keyboardDismissMode="on-drag"
+          keyboardShouldPersistTaps="handled"
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setRefreshing(true);
+                refreshClaims();
+                setTimeout(() => setRefreshing(false), 400);
+              }}
+              tintColor={colors.teal}
+            />
+          }
+          ListEmptyComponent={
+            claimsLoading ? (
+              <View style={styles.loadingWrap}>
+                <ActivityIndicator color={colors.teal} size="large" />
+              </View>
+            ) : (
+              <EmptyState
+                icon="document-text"
+                title={trimmed ? 'No Matching Claims' : 'No Claims'}
+                subtitle={
+                  trimmed
+                    ? `No claims match "${trimmed}"`
+                    : 'Type to search across predicates and values'
+                }
+                compact
+              />
+            )
+          }
+          renderItem={({ item }) => (
+            <ClaimSearchCard
+              claim={item}
+              onPressClaim={() =>
+                router.push({
+                  pathname: '/claim/[id]',
+                  params: { id: item.id },
+                } as any)
+              }
+              onPressEntity={() => {
+                if (item.subject_entity_id) {
+                  router.push({
+                    pathname: '/entity/[id]',
+                    params: { id: item.subject_entity_id },
+                  } as any);
+                }
+              }}
+            />
+          )}
+        />
       ) : (
-        <PredicatesView
-          predicates={predicates.predicates}
-          counts={predicates.counts}
-          loading={predicates.loading}
-          error={predicates.error}
-          onPress={(p) => {
-            Keyboard.dismiss();
-            router.push({
-              pathname: '/predicate/[key]',
-              params: { key: p.predicate_key },
-            } as any);
-          }}
+        <FlatList
+          data={sourceResults}
+          keyExtractor={(s) => s.id}
+          contentContainerStyle={styles.list}
+          showsVerticalScrollIndicator={false}
+          keyboardDismissMode="on-drag"
+          keyboardShouldPersistTaps="handled"
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setRefreshing(true);
+                refreshSources();
+                setTimeout(() => setRefreshing(false), 400);
+              }}
+              tintColor={colors.teal}
+            />
+          }
+          ListEmptyComponent={
+            sourcesLoading ? (
+              <View style={styles.loadingWrap}>
+                <ActivityIndicator color={colors.teal} size="large" />
+              </View>
+            ) : (
+              <EmptyState
+                icon="cube"
+                title={trimmed ? 'No Matching Sources' : 'No Sources'}
+                subtitle={
+                  trimmed
+                    ? `No sources match "${trimmed}"`
+                    : 'Type to search the source registry'
+                }
+                compact
+              />
+            )
+          }
+          renderItem={({ item }) => (
+            <SourceSearchCard
+              source={item}
+              onPress={() =>
+                router.push({
+                  pathname: '/source/[id]',
+                  params: { id: item.id },
+                } as any)
+              }
+            />
+          )}
         />
       )}
       {selectMode && selectedIds.size > 0 && (
@@ -669,6 +789,159 @@ function PredicatesView({
 
 // Thin indeterminate loading bar rendered below the search box while the
 // debounced query is in flight. Sweeps a teal bar back and forth.
+// Claim result card — top line: subject entity name in teal (tappable,
+// navigates to the entity), second line: predicate in silver mono,
+// third line: truncated value preview. Right side: StatusBadge. Tapping
+// anywhere outside the entity link opens the claim detail screen.
+function ClaimSearchCard({
+  claim,
+  onPressClaim,
+  onPressEntity,
+}: {
+  claim: import('../../src/hooks/useClaimsSearch').ClaimSearchResult;
+  onPressClaim: () => void;
+  onPressEntity: () => void;
+}) {
+  const subject =
+    claim.subject_entity?.canonical_name ?? 'Unknown entity';
+  const predicate = (claim.predicate ?? 'unknown')
+    .split('.')
+    .pop()!
+    .replace(/_/g, ' ');
+  const valuePreview = (() => {
+    if (!claim.value_jsonb) return '';
+    try {
+      const raw = JSON.stringify(claim.value_jsonb);
+      return raw.length > 80 ? raw.slice(0, 80) + '…' : raw;
+    } catch {
+      return '';
+    }
+  })();
+  return (
+    <Pressable
+      onPress={onPressClaim}
+      style={({ pressed }) => [
+        styles.claimCard,
+        pressed && { opacity: 0.85, transform: [{ scale: 0.98 }] },
+      ]}
+    >
+      <View style={styles.claimCardBody}>
+        <Pressable
+          onPress={(e) => {
+            e.stopPropagation?.();
+            onPressEntity();
+          }}
+          hitSlop={4}
+        >
+          <Text style={styles.claimCardSubject} numberOfLines={1}>
+            {subject}
+          </Text>
+        </Pressable>
+        <Text style={styles.claimCardPredicate} numberOfLines={1}>
+          {predicate}
+        </Text>
+        {valuePreview ? (
+          <Text style={styles.claimCardValue} numberOfLines={2}>
+            {valuePreview}
+          </Text>
+        ) : null}
+      </View>
+      <StatusBadge status={claim.status} />
+    </Pressable>
+  );
+}
+
+// Source result card — source_name bold, colored source_class badge,
+// small teal trust score, claim count on the right. Whole card navigates
+// to the source detail screen.
+function SourceSearchCard({
+  source,
+  onPress,
+}: {
+  source: import('../../src/hooks/useSourcesSearch').SourceSearchResult;
+  onPress: () => void;
+}) {
+  const palette = sourceClassPalette(source.source_class ?? '');
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.sourceCard,
+        pressed && { opacity: 0.85, transform: [{ scale: 0.98 }] },
+      ]}
+    >
+      <View style={styles.sourceCardBody}>
+        <Text style={styles.sourceCardName} numberOfLines={1}>
+          {source.source_name}
+        </Text>
+        <View style={styles.sourceCardMetaRow}>
+          {source.source_class ? (
+            <View
+              style={[
+                styles.sourceClassBadge,
+                { backgroundColor: palette.bg, borderColor: palette.border },
+              ]}
+            >
+              <Text style={[styles.sourceClassText, { color: palette.fg }]}>
+                {source.source_class.replace(/_/g, ' ').toUpperCase()}
+              </Text>
+            </View>
+          ) : null}
+          <Text style={styles.sourceCardTrust}>
+            {Number(source.trust_score).toFixed(1)}
+          </Text>
+        </View>
+      </View>
+      <Text style={styles.sourceCardClaims}>
+        {source.claim_count.toLocaleString()} claims
+      </Text>
+    </Pressable>
+  );
+}
+
+function sourceClassPalette(cls: string): {
+  bg: string;
+  border: string;
+  fg: string;
+} {
+  const key = cls.toLowerCase();
+  if (key.includes('corporate') || key.includes('ir'))
+    return {
+      bg: 'rgba(34, 197, 94, 0.12)',
+      border: 'rgba(34, 197, 94, 0.35)',
+      fg: colors.statusApprove,
+    };
+  if (key.includes('news') || key.includes('media'))
+    return {
+      bg: 'rgba(59, 130, 246, 0.14)',
+      border: 'rgba(59, 130, 246, 0.4)',
+      fg: colors.statusInfo,
+    };
+  if (key.includes('premium') || key.includes('data'))
+    return {
+      bg: 'rgba(167, 139, 250, 0.14)',
+      border: 'rgba(167, 139, 250, 0.4)',
+      fg: '#A78BFA',
+    };
+  if (key.includes('social') || key.includes('community'))
+    return {
+      bg: 'rgba(244, 114, 182, 0.14)',
+      border: 'rgba(244, 114, 182, 0.4)',
+      fg: '#F472B6',
+    };
+  if (key.includes('government') || key.includes('regulatory'))
+    return {
+      bg: 'rgba(245, 158, 11, 0.14)',
+      border: 'rgba(245, 158, 11, 0.4)',
+      fg: colors.statusPending,
+    };
+  return {
+    bg: colors.tealDim,
+    border: 'rgba(0, 161, 155, 0.35)',
+    fg: colors.teal,
+  };
+}
+
 function SearchLoadingBar({ active }: { active: boolean }) {
   const progress = useSharedValue(0);
   React.useEffect(() => {
@@ -986,6 +1259,90 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.sm,
     paddingBottom: spacing.xxl,
+  },
+  claimCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    backgroundColor: colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  claimCardBody: {
+    flex: 1,
+    gap: 2,
+  },
+  claimCardSubject: {
+    fontFamily: fonts.archivo.bold,
+    fontSize: 15,
+    color: colors.teal,
+  },
+  claimCardPredicate: {
+    fontFamily: fonts.mono.regular,
+    fontSize: 12,
+    color: colors.silver,
+    textTransform: 'capitalize',
+  },
+  claimCardValue: {
+    fontFamily: fonts.mono.regular,
+    fontSize: 11,
+    color: colors.slate,
+    lineHeight: 15,
+    marginTop: 2,
+  },
+  sourceCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  sourceCardBody: {
+    flex: 1,
+    gap: 4,
+  },
+  sourceCardName: {
+    fontFamily: fonts.archivo.bold,
+    fontSize: 16,
+    color: colors.alabaster,
+    letterSpacing: -0.2,
+  },
+  sourceCardMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  sourceClassBadge: {
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  sourceClassText: {
+    fontFamily: fonts.mono.semibold,
+    fontSize: 9,
+    letterSpacing: 0.8,
+  },
+  sourceCardTrust: {
+    fontFamily: fonts.mono.semibold,
+    fontSize: 12,
+    color: colors.teal,
+    fontVariant: ['tabular-nums'],
+  },
+  sourceCardClaims: {
+    fontFamily: fonts.mono.regular,
+    fontSize: 11,
+    color: colors.silver,
+    fontVariant: ['tabular-nums'],
   },
   loadingBarTrack: {
     height: 2,
