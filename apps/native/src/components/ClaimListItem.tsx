@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { EntityClaim } from '@stroom/supabase';
 import { StatusBadge } from './StatusBadge';
+import { titleCase } from './JsonView';
 import { colors, fonts, spacing, radius } from '../constants/brand';
 
 interface ClaimListItemProps {
@@ -73,7 +74,7 @@ function resolveDisplayValue(
   if ('type' in jsonb) {
     const parts: string[] = [];
     if (jsonb.tier) parts.push(`T${jsonb.tier}`);
-    parts.push(String(jsonb.type).replace(/_/g, ' '));
+    parts.push(titleCase(String(jsonb.type)));
     return parts.join(' · ');
   }
   if ('data' in jsonb && Array.isArray(jsonb.data)) {
@@ -84,7 +85,9 @@ function resolveDisplayValue(
     return arr.length === 1 ? String(name) : `${name} + ${arr.length - 1} more`;
   }
   const entries = Object.entries(jsonb).slice(0, 2);
-  return entries.map(([k, v]) => `${k.replace(/_/g, ' ')}: ${String(v).slice(0, 30)}`).join('\n');
+  return entries
+    .map(([k, v]) => `${titleCase(k)}: ${String(v).slice(0, 30)}`)
+    .join('\n');
 }
 
 const styles = StyleSheet.create({

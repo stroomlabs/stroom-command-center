@@ -14,6 +14,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useClaimDetail } from '../../src/hooks/useClaimDetail';
 import { StatusBadge } from '../../src/components/StatusBadge';
+import { JsonView } from '../../src/components/JsonView';
 import type { ClaimCorroborationDetail } from '@stroom/supabase';
 import { colors, fonts, spacing, radius, gradient } from '../../src/constants/brand';
 
@@ -123,9 +124,7 @@ export default function ClaimDetailScreen() {
               <Text style={styles.entityLinkSmall}>{object}</Text>
             </Pressable>
           ) : (
-            <Text style={styles.jsonText}>
-              {formatJsonb(claim.value_jsonb)}
-            </Text>
+            <JsonView value={claim.value_jsonb} />
           )}
         </View>
 
@@ -329,15 +328,6 @@ function formatPredicate(pred: string): string {
   return last.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-function formatJsonb(jsonb: Record<string, unknown> | null): string {
-  if (!jsonb) return '—';
-  try {
-    return JSON.stringify(jsonb, null, 2);
-  } catch {
-    return '—';
-  }
-}
-
 function formatDate(iso: string): string {
   try {
     const d = new Date(iso);
@@ -430,12 +420,6 @@ const styles = StyleSheet.create({
     color: colors.slate,
     letterSpacing: 1,
     marginBottom: spacing.sm,
-  },
-  jsonText: {
-    fontFamily: fonts.mono.regular,
-    fontSize: 12,
-    color: colors.silver,
-    lineHeight: 17,
   },
   scoresRow: {
     flexDirection: 'row',
