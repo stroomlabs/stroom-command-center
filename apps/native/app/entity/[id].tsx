@@ -13,7 +13,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useEntityDetail } from '../../src/hooks/useEntityDetail';
+import { useSimilarEntities } from '../../src/hooks/useSimilarEntities';
 import { ClaimListItem } from '../../src/components/ClaimListItem';
+import { EntityCompareSheet } from '../../src/components/EntityCompareSheet';
 import type { EntityClaim, EntityConnection } from '@stroom/supabase';
 import type { ClaimStatus } from '@stroom/types';
 import { colors, fonts, spacing, radius, gradient } from '../../src/constants/brand';
@@ -34,6 +36,11 @@ export default function EntityDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { entity, claims, connections, loading, error, refresh } =
     useEntityDetail(id);
+  const { similar } = useSimilarEntities(
+    entity?.id,
+    entity?.canonical_name ?? entity?.name
+  );
+  const [compareId, setCompareId] = useState<string | null>(null);
   const [filter, setFilter] = useState<StatusFilter>('all');
   const [refreshing, setRefreshing] = useState(false);
 
@@ -152,6 +159,37 @@ export default function EntityDetailScreen() {
               {/* Coverage score */}
               <CoverageScore claims={claims} />
 
+              {/* Possible duplicates */}
+              {similar.length > 0 && (
+                <View style={styles.duplicatesCard}>
+                  <View style={styles.duplicatesHeader}>
+                    <Ionicons name="git-compare-outline" size={14} color={colors.statusPending} />
+                    <Text style={styles.duplicatesTitle}>Possible Duplicates</Text>
+                  </View>
+                  {similar.map((s) => (
+                    <Pressable
+                      key={s.id}
+                      onPress={() => setCompareId(s.id)}
+                      style={({ pressed }) => [
+                        styles.duplicateRow,
+                        pressed && { opacity: 0.75 },
+                      ]}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.duplicateName} numberOfLines={1}>
+                          {s.canonical_name ?? '—'}
+                        </Text>
+                        <Text style={styles.duplicateMeta}>
+                          {s.entity_type ?? 'entity'} · edit distance {s.distance}
+                        </Text>
+                      </View>
+                      <Text style={styles.duplicateCompare}>Compare</Text>
+                      <Ionicons name="chevron-forward" size={12} color={colors.slate} />
+                    </Pressable>
+                  ))}
+                </View>
+              )}
+
               {/* Stats */}
               <View style={styles.statsRow}>
                 <View style={styles.stat}>
@@ -243,6 +281,16 @@ export default function EntityDetailScreen() {
           }
         />
       )}
+
+      <EntityCompareSheet
+        visible={compareId !== null}
+        current={entity}
+        otherId={compareId}
+        onDismiss={() => setCompareId(null)}
+        onOpenOther={(nextId) =>
+          router.push({ pathname: '/entity/[id]', params: { id: nextId } } as any)
+        }
+      />
     </LinearGradient>
   );
 }
@@ -445,6 +493,51 @@ const styles = StyleSheet.create({
     flex: 1,
     fontFamily: fonts.archivo.semibold,
     fontSize: 14,
+    color: colors.teal,
+  },
+  duplicatesCard: {
+    backgroundColor: colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: 'rgba(245, 158, 11, 0.35)',
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  duplicatesHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: spacing.sm,
+  },
+  duplicatesTitle: {
+    fontFamily: fonts.archivo.semibold,
+    fontSize: 11,
+    color: colors.statusPending,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+  duplicateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    borderTopColor: colors.glassBorder,
+  },
+  duplicateName: {
+    fontFamily: fonts.archivo.semibold,
+    fontSize: 13,
+    color: colors.alabaster,
+  },
+  duplicateMeta: {
+    fontFamily: fonts.mono.regular,
+    fontSize: 10,
+    color: colors.slate,
+    marginTop: 2,
+  },
+  duplicateCompare: {
+    fontFamily: fonts.archivo.semibold,
+    fontSize: 11,
     color: colors.teal,
   },
   coverageCard: {

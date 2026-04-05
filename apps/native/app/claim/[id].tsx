@@ -7,6 +7,7 @@ import {
   Pressable,
   ActivityIndicator,
   Linking,
+  TextInput,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -18,8 +19,10 @@ import {
   approveClaim,
   rejectClaim,
   fetchSupersedingClaims,
+  updateClaim,
   type SupersedingClaim,
 } from '@stroom/supabase';
+import { titleCase } from '../../src/components/JsonView';
 import { useClaimDetail } from '../../src/hooks/useClaimDetail';
 import { StatusBadge, STATUS_COLORS } from '../../src/components/StatusBadge';
 import { JsonView } from '../../src/components/JsonView';
@@ -45,6 +48,75 @@ export default function ClaimDetailScreen() {
   const { claim, corroborations, loading, error } = useClaimDetail(id);
   const { show: showToast } = useBrandToast();
   const [supersedes, setSupersedes] = useState<SupersedingClaim[]>([]);
+  // Inline field edit state — scalar top-level keys of value_jsonb
+  const [editDraft, setEditDraft] = useState<Record<string, string> | null>(null);
+  const [editSaving, setEditSaving] = useState(false);
+
+  const scalarEntries = React.useMemo(() => {
+    const jsonb = claim?.value_jsonb;
+    if (!jsonb || typeof jsonb !== 'object' || Array.isArray(jsonb)) return [];
+    return Object.entries(jsonb).filter(
+      ([, v]) =>
+        v === null ||
+        typeof v === 'string' ||
+        typeof v === 'number' ||
+        typeof v === 'boolean'
+    );
+  }, [claim]);
+
+  const beginEdit = useCallback(
+    (key: string) => {
+      if (!claim) return;
+      const current = editDraft ?? {};
+      const jsonb = (claim.value_jsonb ?? {}) as Record<string, unknown>;
+      const initial: Record<string, string> = { ...current };
+      if (!(key in initial)) {
+        const v = jsonb[key];
+        initial[key] = v == null ? '' : String(v);
+      }
+      setEditDraft(initial);
+    },
+    [claim, editDraft]
+  );
+
+  const cancelEdit = useCallback(() => setEditDraft(null), []);
+
+  const saveEdit = useCallback(async () => {
+    if (!claim || !editDraft) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setEditSaving(true);
+    try {
+      const originalJsonb = (claim.value_jsonb ?? {}) as Record<string, unknown>;
+      const nextJsonb: Record<string, unknown> = { ...originalJsonb };
+
+      // Coerce each dirty value back to its original scalar type when possible.
+      for (const [k, rawStr] of Object.entries(editDraft)) {
+        const prev = originalJsonb[k];
+        if (rawStr === '') {
+          nextJsonb[k] = null;
+          continue;
+        }
+        if (typeof prev === 'number') {
+          const n = Number(rawStr);
+          nextJsonb[k] = Number.isNaN(n) ? rawStr : n;
+        } else if (typeof prev === 'boolean') {
+          nextJsonb[k] = rawStr === 'true';
+        } else {
+          nextJsonb[k] = rawStr;
+        }
+      }
+
+      await updateClaim(supabase, claim.id, { value_jsonb: nextJsonb });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      showToast('Value updated', 'success');
+      setEditDraft(null);
+    } catch (e: any) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      showToast(e?.message ?? 'Save failed', 'error');
+    } finally {
+      setEditSaving(false);
+    }
+  }, [claim, editDraft, showToast]);
 
   // Fetch any newer claims with the same (subject, predicate) — the
   // "Corrections" chain shown on claims flagged as corrected/superseded.
@@ -248,7 +320,12 @@ export default function ClaimDetailScreen() {
 
         {/* Value payload */}
         <View style={styles.valueCard}>
-          <Text style={styles.valueLabel}>VALUE</Text>
+          <View style={styles.valueHeaderRow}>
+            <Text style={styles.valueLabel}>VALUE</Text>
+            {editDraft && (
+              <Text style={styles.valueHint}>Tap Save to persist changes</Text>
+            )}
+          </View>
           {object ? (
             <Pressable
               onPress={() =>
@@ -262,8 +339,78 @@ export default function ClaimDetailScreen() {
             >
               <Text style={styles.entityLinkSmall}>{object}</Text>
             </Pressable>
-          ) : (
+          ) : scalarEntries.length === 0 ? (
             <JsonView value={claim.value_jsonb} />
+          ) : (
+            <>
+              {scalarEntries.map(([key, value]) => {
+                const isEditing = editDraft != null && key in editDraft;
+                return (
+                  <View key={key} style={styles.editFieldRow}>
+                    <Text style={styles.editFieldKey}>{titleCase(key)}</Text>
+                    {isEditing ? (
+                      <TextInput
+                        value={editDraft![key]}
+                        onChangeText={(next) =>
+                          setEditDraft((prev) => ({ ...(prev ?? {}), [key]: next }))
+                        }
+                        style={styles.editFieldInput}
+                        placeholder="—"
+                        placeholderTextColor={colors.slate}
+                        autoFocus
+                      />
+                    ) : (
+                      <Pressable
+                        onPress={() => beginEdit(key)}
+                        style={({ pressed }) => [
+                          styles.editFieldDisplay,
+                          pressed && { opacity: 0.7 },
+                        ]}
+                      >
+                        <Text style={styles.editFieldValue} numberOfLines={3}>
+                          {value == null || value === '' ? '—' : String(value)}
+                        </Text>
+                        <Ionicons
+                          name="pencil"
+                          size={11}
+                          color={colors.slate}
+                        />
+                      </Pressable>
+                    )}
+                  </View>
+                );
+              })}
+
+              {editDraft && (
+                <View style={styles.editBar}>
+                  <Pressable
+                    onPress={cancelEdit}
+                    disabled={editSaving}
+                    style={({ pressed }) => [
+                      styles.editCancelBtn,
+                      pressed && { opacity: 0.7 },
+                    ]}
+                  >
+                    <Text style={styles.editCancelText}>Cancel</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={saveEdit}
+                    disabled={editSaving}
+                    style={({ pressed }) => [
+                      styles.editSaveBtn,
+                      pressed && { opacity: 0.85 },
+                    ]}
+                  >
+                    {editSaving ? (
+                      <ActivityIndicator size="small" color={colors.obsidian} />
+                    ) : (
+                      <Ionicons name="save" size={14} color={colors.obsidian} />
+                    )}
+                    <Text style={styles.editSaveText}>Save</Text>
+                  </Pressable>
+                </View>
+              )}
+            </>
           )}
         </View>
 
@@ -657,6 +804,93 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: colors.slate,
     marginTop: 2,
+  },
+  valueHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
+    marginBottom: spacing.sm,
+  },
+  valueHint: {
+    fontFamily: fonts.mono.regular,
+    fontSize: 9,
+    color: colors.teal,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
+  editFieldRow: {
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.glassBorder,
+    gap: 4,
+  },
+  editFieldKey: {
+    fontFamily: fonts.archivo.medium,
+    fontSize: 10,
+    color: colors.slate,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+  editFieldDisplay: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+    paddingVertical: 4,
+  },
+  editFieldValue: {
+    flex: 1,
+    fontFamily: fonts.archivo.regular,
+    fontSize: 14,
+    color: colors.silver,
+    lineHeight: 19,
+  },
+  editFieldInput: {
+    fontFamily: fonts.archivo.regular,
+    fontSize: 14,
+    color: colors.alabaster,
+    backgroundColor: 'rgba(0, 161, 155, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(0, 161, 155, 0.35)',
+    borderRadius: radius.sm,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  editBar: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.md,
+  },
+  editCancelBtn: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    backgroundColor: colors.surfaceCard,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  editCancelText: {
+    fontFamily: fonts.archivo.semibold,
+    fontSize: 12,
+    color: colors.silver,
+  },
+  editSaveBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    gap: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    borderRadius: radius.sm,
+    backgroundColor: colors.teal,
+  },
+  editSaveText: {
+    fontFamily: fonts.archivo.bold,
+    fontSize: 12,
+    color: colors.obsidian,
+    letterSpacing: -0.1,
   },
   valueCard: {
     backgroundColor: colors.surfaceElevated,

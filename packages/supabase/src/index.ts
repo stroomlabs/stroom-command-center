@@ -1022,6 +1022,95 @@ export async function fetchAllSources(
   return (data as Source[]) ?? [];
 }
 
+// ── Entity similarity (merge suggestions) ──
+
+export interface SimilarEntity {
+  id: string;
+  canonical_name: string | null;
+  entity_type: string | null;
+  distance: number;
+}
+
+// Fetches candidate entities sharing a lexical prefix and returns those within
+// Levenshtein distance <= `maxDistance` from the source name. PostgREST can't
+// do edit-distance server-side without the fuzzystrmatch extension, so we
+// narrow via ilike first and finish the comparison client-side.
+export async function fetchSimilarEntities(
+  client: SupabaseClient,
+  sourceId: string,
+  sourceName: string,
+  maxDistance = 3
+): Promise<SimilarEntity[]> {
+  const name = (sourceName ?? '').trim();
+  if (name.length < 3) return [];
+
+  const prefix = name.slice(0, 2).replace(/[%_]/g, (m) => `\\${m}`);
+  const { data, error } = await client
+    .from('entities')
+    .select('id, canonical_name, name, entity_type')
+    .or(`canonical_name.ilike.%${prefix}%,name.ilike.%${prefix}%`)
+    .neq('id', sourceId)
+    .limit(200);
+
+  if (error) throw error;
+
+  const lowerSource = name.toLowerCase();
+  const rows = (data as {
+    id: string;
+    canonical_name: string | null;
+    name: string | null;
+    entity_type: string | null;
+  }[] | null) ?? [];
+
+  const candidates: SimilarEntity[] = [];
+  for (const r of rows) {
+    const candidateName = (r.canonical_name ?? r.name ?? '').toLowerCase();
+    if (!candidateName) continue;
+    const d = levenshtein(lowerSource, candidateName);
+    if (d > 0 && d <= maxDistance) {
+      candidates.push({
+        id: r.id,
+        canonical_name: r.canonical_name ?? r.name,
+        entity_type: r.entity_type,
+        distance: d,
+      });
+    }
+  }
+
+  return candidates.sort((a, b) => a.distance - b.distance).slice(0, 5);
+}
+
+// Iterative Levenshtein distance with row-wise DP (O(min(m,n)) space).
+function levenshtein(a: string, b: string): number {
+  if (a === b) return 0;
+  const m = a.length;
+  const n = b.length;
+  if (m === 0) return n;
+  if (n === 0) return m;
+
+  let prevRow = new Array(n + 1);
+  for (let j = 0; j <= n; j++) prevRow[j] = j;
+
+  const currRow = new Array(n + 1);
+  for (let i = 1; i <= m; i++) {
+    currRow[0] = i;
+    for (let j = 1; j <= n; j++) {
+      const cost = a.charCodeAt(i - 1) === b.charCodeAt(j - 1) ? 0 : 1;
+      currRow[j] = Math.min(
+        currRow[j - 1] + 1, // insert
+        prevRow[j] + 1, // delete
+        prevRow[j - 1] + cost // substitute
+      );
+    }
+    // Swap rows
+    const tmp = prevRow;
+    prevRow = currRow.slice();
+    currRow.length = tmp.length;
+    for (let k = 0; k < tmp.length; k++) currRow[k] = 0;
+  }
+  return prevRow[n];
+}
+
 // ── Corrections / supersedes ──
 
 export interface SupersedingClaim {

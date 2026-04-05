@@ -13,15 +13,44 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import * as Clipboard from 'expo-clipboard';
 import type { CoverageGapEntity } from '@stroom/supabase';
 import { useCoverageGaps } from '../src/hooks/useCoverageGaps';
+import { useBrandToast } from '../src/components/BrandToast';
 import { colors, fonts, spacing, radius, gradient } from '../src/constants/brand';
 
 export default function CoverageGapsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { gaps, loading, error, refresh } = useCoverageGaps(3);
+  const { show: showToast } = useBrandToast();
   const [refreshing, setRefreshing] = React.useState(false);
+
+  const copyResearchPrompt = async (entity: CoverageGapEntity) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const name = entity.canonical_name ?? 'this entity';
+    const type = entity.entity_type ?? 'entity';
+    const prompt = `You are researching the "${type}" entity "${name}" for a knowledge graph.
+
+Current coverage in our graph: ${entity.claim_count} claim${entity.claim_count === 1 ? '' : 's'}.
+
+Please research this entity and return structured facts we should add. For each fact include:
+  - claim_text: the statement, phrased precisely
+  - source_url: primary source URL (prefer official sites, press releases, gov records)
+  - source_name: publisher / outlet
+  - confidence: 0–10
+  - predicate: short snake_case key (e.g. "founded_at", "headquarters_city")
+
+Focus on biography, affiliations, timeline events, relationships, and recent activity. Prefer primary sources over aggregators. Return the result as a JSON array.`;
+    try {
+      await Clipboard.setStringAsync(prompt);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      showToast('Prompt copied to clipboard', 'success');
+    } catch {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      showToast('Copy failed', 'error');
+    }
+  };
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -140,16 +169,29 @@ export default function CoverageGapsScreen() {
                       )}
                     </View>
                   </Pressable>
-                  <Pressable
-                    onPress={() => research(g)}
-                    style={({ pressed }) => [
-                      styles.researchBtn,
-                      pressed && { opacity: 0.75 },
-                    ]}
-                  >
-                    <Ionicons name="sparkles-outline" size={14} color={colors.teal} />
-                    <Text style={styles.researchText}>Research</Text>
-                  </Pressable>
+                  <View style={styles.researchActions}>
+                    <Pressable
+                      onPress={() => research(g)}
+                      style={({ pressed }) => [
+                        styles.researchBtn,
+                        pressed && { opacity: 0.75 },
+                      ]}
+                    >
+                      <Ionicons name="sparkles-outline" size={14} color={colors.teal} />
+                      <Text style={styles.researchText}>Research</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => copyResearchPrompt(g)}
+                      style={({ pressed }) => [
+                        styles.promptBtn,
+                        pressed && { opacity: 0.75 },
+                      ]}
+                      hitSlop={4}
+                    >
+                      <Ionicons name="copy-outline" size={12} color={colors.teal} />
+                      <Text style={styles.promptBtnText}>Prompt</Text>
+                    </Pressable>
+                  </View>
                 </View>
               ))}
             </View>
@@ -276,6 +318,10 @@ const styles = StyleSheet.create({
     color: colors.slate,
     textTransform: 'uppercase',
   },
+  researchActions: {
+    alignItems: 'flex-end',
+    gap: 4,
+  },
   researchBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -286,6 +332,20 @@ const styles = StyleSheet.create({
     backgroundColor: colors.tealDim,
     borderWidth: 1,
     borderColor: 'rgba(0, 161, 155, 0.35)',
+  },
+  promptBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  promptBtnText: {
+    fontFamily: fonts.archivo.medium,
+    fontSize: 10,
+    color: colors.teal,
+    letterSpacing: 0.3,
+    textTransform: 'uppercase',
   },
   researchText: {
     fontFamily: fonts.archivo.semibold,
