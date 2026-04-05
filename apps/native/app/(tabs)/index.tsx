@@ -15,10 +15,119 @@ import { Ionicons } from '@expo/vector-icons';
 import { usePulseData } from '../../src/hooks/usePulseData';
 import { usePushNotifications } from '../../src/hooks/usePushNotifications';
 import { useTopEntities } from '../../src/hooks/useTopEntities';
+import { useGraphHealth, type GraphHealth } from '../../src/hooks/useGraphHealth';
 import { PulseMetric } from '../../src/components/PulseMetric';
 import { GlassCard } from '../../src/components/GlassCard';
 import { SkeletonMetricCard } from '../../src/components/Skeleton';
 import { colors, fonts, spacing, radius, gradient } from '../../src/constants/brand';
+
+type HealthTone = 'ok' | 'warn' | 'alert';
+
+function toneColor(tone: HealthTone): string {
+  switch (tone) {
+    case 'alert':
+      return colors.statusReject;
+    case 'warn':
+      return colors.statusPending;
+    default:
+      return colors.statusApprove;
+  }
+}
+
+// Apply warn/alert bands on a percentage (value / total).
+function pctTone(value: number, total: number, warnPct: number, alertPct: number): HealthTone {
+  if (total <= 0) return 'ok';
+  const pct = (value / total) * 100;
+  if (pct >= alertPct) return 'alert';
+  if (pct >= warnPct) return 'warn';
+  return 'ok';
+}
+
+function GraphHealthRows({
+  health,
+  data,
+}: {
+  health: GraphHealth;
+  data: {
+    totalSources: number;
+    totalEntities: number;
+    totalClaims: number;
+  } | null;
+}) {
+  const totalSources = data?.totalSources ?? 0;
+  const totalEntities = data?.totalEntities ?? 0;
+  const totalClaims = data?.totalClaims ?? 0;
+
+  const staleTone = pctTone(health.stale_sources, totalSources, 5, 10);
+  const orphanTone = pctTone(health.orphaned_entities, totalEntities, 2, 5);
+  const uncorrobTone = pctTone(health.uncorroborated_claims, totalClaims, 30, 50);
+  const singleTone = pctTone(health.single_source_claims, totalClaims, 40, 60);
+  const lowConfTone = pctTone(health.low_confidence_claims, totalClaims, 15, 25);
+
+  const trust = Number(health.avg_trust_score);
+  const trustTone: HealthTone = trust < 6 ? 'alert' : trust < 7 ? 'warn' : 'ok';
+
+  const failing = Number(health.sources_failing);
+  const failingTone: HealthTone = failing >= 4 ? 'alert' : failing > 0 ? 'warn' : 'ok';
+
+  const pctLabel = (value: number, total: number) =>
+    total > 0 ? ` · ${((value / total) * 100).toFixed(1)}%` : '';
+
+  const rows: { label: string; value: string; tone: HealthTone }[] = [
+    {
+      label: 'Stale sources',
+      value: `${health.stale_sources.toLocaleString()}${pctLabel(health.stale_sources, totalSources)}`,
+      tone: staleTone,
+    },
+    {
+      label: 'Orphaned entities',
+      value: `${health.orphaned_entities.toLocaleString()}${pctLabel(health.orphaned_entities, totalEntities)}`,
+      tone: orphanTone,
+    },
+    {
+      label: 'Uncorroborated claims',
+      value: `${health.uncorroborated_claims.toLocaleString()}${pctLabel(health.uncorroborated_claims, totalClaims)}`,
+      tone: uncorrobTone,
+    },
+    {
+      label: 'Single-source claims',
+      value: `${health.single_source_claims.toLocaleString()}${pctLabel(health.single_source_claims, totalClaims)}`,
+      tone: singleTone,
+    },
+    {
+      label: 'Low-confidence claims',
+      value: `${health.low_confidence_claims.toLocaleString()}${pctLabel(health.low_confidence_claims, totalClaims)}`,
+      tone: lowConfTone,
+    },
+    {
+      label: 'Avg trust score',
+      value: trust.toFixed(2),
+      tone: trustTone,
+    },
+    {
+      label: 'Sources failing',
+      value: failing.toLocaleString(),
+      tone: failingTone,
+    },
+  ];
+
+  return (
+    <View>
+      {rows.map((row, idx) => (
+        <View
+          key={row.label}
+          style={[styles.healthRow, idx > 0 && styles.healthRowDivider]}
+        >
+          <View style={[styles.healthDot, { backgroundColor: toneColor(row.tone) }]} />
+          <Text style={styles.healthLabel}>{row.label}</Text>
+          <Text style={[styles.healthValue, { color: toneColor(row.tone) }]}>
+            {row.value}
+          </Text>
+        </View>
+      ))}
+    </View>
+  );
+}
 
 function QuickAction({
   icon,
@@ -59,6 +168,7 @@ export default function PulseScreen() {
   const router = useRouter();
   const { data, loading, error, refresh, lastUpdatedAt } = usePulseData();
   const topEntities = useTopEntities(5);
+  const graphHealth = useGraphHealth();
   const [refreshing, setRefreshing] = React.useState(false);
   const [nowTick, setNowTick] = React.useState(0);
 
@@ -219,6 +329,22 @@ export default function PulseScreen() {
                       </View>
                     ))}
                 </View>
+              </GlassCard>
+            )}
+
+            {/* Graph Health */}
+            {(graphHealth.health || graphHealth.loading) && (
+              <GlassCard style={styles.healthCard}>
+                <Text style={styles.breakdownTitle}>Graph Health</Text>
+                {graphHealth.health ? (
+                  <GraphHealthRows health={graphHealth.health} data={data} />
+                ) : (
+                  <View style={{ gap: 8 }}>
+                    <View style={styles.healthSkeletonRow} />
+                    <View style={styles.healthSkeletonRow} />
+                    <View style={styles.healthSkeletonRow} />
+                  </View>
+                )}
               </GlassCard>
             )}
 
@@ -394,6 +520,40 @@ const styles = StyleSheet.create({
   },
   breakdownCard: {
     marginTop: spacing.sm,
+  },
+  healthCard: {
+    marginTop: spacing.sm,
+  },
+  healthRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: 9,
+  },
+  healthRowDivider: {
+    borderTopWidth: 1,
+    borderTopColor: colors.glassBorder,
+  },
+  healthDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  healthLabel: {
+    flex: 1,
+    fontFamily: fonts.archivo.regular,
+    fontSize: 13,
+    color: colors.silver,
+  },
+  healthValue: {
+    fontFamily: fonts.mono.semibold,
+    fontSize: 12,
+    fontVariant: ['tabular-nums'],
+  },
+  healthSkeletonRow: {
+    height: 28,
+    borderRadius: radius.sm,
+    backgroundColor: 'rgba(255,255,255,0.04)',
   },
   topEntitiesCard: {
     marginTop: spacing.sm,
