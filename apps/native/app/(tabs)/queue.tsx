@@ -137,6 +137,7 @@ export default function QueueScreen() {
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
+        style={styles.filterScroll}
         contentContainerStyle={styles.filterRow}
       >
         {FILTERS.map((f) => {
@@ -359,18 +360,23 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
     marginBottom: spacing.md,
   },
+  filterScroll: {
+    flexGrow: 0,
+    height: 44,
+    marginBottom: 12,
+  },
   filterRow: {
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.xs,
-    gap: spacing.xs,
-    marginBottom: spacing.sm,
+    gap: spacing.sm,
+    alignItems: 'center',
   },
   filterPill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 7,
+    minWidth: 72,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
     borderRadius: radius.full,
     backgroundColor: colors.surfaceElevated,
     borderWidth: 1,

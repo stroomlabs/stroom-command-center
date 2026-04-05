@@ -134,7 +134,39 @@ export function ClaimCard({
       {/* Header row */}
       <View style={styles.headerRow}>
         <StatusBadge status={claim.status} />
-        <Text style={styles.age}>{age}</Text>
+        <View style={styles.headerRight}>
+          <Text style={styles.age}>{age}</Text>
+          {!selectMode && (
+            <View style={styles.quickActions}>
+              <Pressable
+                onPress={onReject}
+                hitSlop={6}
+                style={({ pressed }) => [
+                  styles.quickBtn,
+                  styles.quickRejectBtn,
+                  pressed && styles.quickBtnPressed,
+                ]}
+              >
+                <Ionicons name="close-sharp" size={14} color={colors.statusReject} />
+              </Pressable>
+              <Pressable
+                onPress={onApprove}
+                hitSlop={6}
+                style={({ pressed }) => [
+                  styles.quickBtn,
+                  styles.quickApproveBtn,
+                  pressed && styles.quickBtnPressed,
+                ]}
+              >
+                <Ionicons
+                  name="checkmark-sharp"
+                  size={14}
+                  color={colors.statusApprove}
+                />
+              </Pressable>
+            </View>
+          )}
+        </View>
       </View>
 
       {/* Subject */}
@@ -177,38 +209,6 @@ export function ClaimCard({
         )}
       </View>
 
-      {/* Action buttons — hidden in batch select mode */}
-      {!selectMode && (
-      <View style={styles.actions}>
-        <Pressable
-          onPress={onReject}
-          style={({ pressed }) => [
-            styles.btn,
-            styles.rejectBtn,
-            pressed && styles.btnPressed,
-          ]}
-        >
-          <Ionicons name="close" size={18} color={colors.statusReject} />
-          <Text style={[styles.btnText, { color: colors.statusReject }]}>
-            Reject
-          </Text>
-        </Pressable>
-
-        <Pressable
-          onPress={onApprove}
-          style={({ pressed }) => [
-            styles.btn,
-            styles.approveBtn,
-            pressed && styles.btnPressed,
-          ]}
-        >
-          <Ionicons name="checkmark" size={18} color={colors.statusApprove} />
-          <Text style={[styles.btnText, { color: colors.statusApprove }]}>
-            Approve
-          </Text>
-        </Pressable>
-      </View>
-      )}
           </GlassCard>
           {selectMode && (
             <View
@@ -407,7 +407,7 @@ const styles = StyleSheet.create({
   sourceRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: spacing.lg,
+    marginBottom: spacing.xs,
     gap: spacing.sm,
   },
   sourceChip: {
@@ -448,33 +448,33 @@ const styles = StyleSheet.create({
     color: colors.silver,
     fontVariant: ['tabular-nums'],
   },
-  actions: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  btn: {
-    flex: 1,
+  headerRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    borderRadius: radius.md,
-    gap: spacing.xs,
+    gap: spacing.sm,
+  },
+  quickActions: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  quickBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  btnPressed: {
+  quickBtnPressed: {
     opacity: 0.7,
+    transform: [{ scale: 0.94 }],
   },
-  approveBtn: {
-    backgroundColor: 'rgba(34, 197, 94, 0.08)',
-    borderColor: 'rgba(34, 197, 94, 0.2)',
+  quickApproveBtn: {
+    backgroundColor: 'rgba(34, 197, 94, 0.15)',
+    borderColor: colors.statusApprove,
   },
-  rejectBtn: {
-    backgroundColor: 'rgba(239, 68, 68, 0.08)',
-    borderColor: 'rgba(239, 68, 68, 0.2)',
-  },
-  btnText: {
-    fontFamily: fonts.archivo.semibold,
-    fontSize: 14,
+  quickRejectBtn: {
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+    borderColor: colors.statusReject,
   },
 });
