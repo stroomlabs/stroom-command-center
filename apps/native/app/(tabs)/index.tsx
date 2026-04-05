@@ -13,6 +13,7 @@ import { useNavigation, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import Animated, {
+  FadeIn,
   useSharedValue,
   useAnimatedStyle,
   withRepeat,
@@ -20,7 +21,8 @@ import Animated, {
   withSequence,
   Easing,
 } from 'react-native-reanimated';
-import { usePulseData } from '../../src/hooks/usePulseData';
+import { usePulseContext } from '../../src/lib/PulseContext';
+import { usePulseDeltas } from '../../src/hooks/usePulseDeltas';
 import { usePushNotifications } from '../../src/hooks/usePushNotifications';
 import supabase from '../../src/lib/supabase';
 import { PulseMetric } from '../../src/components/PulseMetric';
@@ -48,7 +50,8 @@ export default function PulseScreen() {
   const router = useRouter();
   const navigation = useNavigation();
   const scrollRef = React.useRef<ScrollView>(null);
-  const { data, loading, error, refresh, lastUpdatedAt } = usePulseData();
+  const { data, loading, error, refresh, lastUpdatedAt } = usePulseContext();
+  const { deltas } = usePulseDeltas();
   const [refreshing, setRefreshing] = React.useState(false);
   const [nowTick, setNowTick] = React.useState(0);
 
@@ -254,6 +257,20 @@ export default function PulseScreen() {
               />
             </View>
 
+            {/* Since last visit — RPC-backed delta summary */}
+            {deltas && (
+              <Animated.Text
+                entering={FadeIn.duration(240)}
+                style={styles.deltaRow}
+              >
+                Since last visit: +{deltas.claims_ingested.toLocaleString()} claims
+                {' · +'}
+                {deltas.new_entities.toLocaleString()} entities
+                {' · '}
+                {deltas.claims_auto_approved.toLocaleString()} auto-approved
+              </Animated.Text>
+            )}
+
             {/* Status breakdown */}
             {data.statusBreakdown && Object.keys(data.statusBreakdown).length > 0 && (
               <GlassCard style={styles.breakdownCard}>
@@ -402,6 +419,14 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.statusReject,
     textAlign: 'center',
+  },
+  deltaRow: {
+    fontFamily: fonts.archivo.regular,
+    fontSize: 12,
+    color: colors.silver,
+    marginTop: spacing.sm,
+    marginBottom: spacing.xs,
+    letterSpacing: 0.1,
   },
   breakdownCard: {
     marginTop: spacing.sm,

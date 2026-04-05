@@ -33,6 +33,7 @@ import { SkeletonClaimCard } from '../../src/components/Skeleton';
 import { ScreenTransition } from '../../src/components/ScreenTransition';
 import { EmptyState } from '../../src/components/EmptyState';
 import { RetryCard } from '../../src/components/RetryCard';
+import { UndoToast } from '../../src/components/UndoToast';
 import {
   ActionSheet,
   type ActionSheetAction,
@@ -63,8 +64,20 @@ export default function QueueScreen() {
   const router = useRouter();
   const navigation = useNavigation();
   const flatListRef = React.useRef<FlatList>(null);
-  const { claims, loading, error, refresh, approve, reject, batchApprove } =
-    useQueueClaims();
+  const {
+    claims,
+    loading,
+    error,
+    refresh,
+    approve,
+    reject,
+    batchApprove,
+    deferApprove,
+    deferReject,
+    pendingUndo,
+    undoPending,
+    flushPending,
+  } = useQueueClaims();
 
   React.useEffect(() => {
     const unsub = (navigation as any).addListener?.('tabPress', () => {
@@ -225,11 +238,11 @@ export default function QueueScreen() {
   const handleReject = useCallback(
     (reason: RejectionReason, notes?: string) => {
       if (rejectTarget) {
-        reject(rejectTarget, reason, notes);
+        deferReject(rejectTarget, reason, notes);
         setRejectTarget(null);
       }
     },
-    [rejectTarget, reject]
+    [rejectTarget, deferReject]
   );
 
   const enterSelectMode = useCallback(() => {
@@ -265,7 +278,7 @@ export default function QueueScreen() {
     ({ item }: { item: QueueClaim }) => (
       <ClaimCard
         claim={item}
-        onApprove={() => approve(item.id)}
+        onApprove={() => deferApprove(item.id)}
         onReject={() => setRejectTarget(item.id)}
         onLongPress={() => {
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -276,7 +289,7 @@ export default function QueueScreen() {
         onToggleSelect={() => toggleSelect(item.id)}
       />
     ),
-    [approve, selectMode, selectedIds, toggleSelect]
+    [deferApprove, selectMode, selectedIds, toggleSelect]
   );
 
   const claimMenuActions: ActionSheetAction[] = React.useMemo(() => {
@@ -295,8 +308,7 @@ export default function QueueScreen() {
         icon: 'checkmark-circle-outline',
         tone: 'accent',
         onPress: () => {
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          approve(menuClaim.id);
+          deferApprove(menuClaim.id);
         },
       },
       {
@@ -304,7 +316,6 @@ export default function QueueScreen() {
         icon: 'close-circle-outline',
         tone: 'destructive',
         onPress: () => {
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
           setRejectTarget(menuClaim.id);
         },
       },
@@ -328,7 +339,7 @@ export default function QueueScreen() {
         },
       },
     ];
-  }, [menuClaim, approve, router]);
+  }, [menuClaim, deferApprove, router]);
 
   const keyExtractor = useCallback((item: QueueClaim) => item.id, []);
 
@@ -553,6 +564,15 @@ export default function QueueScreen() {
           </Pressable>
         </View>
       )}
+      <UndoToast
+        visible={pendingUndo !== null}
+        subject={pendingUndo?.subject ?? ''}
+        actionLabel={
+          pendingUndo?.kind === 'approve' ? 'approved' : 'rejected'
+        }
+        onUndo={undoPending}
+        onDismiss={flushPending}
+      />
     </LinearGradient>
     </ScreenTransition>
   );

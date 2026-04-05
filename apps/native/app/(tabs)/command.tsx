@@ -20,6 +20,7 @@ import * as Clipboard from 'expo-clipboard';
 import { useCommandChat, type ChatMessage } from '../../src/hooks/useCommandChat';
 import supabase from '../../src/lib/supabase';
 import { usePinnedMessages } from '../../src/hooks/usePinnedMessages';
+import { useMorningBriefing } from '../../src/hooks/useMorningBriefing';
 import { suggestFollowups } from '../../src/lib/suggestFollowups';
 import { EmptyState as SharedEmptyState } from '../../src/components/EmptyState';
 import Animated, {
@@ -83,6 +84,10 @@ export default function CommandScreen() {
   const [slashRunning, setSlashRunning] = useState(false);
   const { pinned, pin, unpin } = usePinnedMessages();
   const [pinnedExpanded, setPinnedExpanded] = useState(false);
+  // Auto-generate a morning briefing when the chat is empty + >6h since
+  // last one. Rendered as a synthetic assistant bubble above the real
+  // messages list, never persisted.
+  const { briefing } = useMorningBriefing(messages.length === 0 && !sending);
   const [menuTarget, setMenuTarget] = useState<ChatMessage | null>(null);
   const [historyVisible, setHistoryVisible] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
@@ -553,7 +558,24 @@ export default function CommandScreen() {
             </View>
           )}
 
-          {messages.length === 0 && !sending && (
+          {briefing && (
+            <MessageBubble
+              message={{
+                id: 'briefing',
+                role: 'assistant',
+                content: briefing,
+                timestamp: new Date().toISOString(),
+              }}
+              showTyping={false}
+              streaming={false}
+              onCopy={() => copyMessage(briefing)}
+              onLongPress={() => {}}
+              entityLookup={entityLookup}
+              onEntityPress={handleEntityLinkPress}
+            />
+          )}
+
+          {messages.length === 0 && !sending && !briefing && (
             <SharedEmptyState
               icon="chatbubble-ellipses"
               title="Stroom Command"

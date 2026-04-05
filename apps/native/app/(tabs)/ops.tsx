@@ -15,7 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { runAutoGovernance } from '@stroom/supabase';
 import * as Haptics from 'expo-haptics';
 import supabase from '../../src/lib/supabase';
-import { usePulseData } from '../../src/hooks/usePulseData';
+import { usePulseContext } from '../../src/lib/PulseContext';
 import { useGraphHealth } from '../../src/hooks/useGraphHealth';
 import { useQueueClaims } from '../../src/hooks/useQueueClaims';
 import { useSourcesList, pickUnhealthySources } from '../../src/hooks/useSourcesList';
@@ -55,7 +55,7 @@ export default function OpsScreen() {
     });
     return unsub;
   }, [navigation]);
-  const { data: pulse, refresh: refreshPulse } = usePulseData();
+  const { data: pulse, refresh: refreshPulse } = usePulseContext();
   const { health, error: healthError, refresh: refreshHealth } = useGraphHealth();
   const { refresh: refreshQueue } = useQueueClaims();
   const { sources } = useSourcesList();

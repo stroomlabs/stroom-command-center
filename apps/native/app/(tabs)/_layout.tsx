@@ -1,7 +1,7 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import { usePulseData } from '../../src/hooks/usePulseData';
+import { usePulseContext } from '../../src/lib/PulseContext';
 import { TabIcon } from '../../src/components/TabIcon';
 import { colors, fonts } from '../../src/constants/brand';
 
@@ -19,7 +19,7 @@ const tabPressListeners = {
 };
 
 export default function TabLayout() {
-  const { data } = usePulseData();
+  const { data } = usePulseContext();
   const queueDepth = data?.queueDepth ?? 0;
 
   return (
@@ -67,8 +67,8 @@ export default function TabLayout() {
           ),
           tabBarBadge: queueDepth > 0 ? queueDepth : undefined,
           tabBarBadgeStyle: {
-            backgroundColor: colors.statusPending,
-            color: colors.obsidian,
+            backgroundColor: colors.statusReject,
+            color: colors.alabaster,
             fontFamily: fonts.mono.semibold,
             fontSize: 11,
             minWidth: 18,

@@ -14,6 +14,7 @@ import { BrandToastProvider } from '../src/components/BrandToast';
 import { BrandSplash } from '../src/components/BrandSplash';
 import { OnboardingFlow } from '../src/components/OnboardingFlow';
 import { useOnboarding } from '../src/hooks/useOnboarding';
+import { PulseProvider } from '../src/lib/PulseContext';
 import { colors, fonts, gradient } from '../src/constants/brand';
 
 // Keep splash visible while loading
@@ -125,6 +126,7 @@ export default function RootLayout() {
         <BrandToastProvider>
         <StatusBar style="light" />
         <RouteGuard>
+          <PulseProvider>
           <ErrorBoundary>
           <Stack
           screenOptions={{
@@ -154,6 +156,7 @@ export default function RootLayout() {
           <Stack.Screen name="notifications" />
         </Stack>
           </ErrorBoundary>
+          </PulseProvider>
         </RouteGuard>
         <OfflineBanner />
         </BrandToastProvider>
