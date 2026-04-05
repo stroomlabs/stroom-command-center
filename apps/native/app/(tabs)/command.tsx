@@ -224,43 +224,167 @@ function MessageBubble({
   );
 }
 
-// Render assistant text with ```code``` fenced blocks in monospace.
+// Markdown renderer for assistant messages — supports headers (# ## ###),
+// bold (**text**), inline code (`code`), fenced code blocks (```), and
+// bullet lists (-/*). User messages render as plain text.
 function RichContent({ content, isUser }: { content: string; isUser: boolean }) {
   if (isUser) {
     return <Text style={styles.userText}>{content}</Text>;
   }
+  return <>{renderMarkdownBlocks(content)}</>;
+}
 
-  const parts = content.split(/```(\w*)\n?/);
-  // split yields: [text, lang, code, text, lang, code, ...] when balanced
-  const out: React.ReactNode[] = [];
-  let inCode = false;
-  for (let i = 0; i < parts.length; i++) {
-    const seg = parts[i];
-    if (i === 0) {
-      if (seg) out.push(<Text key={i} style={styles.assistantText}>{seg}</Text>);
-      continue;
-    }
-    // odd indices are language tags; even (>0) are alternating code/text
-    if (i % 2 === 1) {
-      // language tag — skip, next segment is the code body
-      continue;
-    }
-    if (inCode) {
-      // closed a code block
-      if (seg) out.push(<Text key={i} style={styles.assistantText}>{seg}</Text>);
-      inCode = false;
-    } else {
-      if (seg) {
-        out.push(
-          <View key={i} style={styles.codeBlock}>
-            <Text style={styles.codeText}>{seg.replace(/\n$/, '')}</Text>
-          </View>
-        );
+type Block =
+  | { kind: 'code'; text: string }
+  | { kind: 'heading'; level: 1 | 2 | 3; text: string }
+  | { kind: 'list'; items: string[] }
+  | { kind: 'paragraph'; text: string };
+
+function parseMarkdown(src: string): Block[] {
+  const blocks: Block[] = [];
+  const lines = src.split(/\r?\n/);
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    // Fenced code block
+    const fence = line.match(/^```(\w*)\s*$/);
+    if (fence) {
+      const codeLines: string[] = [];
+      i++;
+      while (i < lines.length && !/^```\s*$/.test(lines[i])) {
+        codeLines.push(lines[i]);
+        i++;
       }
-      inCode = true;
+      if (i < lines.length) i++; // consume closing fence
+      blocks.push({ kind: 'code', text: codeLines.join('\n') });
+      continue;
+    }
+
+    // Heading
+    const heading = line.match(/^(#{1,3})\s+(.*)$/);
+    if (heading) {
+      const level = heading[1].length as 1 | 2 | 3;
+      blocks.push({ kind: 'heading', level, text: heading[2] });
+      i++;
+      continue;
+    }
+
+    // Bullet list
+    if (/^\s*[-*]\s+/.test(line)) {
+      const items: string[] = [];
+      while (i < lines.length && /^\s*[-*]\s+/.test(lines[i])) {
+        items.push(lines[i].replace(/^\s*[-*]\s+/, ''));
+        i++;
+      }
+      blocks.push({ kind: 'list', items });
+      continue;
+    }
+
+    // Blank line — separator
+    if (line.trim() === '') {
+      i++;
+      continue;
+    }
+
+    // Paragraph — collect consecutive non-blank, non-special lines
+    const paraLines: string[] = [];
+    while (
+      i < lines.length &&
+      lines[i].trim() !== '' &&
+      !/^```/.test(lines[i]) &&
+      !/^#{1,3}\s+/.test(lines[i]) &&
+      !/^\s*[-*]\s+/.test(lines[i])
+    ) {
+      paraLines.push(lines[i]);
+      i++;
+    }
+    if (paraLines.length > 0) {
+      blocks.push({ kind: 'paragraph', text: paraLines.join(' ') });
     }
   }
-  return <>{out}</>;
+
+  return blocks;
+}
+
+function renderMarkdownBlocks(src: string): React.ReactNode[] {
+  const blocks = parseMarkdown(src);
+  return blocks.map((block, idx) => {
+    switch (block.kind) {
+      case 'code':
+        return (
+          <View key={idx} style={styles.codeBlock}>
+            <Text style={styles.codeText}>{block.text}</Text>
+          </View>
+        );
+      case 'heading': {
+        const style =
+          block.level === 1
+            ? styles.h1
+            : block.level === 2
+            ? styles.h2
+            : styles.h3;
+        return (
+          <Text key={idx} style={style}>
+            {renderInline(block.text)}
+          </Text>
+        );
+      }
+      case 'list':
+        return (
+          <View key={idx} style={styles.list}>
+            {block.items.map((item, j) => (
+              <View key={j} style={styles.listItem}>
+                <Text style={styles.bullet}>•</Text>
+                <Text style={styles.assistantText}>{renderInline(item)}</Text>
+              </View>
+            ))}
+          </View>
+        );
+      case 'paragraph':
+      default:
+        return (
+          <Text key={idx} style={styles.assistantText}>
+            {renderInline(block.text)}
+          </Text>
+        );
+    }
+  });
+}
+
+// Inline parser: **bold**, `code`
+function renderInline(text: string): React.ReactNode[] {
+  const tokens: React.ReactNode[] = [];
+  const regex = /(\*\*[^*]+\*\*|`[^`]+`)/g;
+  let lastIndex = 0;
+  let key = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      tokens.push(text.slice(lastIndex, match.index));
+    }
+    const token = match[0];
+    if (token.startsWith('**')) {
+      tokens.push(
+        <Text key={`b${key++}`} style={styles.bold}>
+          {token.slice(2, -2)}
+        </Text>
+      );
+    } else {
+      tokens.push(
+        <Text key={`c${key++}`} style={styles.inlineCode}>
+          {token.slice(1, -1)}
+        </Text>
+      );
+    }
+    lastIndex = match.index + token.length;
+  }
+  if (lastIndex < text.length) {
+    tokens.push(text.slice(lastIndex));
+  }
+  return tokens;
 }
 
 function TypingDots() {
@@ -410,6 +534,54 @@ const styles = StyleSheet.create({
     fontFamily: fonts.archivo.regular,
     fontSize: 15,
     color: colors.silver,
+    lineHeight: 21,
+  },
+  h1: {
+    fontFamily: fonts.archivo.bold,
+    fontSize: 20,
+    color: colors.alabaster,
+    letterSpacing: -0.4,
+    marginTop: 4,
+    marginBottom: 4,
+  },
+  h2: {
+    fontFamily: fonts.archivo.bold,
+    fontSize: 17,
+    color: colors.alabaster,
+    letterSpacing: -0.3,
+    marginTop: 4,
+    marginBottom: 2,
+  },
+  h3: {
+    fontFamily: fonts.archivo.semibold,
+    fontSize: 15,
+    color: colors.alabaster,
+    marginTop: 2,
+    marginBottom: 2,
+  },
+  bold: {
+    fontFamily: fonts.archivo.bold,
+    color: colors.alabaster,
+  },
+  inlineCode: {
+    fontFamily: fonts.mono.regular,
+    fontSize: 13,
+    color: colors.teal,
+    backgroundColor: 'rgba(0, 161, 155, 0.1)',
+  },
+  list: {
+    gap: 3,
+    marginVertical: 2,
+  },
+  listItem: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    paddingLeft: 2,
+  },
+  bullet: {
+    fontFamily: fonts.archivo.regular,
+    fontSize: 15,
+    color: colors.teal,
     lineHeight: 21,
   },
   codeBlock: {

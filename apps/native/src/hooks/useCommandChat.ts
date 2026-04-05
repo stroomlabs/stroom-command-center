@@ -88,22 +88,18 @@ export function useCommandChat() {
           xhr.setRequestHeader('apikey', SUPABASE_ANON_KEY);
           xhr.setRequestHeader('Content-Type', 'application/json');
 
-          xhr.onprogress = () => {
-            // responseText is cumulative — replace the trailing assistant message each time
-            const text = parseStreamText(xhr.responseText);
-            setMessages((prev) => {
-              const copy = [...prev];
-              const last = copy[copy.length - 1];
-              if (last?.role === 'assistant') {
-                copy[copy.length - 1] = { ...last, content: text };
-              }
-              return copy;
-            });
-          };
-
           xhr.onload = () => {
             if (xhr.status >= 200 && xhr.status < 300) {
-              const finalText = parseStreamText(xhr.responseText);
+              let finalText = '';
+              try {
+                const parsed = JSON.parse(xhr.responseText);
+                finalText =
+                  typeof parsed?.content === 'string'
+                    ? parsed.content
+                    : xhr.responseText;
+              } catch {
+                finalText = xhr.responseText;
+              }
               setMessages((prev) => {
                 const copy = [...prev];
                 const last = copy[copy.length - 1];
@@ -114,7 +110,12 @@ export function useCommandChat() {
               });
               resolve();
             } else {
-              reject(new Error(`HTTP ${xhr.status}: ${xhr.responseText || 'Request failed'}`));
+              let errText = xhr.responseText || 'Request failed';
+              try {
+                const parsed = JSON.parse(xhr.responseText);
+                errText = parsed?.error ?? parsed?.message ?? errText;
+              } catch {}
+              reject(new Error(`HTTP ${xhr.status}: ${errText}`));
             }
           };
 
@@ -149,27 +150,4 @@ export function useCommandChat() {
   }, []);
 
   return { messages, sending, error, sessionId, send, cancel, resetSession };
-}
-
-// Accept either plain text stream or SSE (`data: {...}\n\n`). Reconstruct
-// plain text either way so the UI renders progressively.
-function parseStreamText(raw: string): string {
-  if (!raw) return '';
-  if (!raw.includes('data:')) return raw;
-
-  const out: string[] = [];
-  for (const line of raw.split(/\r?\n/)) {
-    if (!line.startsWith('data:')) continue;
-    const payload = line.slice(5).trim();
-    if (!payload || payload === '[DONE]') continue;
-    try {
-      const obj = JSON.parse(payload);
-      // Common shapes: {delta: "text"}, {content: "text"}, {text: "text"}
-      const delta = obj.delta ?? obj.content ?? obj.text ?? '';
-      if (typeof delta === 'string') out.push(delta);
-    } catch {
-      out.push(payload);
-    }
-  }
-  return out.join('');
 }
