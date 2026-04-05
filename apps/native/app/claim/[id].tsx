@@ -27,7 +27,7 @@ import { useClaimDetail } from '../../src/hooks/useClaimDetail';
 import { StatusBadge, STATUS_COLORS } from '../../src/components/StatusBadge';
 import { JsonView } from '../../src/components/JsonView';
 import { RejectSheet } from '../../src/components/RejectSheet';
-import { ClaimDiff } from '../../src/components/ClaimDiff';
+import { ClaimDiffSheet } from '../../src/components/ClaimDiffSheet';
 import { GlowSpot } from '../../src/components/GlowSpot';
 import { useBrandToast } from '../../src/components/BrandToast';
 import Animated, {
@@ -49,10 +49,7 @@ export default function ClaimDetailScreen() {
   const { claim, corroborations, loading, error } = useClaimDetail(id);
   const { show: showToast } = useBrandToast();
   const [supersedes, setSupersedes] = useState<SupersedingClaim[]>([]);
-  const [diffTarget, setDiffTarget] = useState<{
-    value_jsonb: Record<string, unknown> | null;
-    label: string;
-  } | null>(null);
+  const [diffTargetId, setDiffTargetId] = useState<string | null>(null);
   const [observation, setObservation] = useState<{
     id: string;
     extraction_method: string | null;
@@ -166,51 +163,6 @@ export default function ClaimDetailScreen() {
       cancelled = true;
     };
   }, [claim]);
-
-  // When this claim has been corrected or superseded, fetch the newest
-  // replacement's value_jsonb so we can render an inline diff against it.
-  React.useEffect(() => {
-    if (
-      !claim?.id ||
-      (claim.status !== 'corrected' && claim.status !== 'superseded')
-    ) {
-      setDiffTarget(null);
-      return;
-    }
-    let cancelled = false;
-    (async () => {
-      try {
-        const { data } = await supabase
-          .from('claims')
-          .select('id, value_jsonb, created_at')
-          .eq('subject_entity_id', claim.subject_entity_id)
-          .eq('predicate', claim.predicate)
-          .gt('created_at', claim.created_at)
-          .order('created_at', { ascending: false })
-          .limit(1);
-        const next = (data as any[] | null)?.[0];
-        if (!cancelled && next) {
-          setDiffTarget({
-            value_jsonb: next.value_jsonb ?? null,
-            label: 'newer version',
-          });
-        } else if (!cancelled) {
-          setDiffTarget(null);
-        }
-      } catch {
-        if (!cancelled) setDiffTarget(null);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    claim?.id,
-    claim?.status,
-    claim?.subject_entity_id,
-    claim?.predicate,
-    claim?.created_at,
-  ]);
 
   // Fetch full audit history for this claim (governance timeline).
   React.useEffect(() => {
@@ -679,19 +631,6 @@ export default function ClaimDetailScreen() {
           </View>
         )}
 
-        {/* Value diff — shown when this claim has been corrected or superseded */}
-        {diffTarget && (
-          <View style={styles.section}>
-            <Text style={styles.sectionHeader}>VALUE DIFF</Text>
-            <ClaimDiff
-              prev={(claim.value_jsonb ?? null) as any}
-              next={(diffTarget.value_jsonb ?? null) as any}
-              prevLabel="this claim"
-              nextLabel={diffTarget.label}
-            />
-          </View>
-        )}
-
         {/* Corrections */}
         {supersedes.length > 0 && (
           <View style={styles.section}>
@@ -699,17 +638,16 @@ export default function ClaimDetailScreen() {
               CORRECTIONS ({supersedes.length})
             </Text>
             {supersedes.map((s) => (
-              <Pressable
-                key={s.id}
-                onPress={() =>
-                  router.push({ pathname: '/claim/[id]', params: { id: s.id } } as any)
-                }
-                style={({ pressed }) => [
-                  styles.correctionRow,
-                  pressed && { opacity: 0.7 },
-                ]}
-              >
-                <View style={styles.correctionBody}>
+              <View key={s.id} style={styles.correctionRow}>
+                <Pressable
+                  onPress={() =>
+                    router.push({ pathname: '/claim/[id]', params: { id: s.id } } as any)
+                  }
+                  style={({ pressed }) => [
+                    styles.correctionBody,
+                    pressed && { opacity: 0.7 },
+                  ]}
+                >
                   <View style={styles.correctionTop}>
                     <StatusBadge status={s.status as any} />
                     <Text style={styles.correctionAge}>
@@ -724,9 +662,23 @@ export default function ClaimDetailScreen() {
                         ` · conf ${Number(s.confidence_score).toFixed(1)}`}
                     </Text>
                   )}
-                </View>
-                <Ionicons name="chevron-forward" size={14} color={colors.slate} />
-              </Pressable>
+                </Pressable>
+                <Pressable
+                  onPress={() => setDiffTargetId(s.id)}
+                  hitSlop={6}
+                  style={({ pressed }) => [
+                    styles.showDiffBtn,
+                    pressed && { opacity: 0.7, transform: [{ scale: 0.97 }] },
+                  ]}
+                >
+                  <Ionicons
+                    name="git-compare-outline"
+                    size={12}
+                    color={colors.teal}
+                  />
+                  <Text style={styles.showDiffText}>Show Diff</Text>
+                </Pressable>
+              </View>
             ))}
           </View>
         )}
@@ -834,6 +786,14 @@ export default function ClaimDetailScreen() {
         visible={rejectVisible}
         onDismiss={() => setRejectVisible(false)}
         onReject={handleReject}
+      />
+
+      <ClaimDiffSheet
+        visible={diffTargetId !== null}
+        baseClaimId={claim?.id ?? null}
+        baseValueJsonb={(claim?.value_jsonb ?? null) as any}
+        targetClaimId={diffTargetId}
+        onDismiss={() => setDiffTargetId(null)}
       />
     </LinearGradient>
   );
@@ -1304,6 +1264,22 @@ const styles = StyleSheet.create({
     fontFamily: fonts.archivo.regular,
     fontSize: 11,
     color: colors.silver,
+  },
+  showDiffBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: radius.sm,
+    backgroundColor: colors.tealDim,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 161, 155, 0.35)',
+  },
+  showDiffText: {
+    fontFamily: fonts.archivo.semibold,
+    fontSize: 11,
+    color: colors.teal,
   },
   copyIdBtn: {
     flexDirection: 'row',

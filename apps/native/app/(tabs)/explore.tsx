@@ -10,6 +10,14 @@ import {
   Keyboard,
   ScrollView,
 } from 'react-native';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withRepeat,
+  withTiming,
+  Easing,
+  cancelAnimation,
+} from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -249,6 +257,11 @@ export default function ExploreScreen() {
           )}
         </View>
         )}
+        {segment === 'entities' && (
+          <SearchLoadingBar
+            active={loading && trimmed.length > 0}
+          />
+        )}
 
         {/* Entity type filter chips */}
         {segment === 'entities' && availableTypes.length > 0 && (
@@ -284,7 +297,10 @@ export default function ExploreScreen() {
             <Text style={styles.errorText}>{error}</Text>
           </View>
         ) : filteredResults.length === 0 ? (
-          <View style={styles.emptyWrap}>
+          <ScrollView
+            contentContainerStyle={styles.emptyWrap}
+            keyboardShouldPersistTaps="handled"
+          >
             <Ionicons name="search-outline" size={40} color={colors.slate} />
             <Text style={styles.emptyTitle}>No matches</Text>
             <Text style={styles.emptyBody}>
@@ -292,7 +308,41 @@ export default function ExploreScreen() {
                 ? `No ${typeFilter} entities match "${trimmed}".`
                 : 'Try a different search term or part of an entity name.'}
             </Text>
-          </View>
+            {trimmed.length >= 4 && (
+              <Pressable
+                onPress={() => setQuery(trimmed.slice(0, Math.max(2, trimmed.length - 2)))}
+                style={({ pressed }) => [
+                  styles.suggestPill,
+                  pressed && { opacity: 0.7, transform: [{ scale: 0.97 }] },
+                ]}
+              >
+                <Ionicons name="return-up-back-outline" size={13} color={colors.teal} />
+                <Text style={styles.suggestPillText}>Try a shorter search</Text>
+              </Pressable>
+            )}
+            {availableTypes.length > 0 && (
+              <>
+                <Text style={styles.browseLabel}>OR BROWSE BY TYPE</Text>
+                <View style={styles.browseChips}>
+                  {availableTypes.map((t) => (
+                    <Pressable
+                      key={t}
+                      onPress={() => {
+                        setQuery('');
+                        setTypeFilter(t);
+                      }}
+                      style={({ pressed }) => [
+                        styles.browseChip,
+                        pressed && { opacity: 0.75, transform: [{ scale: 0.97 }] },
+                      ]}
+                    >
+                      <Text style={styles.browseChipText}>{t}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </>
+            )}
+          </ScrollView>
         ) : (
           <FlatList
             data={filteredResults}
@@ -503,6 +553,38 @@ function PredicatesView({
   );
 }
 
+
+// Thin indeterminate loading bar rendered below the search box while the
+// debounced query is in flight. Sweeps a teal bar back and forth.
+function SearchLoadingBar({ active }: { active: boolean }) {
+  const progress = useSharedValue(0);
+  React.useEffect(() => {
+    if (active) {
+      progress.value = 0;
+      progress.value = withRepeat(
+        withTiming(1, { duration: 900, easing: Easing.inOut(Easing.ease) }),
+        -1,
+        true
+      );
+    } else {
+      cancelAnimation(progress);
+      progress.value = withTiming(0, { duration: 150 });
+    }
+  }, [active, progress]);
+  const style = useAnimatedStyle(() => ({
+    opacity: active ? 1 : 0,
+    transform: [
+      { translateX: -60 + progress.value * 120 },
+      { scaleX: 0.4 + progress.value * 0.6 },
+    ],
+  }));
+  if (!active) return null;
+  return (
+    <View style={styles.loadingBarTrack}>
+      <Animated.View style={[styles.loadingBarFill, style]} />
+    </View>
+  );
+}
 
 function FilterChip({
   label,
@@ -791,6 +873,66 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.sm,
     paddingBottom: spacing.xxl,
+  },
+  loadingBarTrack: {
+    height: 2,
+    marginTop: 6,
+    marginHorizontal: spacing.xs,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderRadius: 1,
+    overflow: 'hidden',
+  },
+  loadingBarFill: {
+    width: 60,
+    height: '100%',
+    backgroundColor: colors.teal,
+    borderRadius: 1,
+  },
+  suggestPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 8,
+    borderRadius: radius.full,
+    backgroundColor: colors.tealDim,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 161, 155, 0.35)',
+    marginTop: spacing.sm,
+  },
+  suggestPillText: {
+    fontFamily: fonts.archivo.semibold,
+    fontSize: 12,
+    color: colors.teal,
+  },
+  browseLabel: {
+    fontFamily: fonts.archivo.medium,
+    fontSize: 10,
+    color: colors.slate,
+    letterSpacing: 1,
+    marginTop: spacing.lg,
+    marginBottom: spacing.sm,
+  },
+  browseChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.lg,
+  },
+  browseChip: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: 8,
+    borderRadius: radius.full,
+    backgroundColor: colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+  },
+  browseChipText: {
+    fontFamily: fonts.archivo.medium,
+    fontSize: 12,
+    color: colors.silver,
+    textTransform: 'capitalize',
   },
   recentBlock: {
     marginBottom: spacing.md,

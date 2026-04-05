@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import supabase from '../lib/supabase';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export interface ConversationSummary {
   session_id: string;
@@ -8,12 +8,13 @@ export interface ConversationSummary {
   saved_at: string;
 }
 
-const MAX_MEMORIES = 3;
-const PREFERENCES_KEY = 'command_memory';
+const STORAGE_KEY = 'stroom.command_memory';
+const MAX_MEMORIES = 5;
 
-// Reads/writes the last N conversation summaries from
-// intel.operator_profiles.preferences.command_memory so fresh Command
-// sessions can be primed with continuity context.
+// Reads/writes the last N conversation summaries from AsyncStorage so
+// fresh Command sessions can be primed with continuity context. Local-only
+// — memory is device-scoped rather than tied to the operator profile so
+// there's no network round-trip on session start.
 export function useCommandMemory() {
   const [memories, setMemories] = useState<ConversationSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -21,29 +22,19 @@ export function useCommandMemory() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) {
-        setMemories([]);
-        return;
+      const raw = await AsyncStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          setMemories(
+            (parsed as ConversationSummary[])
+              .filter((m) => m && m.topic && m.summary)
+              .slice(0, MAX_MEMORIES)
+          );
+          return;
+        }
       }
-      const { data } = await supabase
-        .from('operator_profiles')
-        .select('preferences')
-        .eq('user_id', user.id)
-        .maybeSingle();
-      const prefs = (data?.preferences ?? {}) as Record<string, unknown>;
-      const raw = prefs[PREFERENCES_KEY];
-      if (Array.isArray(raw)) {
-        setMemories(
-          (raw as ConversationSummary[])
-            .filter((m) => m && m.topic && m.summary)
-            .slice(0, MAX_MEMORIES)
-        );
-      } else {
-        setMemories([]);
-      }
+      setMemories([]);
     } catch {
       setMemories([]);
     } finally {
@@ -57,53 +48,22 @@ export function useCommandMemory() {
 
   const save = useCallback(async (next: ConversationSummary) => {
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return;
-      const { data: existing } = await supabase
-        .from('operator_profiles')
-        .select('preferences')
-        .eq('user_id', user.id)
-        .maybeSingle();
-      const prefs = (existing?.preferences ?? {}) as Record<string, unknown>;
-      const current = Array.isArray(prefs[PREFERENCES_KEY])
-        ? ((prefs[PREFERENCES_KEY] as ConversationSummary[]) ?? [])
-        : [];
-      // Dedup by session id, keep newest at the front, cap to MAX_MEMORIES.
+      const raw = await AsyncStorage.getItem(STORAGE_KEY);
+      const current: ConversationSummary[] =
+        raw && Array.isArray(JSON.parse(raw)) ? JSON.parse(raw) : [];
+      // Dedup by session id, keep newest at the front, cap at MAX_MEMORIES.
       const deduped = current.filter((m) => m.session_id !== next.session_id);
       const updated = [next, ...deduped].slice(0, MAX_MEMORIES);
-
-      await supabase.from('operator_profiles').upsert(
-        {
-          user_id: user.id,
-          preferences: { ...prefs, [PREFERENCES_KEY]: updated },
-        },
-        { onConflict: 'user_id' }
-      );
+      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
       setMemories(updated);
     } catch {
-      // memory save is best-effort
+      // best-effort
     }
   }, []);
 
   const clear = useCallback(async () => {
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return;
-      const { data: existing } = await supabase
-        .from('operator_profiles')
-        .select('preferences')
-        .eq('user_id', user.id)
-        .maybeSingle();
-      const prefs = (existing?.preferences ?? {}) as Record<string, unknown>;
-      delete (prefs as any)[PREFERENCES_KEY];
-      await supabase.from('operator_profiles').upsert(
-        { user_id: user.id, preferences: prefs },
-        { onConflict: 'user_id' }
-      );
+      await AsyncStorage.removeItem(STORAGE_KEY);
       setMemories([]);
     } catch {}
   }, []);
@@ -135,10 +95,11 @@ export function buildMemoryContextMessage(
   return lines.join('\n');
 }
 
-// Derive a short topic + summary from a conversation thread. Cheap local
-// heuristic — no LLM call needed. Topic is the first user message (trimmed
-// to 60 chars). Summary is the first user turn and the last assistant reply
-// concatenated.
+// Derive a short topic + 1-sentence summary from a conversation thread.
+// Cheap local heuristic — no LLM call needed. Topic is the first user
+// message (trimmed to 60 chars). Summary tries to grab the first complete
+// sentence of the last assistant reply, then falls back to the first user
+// turn.
 export function summarizeConversation(
   messages: Array<{ role: string; content: string }>
 ): { topic: string; summary: string } | null {
@@ -147,11 +108,23 @@ export function summarizeConversation(
     .reverse()
     .find((m) => m.role === 'assistant' && m.content.trim().length > 0);
   if (!firstUser) return null;
+
   const topic = firstUser.content.trim().slice(0, 60).replace(/\s+/g, ' ');
-  const summaryParts: string[] = [];
-  summaryParts.push(`Q: ${firstUser.content.trim().slice(0, 240)}`);
+
+  let sentence: string | null = null;
   if (lastAssistant) {
-    summaryParts.push(`A: ${lastAssistant.content.trim().slice(0, 400)}`);
+    // Strip common markdown artifacts, then pull the first sentence.
+    const stripped = lastAssistant.content
+      .replace(/[#*`_>]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const match = stripped.match(/^([^.!?]+[.!?])/);
+    sentence = (match?.[1] ?? stripped).trim();
+    if (sentence.length > 240) sentence = sentence.slice(0, 240) + '…';
   }
-  return { topic, summary: summaryParts.join('\n') };
+
+  const summary =
+    sentence ?? `Asked about "${topic}".`;
+
+  return { topic, summary };
 }
