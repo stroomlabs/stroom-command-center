@@ -951,14 +951,16 @@ export default function QueueScreen() {
           maxToRenderPerBatch={10}
           windowSize={5}
           ListFooterComponent={
-            <RecentlyProcessedSection
-              entries={recentlyProcessed}
-              expanded={recentExpanded}
-              onToggle={() => {
-                haptics.tap.light();
-                setRecentExpanded((v) => !v);
-              }}
-            />
+            recentlyProcessed.length > 0 ? (
+              <RecentlyProcessedSection
+                entries={recentlyProcessed}
+                expanded={recentExpanded}
+                onToggle={() => {
+                  haptics.tap.light();
+                  setRecentExpanded((v) => !v);
+                }}
+              />
+            ) : undefined
           }
         />
       )}
@@ -1171,7 +1173,6 @@ const kbStyles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: spacing.lg,
   },
   hintBadge: {
     paddingHorizontal: 8,
