@@ -19,7 +19,19 @@
       "bundleIdentifier": "com.stroomlabs.commandcenter",
       "infoPlist": {
         "NSFaceIDUsageDescription": "Authenticate to access the Stroom Command Center",
+        "NSCameraUsageDescription": "Stroom Command uses the camera to capture source material for suggestions and claim evidence.",
+        "NSPhotoLibraryUsageDescription": "Stroom Command accesses your photo library to attach evidence to suggestions and claims.",
+        "NSMicrophoneUsageDescription": "Stroom Command uses the microphone for voice governance commands.",
+        "NSUserActivityTypes": [
+          "com.stroomlabs.commandcenter.runsweep",
+          "com.stroomlabs.commandcenter.checkqueue"
+        ],
+        "NSSupportsLiveActivities": true,
+        "NSSupportsLiveActivitiesFrequentUpdates": true,
         "ITSAppUsesNonExemptEncryption": false
+      },
+      "entitlements": {
+        "com.apple.developer.usernotifications.communication": true
       }
     },
     "android": {

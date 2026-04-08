@@ -7,7 +7,7 @@ import Animated, {
   Easing,
   runOnJS,
 } from 'react-native-reanimated';
-import { colors, fonts } from '../constants/brand';
+import { colors, fonts, spacing } from '../constants/brand';
 
 interface BrandSplashProps {
   // Called once the splash has shown for at least MIN_DURATION_MS and the
@@ -61,8 +61,9 @@ export function BrandSplash({ onDone, ready }: BrandSplashProps) {
       style={[StyleSheet.absoluteFill, styles.container, animatedStyle]}
     >
       <View style={styles.center}>
+        <Text style={styles.parentLockup}>STROOM LABS</Text>
         <Text style={styles.logoMark}>S</Text>
-        <Text style={styles.wordmark}>STROOM</Text>
+        <Text style={styles.productLockup}>Command Center</Text>
       </View>
     </Animated.View>
   );
@@ -75,18 +76,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     zIndex: 100,
   },
-  haloOuter: {
-    top: '35%',
-    left: '50%',
-    marginLeft: -280,
-  },
-  haloInner: {
-    top: '42%',
-    left: '50%',
-    marginLeft: -160,
-  },
   center: {
     alignItems: 'center',
+  },
+  parentLockup: {
+    fontFamily: fonts.archivo.black,
+    fontSize: 28,
+    color: colors.silver,
+    letterSpacing: 1.6,
+    marginBottom: spacing.md,
   },
   logoMark: {
     fontFamily: fonts.archivo.black,
@@ -98,11 +96,11 @@ const styles = StyleSheet.create({
     textShadowRadius: 24,
     lineHeight: 80,
   },
-  wordmark: {
+  productLockup: {
     fontFamily: fonts.archivo.bold,
-    fontSize: 14,
-    color: colors.silver,
-    letterSpacing: 6,
-    marginTop: 8,
+    fontSize: 18,
+    color: colors.teal,
+    letterSpacing: 0.4,
+    marginTop: spacing.sm,
   },
 });

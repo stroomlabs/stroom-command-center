@@ -662,7 +662,10 @@ export default function MoreScreen() {
             </Text>
           </View>
           <Text style={styles.infoLine}>
-            Stroom Command Center v{appVersion}
+            Stroom Labs · Command Center v{appVersion}
+          </Text>
+          <Text style={styles.infoLine}>
+            Governance tool for the StroomHelix knowledge graph
           </Text>
           <Text style={styles.infoLine}>
             StroomHelix Engine · Supabase Realtime

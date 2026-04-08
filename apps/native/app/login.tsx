@@ -44,8 +44,9 @@ export default function LoginScreen() {
         style={styles.inner}
       >
         <View style={styles.logoArea}>
+          <Text style={styles.parentLockup}>STROOM LABS</Text>
           <Text style={styles.logoMark}>S</Text>
-          <Text style={styles.title}>Stroom Command Center</Text>
+          <Text style={styles.title}>Command Center</Text>
           <Text style={styles.subtitle}>Intelligence Operations</Text>
         </View>
 
@@ -132,6 +133,14 @@ const styles = StyleSheet.create({
   logoArea: {
     alignItems: 'center',
     marginBottom: 56,
+  },
+  parentLockup: {
+    fontFamily: fonts.archivo.medium,
+    fontSize: 11,
+    color: colors.silver,
+    letterSpacing: 2,
+    marginBottom: spacing.md,
+    textTransform: 'uppercase',
   },
   logoMark: {
     fontFamily: fonts.archivo.black,
