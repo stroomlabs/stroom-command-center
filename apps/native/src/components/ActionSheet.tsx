@@ -10,6 +10,7 @@ import Animated from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { useModalTransition } from '../hooks/useModalTransition';
 import { colors, fonts, spacing, radius } from '../constants/brand';
+import { ModalBackdrop } from './ModalBackdrop';
 
 export interface ActionSheetAction {
   label: string;
@@ -52,7 +53,7 @@ export function ActionSheet({
       onRequestClose={onDismiss}
       statusBarTranslucent
     >
-      <Pressable style={styles.backdrop} onPress={onDismiss}>
+      <ModalBackdrop onPress={onDismiss}>
         <Animated.View style={cardStyle}>
         <Pressable style={styles.sheet} onPress={() => {}}>
           {/* Handle */}
@@ -101,7 +102,7 @@ export function ActionSheet({
           </Pressable>
         </Pressable>
         </Animated.View>
-      </Pressable>
+      </ModalBackdrop>
     </Modal>
   );
 }
@@ -118,19 +119,14 @@ function toneColor(tone: ActionSheetAction['tone']): string {
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'flex-end',
-  },
   sheet: {
-    backgroundColor: colors.surfaceElevated,
+    backgroundColor: colors.surfaceSheet,
     borderTopLeftRadius: radius.xl,
     borderTopRightRadius: radius.xl,
     borderTopWidth: 1,
     borderLeftWidth: 1,
     borderRightWidth: 1,
-    borderColor: colors.glassBorder,
+    borderColor: colors.sheetBorder,
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.xxl,
   },

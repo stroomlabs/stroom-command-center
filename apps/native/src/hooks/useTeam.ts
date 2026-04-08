@@ -44,6 +44,7 @@ export function useTeam() {
       } = await supabase.auth.getUser();
 
       const { data, error: err } = await supabase
+        .schema('intel')
         .from('operator_profiles')
         .select('user_id, preferences, updated_at')
         .order('updated_at', { ascending: false });
@@ -94,12 +95,14 @@ export function useTeam() {
         } = await supabase.auth.getUser();
         if (!user) return;
         const { data: existing } = await supabase
+          .schema('intel')
           .from('operator_profiles')
           .select('preferences')
           .eq('user_id', user.id)
           .maybeSingle();
         const prefs = (existing?.preferences ?? {}) as Record<string, unknown>;
         await supabase
+          .schema('intel')
           .from('operator_profiles')
           .upsert(
             {
@@ -126,6 +129,7 @@ export function useTeam() {
 
     const code = generateInviteCode();
     const { data: existing } = await supabase
+      .schema('intel')
       .from('operator_profiles')
       .select('preferences')
       .eq('user_id', user.id)
@@ -133,6 +137,7 @@ export function useTeam() {
     const prefs = (existing?.preferences ?? {}) as Record<string, unknown>;
 
     await supabase
+      .schema('intel')
       .from('operator_profiles')
       .upsert(
         {

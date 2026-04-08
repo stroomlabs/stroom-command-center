@@ -172,7 +172,7 @@ const styles = StyleSheet.create({
   card: {
     width: '100%',
     maxWidth: 340,
-    backgroundColor: '#111416', // Brand's surfaceElevated, spec requires literal
+    backgroundColor: colors.surfaceSheet,
     borderRadius: radius.xl, // 24px
     borderWidth: 1,
     borderColor: 'rgba(0, 161, 155, 0.3)',

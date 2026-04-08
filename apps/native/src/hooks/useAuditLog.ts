@@ -15,6 +15,7 @@ export function useAuditLog(limit = 50) {
   const refresh = useCallback(async () => {
     try {
       const { data, error: err } = await supabase
+        .schema('intel')
         .from('audit_log')
         .select('*')
         .order('created_at', { ascending: false })
@@ -31,6 +32,7 @@ export function useAuditLog(limit = 50) {
       let claimMap = new Map<string, string>();
       if (claimIds.length > 0) {
         const { data: claims } = await supabase
+          .schema('intel')
           .from('claims')
           .select('id, subject_entity:entities!claims_subject_entity_id_fkey(canonical_name)')
           .in('id', claimIds);

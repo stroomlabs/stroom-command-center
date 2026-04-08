@@ -61,20 +61,23 @@ export function resetClient() {
 export async function fetchPulseData(client: SupabaseClient): Promise<PulseData> {
   const [claims, entities, sources, queue, research, budget, corrections, totalForRate] =
     await Promise.all([
-      client.from('claims').select('*', { count: 'exact', head: true }).then((r) => r.count ?? 0),
-      client.from('entities').select('*', { count: 'exact', head: true }).then((r) => r.count ?? 0),
-      client.from('sources').select('*', { count: 'exact', head: true }).then((r) => r.count ?? 0),
+      client.schema('intel').from('claims').select('*', { count: 'exact', head: true }).then((r) => r.count ?? 0),
+      client.schema('intel').from('entities').select('*', { count: 'exact', head: true }).then((r) => r.count ?? 0),
+      client.schema('intel').from('sources').select('*', { count: 'exact', head: true }).then((r) => r.count ?? 0),
       client
+        .schema('intel')
         .from('claims')
         .select('*', { count: 'exact', head: true })
         .in('status', ['draft', 'pending_review'])
         .then((r) => r.count ?? 0),
       client
+        .schema('intel')
         .from('research_queue')
         .select('*', { count: 'exact', head: true })
         .in('status', ['queued', 'in_progress'])
         .then((r) => r.count ?? 0),
       client
+        .schema('intel')
         .from('research_queue')
         .select('actual_cost_usd')
         .gte('completed_at', new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString())
@@ -83,11 +86,13 @@ export async function fetchPulseData(client: SupabaseClient): Promise<PulseData>
           return r.data.reduce((sum, row) => sum + (row.actual_cost_usd ?? 0), 0);
         }),
       client
+        .schema('intel')
         .from('claims')
         .select('*', { count: 'exact', head: true })
         .eq('status', 'corrected')
         .then((r) => r.count ?? 0),
       client
+        .schema('intel')
         .from('claims')
         .select('*', { count: 'exact', head: true })
         .in('status', ['published', 'corrected'])
@@ -130,6 +135,7 @@ export async function fetchQueueClaims(
   offset = 0
 ): Promise<QueueClaim[]> {
   const { data, error } = await client
+    .schema('intel')
     .from('claims')
     .select(
       `
@@ -153,6 +159,7 @@ export async function fetchQueueClaims(
 
   // Also fetch draft claims (current pipeline uses 'draft' for unreviewed)
   const { data: draftData, error: draftError } = await client
+    .schema('intel')
     .from('claims')
     .select(
       `
@@ -193,6 +200,7 @@ export async function approveClaim(
 ): Promise<void> {
   // First read current status for accurate audit trail
   const { data: current } = await client
+    .schema('intel')
     .from('claims')
     .select('status')
     .eq('id', claimId)
@@ -201,13 +209,14 @@ export async function approveClaim(
   const oldStatus = current?.status ?? 'draft';
 
   const { error: updateError } = await client
+    .schema('intel')
     .from('claims')
     .update({ status: 'approved' })
     .eq('id', claimId);
 
   if (updateError) throw updateError;
 
-  const { error: auditError } = await client.from('audit_log').insert({
+  const { error: auditError } = await client.schema('intel').from('audit_log').insert({
     entity_id: claimId,
     entity_table: 'claims',
     actor: 'operator' as AuditActor,
@@ -232,6 +241,7 @@ export async function updateClaim(
 ): Promise<void> {
   // Read current status so we can audit any status transition
   const { data: current } = await client
+    .schema('intel')
     .from('claims')
     .select('status')
     .eq('id', claimId)
@@ -240,12 +250,13 @@ export async function updateClaim(
   const oldStatus = current?.status ?? 'draft';
 
   const { error: updateError } = await client
+    .schema('intel')
     .from('claims')
     .update(patch)
     .eq('id', claimId);
   if (updateError) throw updateError;
 
-  const { error: auditError } = await client.from('audit_log').insert({
+  const { error: auditError } = await client.schema('intel').from('audit_log').insert({
     entity_id: claimId,
     entity_table: 'claims',
     actor: 'operator' as AuditActor,
@@ -259,6 +270,45 @@ export async function updateClaim(
   if (auditError) throw auditError;
 }
 
+/**
+ * Merge a duplicate entity into a target entity via the
+ * `intel.merge_entities(target_entity_id, duplicate_entity_id)` RPC. The
+ * server-side function handles claim subject reassignment, object_entity_id
+ * back-references, archiving the duplicate, and audit logging — all inside
+ * a single transaction so partial failure can't leave orphaned state.
+ *
+ * Returns the number of claims that were reassigned (as reported by the
+ * RPC's `claims_moved` field).
+ */
+export async function mergeEntities(
+  client: SupabaseClient,
+  params: {
+    targetEntityId: string;
+    duplicateEntityId: string;
+  }
+): Promise<number> {
+  const { targetEntityId, duplicateEntityId } = params;
+  if (targetEntityId === duplicateEntityId) {
+    throw new Error('Cannot merge an entity into itself');
+  }
+
+  const { data, error } = await client.schema('intel').rpc('merge_entities', {
+    target_entity_id: targetEntityId,
+    duplicate_entity_id: duplicateEntityId,
+  });
+  if (error) throw error;
+
+  // The RPC returns either a scalar count or a row with a claims_moved
+  // field depending on how it was defined. Normalize both shapes.
+  if (typeof data === 'number') return data;
+  if (data && typeof data === 'object') {
+    const row = Array.isArray(data) ? data[0] : data;
+    const moved = (row as { claims_moved?: number })?.claims_moved;
+    if (typeof moved === 'number') return moved;
+  }
+  return 0;
+}
+
 export async function batchApproveClaims(
   client: SupabaseClient,
   claimIds: string[]
@@ -267,6 +317,7 @@ export async function batchApproveClaims(
 
   // Read current statuses for accurate audit trail
   const { data: current } = await client
+    .schema('intel')
     .from('claims')
     .select('id, status')
     .in('id', claimIds);
@@ -277,6 +328,7 @@ export async function batchApproveClaims(
   }
 
   const { error: updateError } = await client
+    .schema('intel')
     .from('claims')
     .update({ status: 'approved' })
     .in('id', claimIds);
@@ -293,7 +345,7 @@ export async function batchApproveClaims(
     metadata: { batch: true, batch_size: claimIds.length },
   }));
 
-  const { error: auditError } = await client.from('audit_log').insert(auditRows);
+  const { error: auditError } = await client.schema('intel').from('audit_log').insert(auditRows);
   if (auditError) throw auditError;
 }
 
@@ -304,6 +356,7 @@ export async function rejectClaim(
   notes?: string
 ): Promise<void> {
   const { data: current } = await client
+    .schema('intel')
     .from('claims')
     .select('status')
     .eq('id', claimId)
@@ -312,13 +365,14 @@ export async function rejectClaim(
   const oldStatus = current?.status ?? 'draft';
 
   const { error: updateError } = await client
+    .schema('intel')
     .from('claims')
     .update({ status: 'rejected' })
     .eq('id', claimId);
 
   if (updateError) throw updateError;
 
-  const { error: auditError } = await client.from('audit_log').insert({
+  const { error: auditError } = await client.schema('intel').from('audit_log').insert({
     entity_id: claimId,
     entity_table: 'claims',
     actor: 'operator' as AuditActor,
@@ -390,6 +444,7 @@ export async function searchEntities(
   limit = 30
 ): Promise<EntitySearchResult[]> {
   let q = client
+    .schema('intel')
     .from('entities')
     .select('id, canonical_name, name, entity_type, entity_class, domain, description, updated_at')
     .order('updated_at', { ascending: false })
@@ -412,6 +467,7 @@ export async function fetchEntityById(
   id: string
 ): Promise<Entity | null> {
   const { data, error } = await client
+    .schema('intel')
     .from('entities')
     .select('*')
     .eq('id', id)
@@ -443,6 +499,7 @@ export async function fetchClaimsForEntity(
   offset = 0
 ): Promise<EntityClaim[]> {
   const { data, error } = await client
+    .schema('intel')
     .from('claims')
     .select(
       `
@@ -504,6 +561,7 @@ export async function fetchClaimDetail(
   claimId: string
 ): Promise<{ claim: ClaimDetail; corroborations: ClaimCorroborationDetail[] } | null> {
   const { data: claim, error } = await client
+    .schema('intel')
     .from('claims')
     .select(
       `
@@ -537,6 +595,7 @@ export async function fetchClaimDetail(
   }
 
   const { data: corrobs, error: corrobError } = await client
+    .schema('intel')
     .from('claim_corroborations')
     .select(
       `
@@ -568,6 +627,7 @@ export async function fetchSourceById(
   id: string
 ): Promise<Source | null> {
   const { data, error } = await client
+    .schema('intel')
     .from('sources')
     .select('*')
     .eq('id', id)
@@ -590,7 +650,7 @@ export async function updateSource(
     canary_status?: string;
   }
 ): Promise<void> {
-  const { error } = await client.rpc('update_source', {
+  const { error } = await client.schema('intel').rpc('update_source', {
     source_id: id,
     new_trust_score: patch.trust_score ?? null,
     new_auto_approve: patch.auto_approve ?? null,
@@ -612,7 +672,7 @@ export async function batchUpdateSiblingSources(
   }
 ): Promise<number> {
   if (sourceIds.length === 0) return 0;
-  const { data, error } = await client.rpc('batch_update_sibling_sources', {
+  const { data, error } = await client.schema('intel').rpc('batch_update_sibling_sources', {
     source_ids: sourceIds,
     new_trust_score: patch.trust_score ?? null,
     new_auto_approve: patch.auto_approve ?? null,
@@ -645,6 +705,7 @@ export async function fetchClaimsForSource(
   limit = 50
 ): Promise<SourceClaim[]> {
   const { data, error } = await client
+    .schema('intel')
     .from('claims')
     .select(
       `
@@ -673,6 +734,7 @@ export async function fetchAllPredicates(
   client: SupabaseClient
 ): Promise<Predicate[]> {
   const { data, error } = await client
+    .schema('intel')
     .from('predicate_registry')
     .select(
       'predicate_key, display_name, category, description, risk_level, freshness_days, value_type, applicable_domains, applicable_entity_types'
@@ -686,7 +748,7 @@ export async function fetchAllPredicates(
 export async function fetchClaimCountsByPredicate(
   client: SupabaseClient
 ): Promise<Map<string, number>> {
-  const { data, error } = await client.from('claims').select('predicate');
+  const { data, error } = await client.schema('intel').from('claims').select('predicate');
   if (error) throw error;
   const counts = new Map<string, number>();
   for (const row of (data as { predicate: string | null }[] | null) ?? []) {
@@ -715,6 +777,7 @@ export async function fetchClaimsByPredicate(
   limit = 100
 ): Promise<PredicateClaim[]> {
   const { data, error } = await client
+    .schema('intel')
     .from('claims')
     .select(
       `
@@ -763,11 +826,13 @@ export async function fetchDailyDigest(
 
   const [claimsRes, auditRes] = await Promise.all([
     client
+      .schema('intel')
       .from('claims')
       .select('created_at, asserted_source_id')
       .gte('created_at', start.toISOString())
       .lt('created_at', end.toISOString()),
     client
+      .schema('intel')
       .from('audit_log')
       .select('action_type, created_at')
       .eq('actor', 'operator')
@@ -847,11 +912,12 @@ export async function fetchCoverageGaps(
 ): Promise<CoverageGapEntity[]> {
   const [entitiesRes, claimsRes] = await Promise.all([
     client
+      .schema('intel')
       .from('entities')
       .select('id, canonical_name, entity_type, updated_at')
       .order('updated_at', { ascending: false })
       .limit(entityLimit),
-    client.from('claims').select('subject_entity_id'),
+    client.schema('intel').from('claims').select('subject_entity_id'),
   ]);
   if (entitiesRes.error) throw entitiesRes.error;
   if (claimsRes.error) throw claimsRes.error;
@@ -898,7 +964,7 @@ export async function fetchTopEntities(
   client: SupabaseClient,
   limit = 5
 ): Promise<TopEntity[]> {
-  const { data, error } = await client.from('claims').select('subject_entity_id');
+  const { data, error } = await client.schema('intel').from('claims').select('subject_entity_id');
   if (error) throw error;
 
   const counts = new Map<string, number>();
@@ -915,6 +981,7 @@ export async function fetchTopEntities(
 
   const ids = top.map(([id]) => id);
   const { data: entityRows, error: entErr } = await client
+    .schema('intel')
     .from('entities')
     .select('id, canonical_name, entity_type')
     .in('id', ids);
@@ -949,6 +1016,7 @@ export async function fetchEntityNameMap(
   limit = 1000
 ): Promise<EntityNameEntry[]> {
   const { data, error } = await client
+    .schema('intel')
     .from('entities')
     .select('id, canonical_name, name, updated_at')
     .order('updated_at', { ascending: false })
@@ -981,6 +1049,7 @@ export async function fetchConnectionsForEntity(
 ): Promise<EntityConnection[]> {
   const [outRes, inRes] = await Promise.all([
     client
+      .schema('intel')
       .from('claims')
       .select(
         `
@@ -992,6 +1061,7 @@ export async function fetchConnectionsForEntity(
       .eq('subject_entity_id', entityId)
       .not('object_entity_id', 'is', null),
     client
+      .schema('intel')
       .from('claims')
       .select(
         `
@@ -1047,6 +1117,7 @@ export async function fetchClaimCountsBySource(
   // asserted_source_id column for all claims keeps the payload tiny
   // and counting client-side scales well into the tens of thousands.
   const { data, error } = await client
+    .schema('intel')
     .from('claims')
     .select('asserted_source_id');
   if (error) throw error;
@@ -1064,6 +1135,7 @@ export async function fetchAllSources(
   limit = 200
 ): Promise<Source[]> {
   const { data, error } = await client
+    .schema('intel')
     .from('sources')
     .select('*')
     .order('trust_score', { ascending: false })
@@ -1096,6 +1168,7 @@ export async function fetchSimilarEntities(
 
   const prefix = name.slice(0, 2).replace(/[%_]/g, (m) => `\\${m}`);
   const { data, error } = await client
+    .schema('intel')
     .from('entities')
     .select('id, canonical_name, name, entity_type')
     .or(`canonical_name.ilike.%${prefix}%,name.ilike.%${prefix}%`)
@@ -1184,6 +1257,7 @@ export async function fetchSupersedingClaims(
 ): Promise<SupersedingClaim[]> {
   if (!subjectEntityId || !predicate) return [];
   const { data, error } = await client
+    .schema('intel')
     .from('claims')
     .select(
       `
@@ -1226,18 +1300,21 @@ export async function fetchCommandOperatorContext(
 ): Promise<CommandOperatorContext> {
   const [auditRes, queueRes, registryRes] = await Promise.all([
     client
+      .schema('intel')
       .from('audit_log')
       .select('action_type, entity_table, entity_id, created_at')
       .eq('actor', 'operator')
       .order('created_at', { ascending: false })
       .limit(5),
     client
+      .schema('intel')
       .from('claims')
       .select(
         'predicate, subject_entity:entities!claims_subject_entity_id_fkey(entity_type)'
       )
       .in('status', ['draft', 'pending_review']),
     client
+      .schema('intel')
       .from('predicate_registry')
       .select('predicate_key, category'),
   ]);
@@ -1327,6 +1404,7 @@ export async function fetchGovernancePolicies(
   client: SupabaseClient
 ): Promise<GovernancePolicy[]> {
   const { data, error } = await client
+    .schema('intel')
     .from('governance_policies')
     .select(
       'id, name, description, is_active, min_trust_score, min_confidence_score, min_corroborations, action, applies_to_predicates, applies_to_entity_types'
@@ -1342,6 +1420,7 @@ export async function updateGovernancePolicy(
   patch: Partial<Omit<GovernancePolicy, 'id'>>
 ): Promise<void> {
   const { error } = await client
+    .schema('intel')
     .from('governance_policies')
     .update(patch)
     .eq('id', id);
@@ -1353,6 +1432,7 @@ export async function createGovernancePolicy(
   policy: Omit<GovernancePolicy, 'id'>
 ): Promise<GovernancePolicy> {
   const { data, error } = await client
+    .schema('intel')
     .from('governance_policies')
     .insert(policy)
     .select()
@@ -1364,7 +1444,7 @@ export async function createGovernancePolicy(
 export async function runAutoGovernance(
   client: SupabaseClient
 ): Promise<AutoGovernanceSweepResult> {
-  const { data, error } = await client.rpc('run_auto_governance');
+  const { data, error } = await client.schema('intel').rpc('run_auto_governance');
   if (error) throw error;
   const row = Array.isArray(data) ? data[0] : data;
   return {

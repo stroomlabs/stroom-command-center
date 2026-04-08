@@ -35,7 +35,7 @@ export function usePulseDeltas() {
       if (now - prev < MIN_GAP_MS) return;
 
       const sinceIso = new Date(prev).toISOString();
-      const { data, error } = await supabase.rpc('get_overnight_summary', {
+      const { data, error } = await supabase.schema('intel').rpc('get_overnight_summary', {
         since_ts: sinceIso,
       });
       if (error) throw error;

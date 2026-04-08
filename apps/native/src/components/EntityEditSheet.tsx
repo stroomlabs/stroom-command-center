@@ -19,6 +19,7 @@ import { useModalTransition } from '../hooks/useModalTransition';
 import { useBrandToast } from './BrandToast';
 import supabase from '../lib/supabase';
 import { colors, fonts, spacing, radius } from '../constants/brand';
+import { ModalBackdrop } from './ModalBackdrop';
 
 const ENTITY_TYPES = [
   'person',
@@ -119,7 +120,7 @@ export function EntityEditSheet({
 
     setSaving(true);
     try {
-      const { error } = await supabase.rpc('update_entity', {
+      const { error } = await supabase.schema('intel').rpc('update_entity', {
         entity_id: entity.id,
         new_canonical_name: patch.canonical_name ?? null,
         new_canonical_slug: patch.canonical_slug ?? null,
@@ -148,7 +149,7 @@ export function EntityEditSheet({
       onRequestClose={onDismiss}
       statusBarTranslucent
     >
-      <Pressable style={styles.backdrop} onPress={onDismiss}>
+      <ModalBackdrop onPress={onDismiss}>
         <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -260,7 +261,7 @@ export function EntityEditSheet({
             </Pressable>
           </Animated.View>
         </KeyboardAvoidingView>
-      </Pressable>
+      </ModalBackdrop>
     </Modal>
   );
 }
@@ -335,7 +336,7 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xl,
   },
   sheet: {
-    backgroundColor: colors.surfaceElevated,
+    backgroundColor: colors.surfaceSheet,
     borderWidth: 1,
     borderColor: colors.glassBorder,
     borderRadius: radius.lg,

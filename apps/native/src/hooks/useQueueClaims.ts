@@ -10,6 +10,7 @@ import {
 import type { QueueClaim } from '@stroom/supabase';
 import type { RejectionReason } from '@stroom/types';
 import supabase from '../lib/supabase';
+import { useOfflineSync } from '../lib/OfflineSyncContext';
 import * as Haptics from 'expo-haptics';
 
 const FOREGROUND_REFRESH_DEBOUNCE_MS = 30_000;
@@ -35,6 +36,7 @@ export function useQueueClaims() {
   const [pendingUndo, setPendingUndo] = useState<PendingUndo | null>(null);
   const pendingRef = useRef<PendingUndo | null>(null);
   const pendingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { enqueueIfOffline } = useOfflineSync();
 
   const refresh = useCallback(async () => {
     try {
@@ -99,7 +101,14 @@ export function useQueueClaims() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
       try {
-        await approveClaim(supabase, claimId);
+        const queued = await enqueueIfOffline({
+          type: 'approve',
+          claim_id: claimId,
+          new_status: 'approved',
+        });
+        if (!queued) {
+          await approveClaim(supabase, claimId);
+        }
       } catch (e: any) {
         // Rollback on failure
         refresh();
@@ -112,7 +121,7 @@ export function useQueueClaims() {
         });
       }
     },
-    [refresh]
+    [refresh, enqueueIfOffline]
   );
 
   const reject = useCallback(
@@ -122,7 +131,16 @@ export function useQueueClaims() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
 
       try {
-        await rejectClaim(supabase, claimId, reason, notes);
+        const queued = await enqueueIfOffline({
+          type: 'reject',
+          claim_id: claimId,
+          new_status: 'rejected',
+          reason,
+          notes,
+        });
+        if (!queued) {
+          await rejectClaim(supabase, claimId, reason, notes);
+        }
       } catch (e: any) {
         refresh();
         setError(e.message);
@@ -134,7 +152,7 @@ export function useQueueClaims() {
         });
       }
     },
-    [refresh]
+    [refresh, enqueueIfOffline]
   );
 
   // ── Undo-toast deferred mutation flow ──
@@ -147,6 +165,23 @@ export function useQueueClaims() {
   const commitPending = useCallback(
     async (entry: PendingUndo) => {
       try {
+        const queued = await enqueueIfOffline(
+          entry.kind === 'approve'
+            ? {
+                type: 'approve',
+                claim_id: entry.claim.id,
+                new_status: 'approved',
+              }
+            : {
+                type: 'reject',
+                claim_id: entry.claim.id,
+                new_status: 'rejected',
+                reason: entry.reason,
+                notes: entry.notes,
+              }
+        );
+        if (queued) return;
+
         if (entry.kind === 'approve') {
           await approveClaim(supabase, entry.claim.id);
         } else {
@@ -170,7 +205,7 @@ export function useQueueClaims() {
         });
       }
     },
-    [refresh]
+    [refresh, enqueueIfOffline]
   );
 
   const clearPendingTimer = useCallback(() => {
@@ -297,7 +332,24 @@ export function useQueueClaims() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
       try {
-        await batchApproveClaims(supabase, claimIds);
+        // If offline, enqueue each approve individually so the drain flow
+        // can retry them one at a time. Otherwise hit the batch endpoint.
+        const firstQueued = await enqueueIfOffline({
+          type: 'approve',
+          claim_id: claimIds[0],
+          new_status: 'approved',
+        });
+        if (firstQueued) {
+          for (const id of claimIds.slice(1)) {
+            await enqueueIfOffline({
+              type: 'approve',
+              claim_id: id,
+              new_status: 'approved',
+            });
+          }
+        } else {
+          await batchApproveClaims(supabase, claimIds);
+        }
       } catch (e: any) {
         refresh();
         setError(e.message);
@@ -309,7 +361,7 @@ export function useQueueClaims() {
         });
       }
     },
-    [refresh]
+    [refresh, enqueueIfOffline]
   );
 
   return {

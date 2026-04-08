@@ -14,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useModalTransition } from '../hooks/useModalTransition';
 import supabase from '../lib/supabase';
 import { colors, fonts, spacing, radius } from '../constants/brand';
+import { ModalBackdrop } from './ModalBackdrop';
 
 interface MultiCompareSheetProps {
   visible: boolean;
@@ -51,6 +52,7 @@ export function MultiCompareSheet({
     (async () => {
       try {
         const { data: ents } = await supabase
+          .schema('intel')
           .from('entities')
           .select('id, canonical_name, entity_type, domain, description')
           .in('id', entityIds);
@@ -59,6 +61,7 @@ export function MultiCompareSheet({
         await Promise.all(
           entityIds.map(async (id) => {
             const { count } = await supabase
+              .schema('intel')
               .from('claims')
               .select('id', { count: 'exact', head: true })
               .eq('subject_entity_id', id);
@@ -93,7 +96,7 @@ export function MultiCompareSheet({
       onRequestClose={onDismiss}
       statusBarTranslucent
     >
-      <Pressable style={styles.backdrop} onPress={onDismiss}>
+      <ModalBackdrop onPress={onDismiss}>
         <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
         <Animated.View style={[styles.sheetWrap, cardStyle]}>
           <Pressable style={styles.sheet} onPress={() => {}}>
@@ -146,23 +149,18 @@ export function MultiCompareSheet({
             )}
           </Pressable>
         </Animated.View>
-      </Pressable>
+      </ModalBackdrop>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'flex-end',
-  },
   sheetWrap: {
     paddingHorizontal: spacing.md,
     paddingBottom: spacing.xl,
   },
   sheet: {
-    backgroundColor: colors.surfaceElevated,
+    backgroundColor: colors.surfaceSheet,
     borderWidth: 1,
     borderColor: colors.glassBorder,
     borderRadius: radius.lg,

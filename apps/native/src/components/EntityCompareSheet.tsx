@@ -15,6 +15,7 @@ import type { Entity } from '@stroom/types';
 import supabase from '../lib/supabase';
 import { useModalTransition } from '../hooks/useModalTransition';
 import { colors, fonts, spacing, radius } from '../constants/brand';
+import { ModalBackdrop } from './ModalBackdrop';
 
 interface EntityCompareSheetProps {
   visible: boolean;
@@ -83,7 +84,7 @@ export function EntityCompareSheet({
       statusBarTranslucent
       onRequestClose={onDismiss}
     >
-      <Pressable style={styles.backdrop} onPress={onDismiss}>
+      <ModalBackdrop onPress={onDismiss}>
         <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
         <Animated.View style={cardStyle}>
         <Pressable style={styles.card} onPress={() => {}}>
@@ -122,7 +123,7 @@ export function EntityCompareSheet({
           )}
         </Pressable>
         </Animated.View>
-      </Pressable>
+      </ModalBackdrop>
     </Modal>
   );
 }
@@ -183,7 +184,7 @@ const styles = StyleSheet.create({
   card: {
     width: '100%',
     maxWidth: 520,
-    backgroundColor: colors.surfaceElevated,
+    backgroundColor: colors.surfaceSheet,
     borderRadius: radius.xl,
     borderWidth: 1,
     borderColor: 'rgba(0, 161, 155, 0.3)',

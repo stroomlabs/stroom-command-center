@@ -13,6 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import type { CommandSession } from '@stroom/types';
 import { useModalTransition } from '../hooks/useModalTransition';
 import { colors, fonts, spacing, radius } from '../constants/brand';
+import { ModalBackdrop } from './ModalBackdrop';
 
 interface SessionHistorySheetProps {
   visible: boolean;
@@ -42,7 +43,7 @@ export function SessionHistorySheet({
       onRequestClose={onDismiss}
       statusBarTranslucent
     >
-      <Pressable style={styles.backdrop} onPress={onDismiss}>
+      <ModalBackdrop onPress={onDismiss}>
         <Animated.View style={cardStyle}>
         <Pressable style={styles.sheet} onPress={() => {}}>
           <View style={styles.handle} />
@@ -133,7 +134,7 @@ export function SessionHistorySheet({
           </Pressable>
         </Pressable>
         </Animated.View>
-      </Pressable>
+      </ModalBackdrop>
     </Modal>
   );
 }
@@ -163,19 +164,14 @@ function formatRelative(iso: string): string {
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'flex-end',
-  },
   sheet: {
-    backgroundColor: colors.surfaceElevated,
+    backgroundColor: colors.surfaceSheet,
     borderTopLeftRadius: radius.xl,
     borderTopRightRadius: radius.xl,
     borderTopWidth: 1,
     borderLeftWidth: 1,
     borderRightWidth: 1,
-    borderColor: colors.glassBorder,
+    borderColor: colors.sheetBorder,
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.xxl,
     maxHeight: '80%',

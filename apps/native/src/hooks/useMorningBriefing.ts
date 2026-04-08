@@ -41,7 +41,7 @@ export function useMorningBriefing(enabled: boolean) {
         }
       }
 
-      const { data, error } = await supabase.rpc('get_overnight_summary');
+      const { data, error } = await supabase.schema('intel').rpc('get_overnight_summary');
       if (error) throw error;
       const payload: OvernightPayload = (Array.isArray(data) ? data[0] : data) ?? {};
 

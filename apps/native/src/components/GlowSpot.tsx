@@ -9,13 +9,13 @@ import Animated, {
 } from 'react-native-reanimated';
 import { colors } from '../constants/brand';
 
-// Soft atmospheric glow — a large circular View with very low-opacity fill,
-// layered behind content to evoke a radial gradient without pulling in a
-// gradient library. Stack multiple with decreasing opacity for a softer
-// fall-off. Defaults target Stroom Labs teal.
+// Soft atmospheric glow — a large circular View with very low-opacity fill
+// layered behind content to evoke a radial gradient without a gradient lib.
 //
-// Setting `breathe` runs a slow 8-second opacity oscillation between
-// `opacity * 0.67` and `opacity` — atmospheric, not flashy.
+// Setting `breathe` runs a slow sine-wave opacity oscillation between
+// `opacity * 0.375` (≈0.03 at default 0.08) and `opacity` over `cycleDuration`.
+// Use two GlowSpots at slightly different `cycleDuration` values (e.g. 4000
+// and 5000) and offset positions to create a layered never-syncing effect.
 export function GlowSpot({
   size = 400,
   color,
@@ -26,6 +26,7 @@ export function GlowSpot({
   bottom,
   style,
   breathe = false,
+  cycleDuration = 4000,
 }: {
   size?: number;
   color?: string;
@@ -36,29 +37,34 @@ export function GlowSpot({
   bottom?: number;
   style?: StyleProp<ViewStyle>;
   breathe?: boolean;
+  // Full cycle in ms (half up, half down). Defaults to 4s.
+  cycleDuration?: number;
 }) {
   const base = color ?? colors.teal;
-  const bg = toRgba(base, 1); // set alpha via animated opacity
+  const bg = toRgba(base, 1);
 
   const phase = useSharedValue(1);
   useEffect(() => {
     if (breathe) {
-      // 8s full cycle: 4s up, 4s down, repeating
+      // Sine easing: Easing.inOut(Easing.sin) gives an organic ease at both
+      // ends — like a slow breath rather than a mechanical ping-pong.
       phase.value = withRepeat(
-        withTiming(0, { duration: 4000, easing: Easing.inOut(Easing.ease) }),
+        withTiming(0, {
+          duration: cycleDuration / 2,
+          easing: Easing.inOut(Easing.sin),
+        }),
         -1,
         true
       );
     } else {
       phase.value = 1;
     }
-  }, [breathe, phase]);
+  }, [breathe, cycleDuration, phase]);
 
   const animatedStyle = useAnimatedStyle(() => {
-    // phase oscillates 1 → 0 → 1 over 8s.
-    // Breathe range: [opacity * 0.5, opacity].  Pass opacity=0.08 to land
-    // on the spec'd 0.04 ↔ 0.08 envelope.
-    const scalar = breathe ? 0.5 + phase.value * 0.5 : 1;
+    // phase oscillates 1 → 0 → 1. Scale to breathe range:
+    //   opacity * 0.375 ↔ opacity  (at default 0.08 this is ~0.03 ↔ 0.08)
+    const scalar = breathe ? 0.375 + phase.value * 0.625 : 1;
     return { opacity: opacity * scalar };
   });
 
@@ -85,14 +91,15 @@ export function GlowSpot({
 }
 
 function toRgba(color: string, alpha: number): string {
-  if (color.startsWith('rgba') || color.startsWith('rgb')) {
-    // assume already has transparency or user knows what they're doing
-    return color;
-  }
+  if (color.startsWith('rgba') || color.startsWith('rgb')) return color;
   const hex = color.replace('#', '');
-  const full = hex.length === 3
-    ? hex.split('').map((c) => c + c).join('')
-    : hex;
+  const full =
+    hex.length === 3
+      ? hex
+          .split('')
+          .map((c) => c + c)
+          .join('')
+      : hex;
   const r = parseInt(full.slice(0, 2), 16);
   const g = parseInt(full.slice(2, 4), 16);
   const b = parseInt(full.slice(4, 6), 16);
@@ -102,7 +109,5 @@ function toRgba(color: string, alpha: number): string {
 const styles = StyleSheet.create({
   spot: {
     position: 'absolute',
-    // Large blur-like fall-off approximation — the low alpha + huge radius
-    // plus the black background is enough to read as a soft glow.
   },
 });

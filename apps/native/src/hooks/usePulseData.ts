@@ -22,7 +22,7 @@ export function usePulseData() {
 
   const refresh = useCallback(async () => {
     try {
-      const { data: result, error: rpcError } = await supabase.rpc('get_command_pulse');
+      const { data: result, error: rpcError } = await supabase.schema('intel').rpc('get_command_pulse');
 
       if (rpcError) throw rpcError;
 

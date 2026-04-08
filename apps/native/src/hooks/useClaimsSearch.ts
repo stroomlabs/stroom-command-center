@@ -35,6 +35,7 @@ export function useClaimsSearch(query: string, enabled: boolean) {
     const handle = setTimeout(async () => {
       try {
         let builder = supabase
+          .schema('intel')
           .from('claims')
           .select(
             `

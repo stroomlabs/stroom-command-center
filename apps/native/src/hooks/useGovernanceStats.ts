@@ -27,6 +27,7 @@ export function useGovernanceStats() {
       const cutoff = new Date();
       cutoff.setDate(cutoff.getDate() - 90);
       const { data, error: err } = await supabase
+        .schema('intel')
         .from('audit_log')
         .select('action_type, actor, created_at')
         .eq('actor', 'operator')

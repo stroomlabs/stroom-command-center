@@ -18,7 +18,7 @@ export function useGraphHealth() {
 
   const refresh = useCallback(async () => {
     try {
-      const { data, error: rpcError } = await supabase.rpc('get_graph_health');
+      const { data, error: rpcError } = await supabase.schema('intel').rpc('get_graph_health');
       if (rpcError) throw rpcError;
       // Supabase RPCs that return a single row come back as the object directly,
       // but a few configurations return a one-element array — handle both.

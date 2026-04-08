@@ -22,7 +22,12 @@ export function StatusBadge({ status }: StatusBadgeProps) {
   const label = status.replace(/_/g, ' ');
 
   return (
-    <View style={[styles.badge, { borderColor: color }]}>
+    <View
+      style={[styles.badge, { borderColor: color }]}
+      accessible
+      accessibilityRole="text"
+      accessibilityLabel={`Status: ${label}`}
+    >
       <View style={[styles.dot, { backgroundColor: color }]} />
       <Text style={[styles.label, { color }]}>{label}</Text>
     </View>

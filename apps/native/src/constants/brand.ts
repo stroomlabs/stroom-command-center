@@ -14,18 +14,20 @@ export const colors = {
   slate: '#565F64',
 
   // Surfaces
-  surfaceElevated: '#111416',
+  surfaceElevated: '#181818',
   surfaceCard: '#0D1012',
+  surfaceSheet: 'rgba(31, 31, 31, 0.85)',
+  sheetBorder: 'rgba(255, 255, 255, 0.10)',
 
   // Glass
   glass: 'rgba(0, 0, 0, 0.75)',
   glassBorder: 'rgba(255, 255, 255, 0.06)',
   glassBorderHover: 'rgba(255, 255, 255, 0.12)',
 
-  // Status
+  // Status — tuned for OLED saturation
   statusApprove: '#22C55E',
-  statusReject: '#EF4444',
-  statusPending: '#F59E0B',
+  statusReject: '#DC2626',
+  statusPending: '#FBBF24',
   statusInfo: '#3B82F6',
 } as const;
 
@@ -68,6 +70,7 @@ export const motion = {
 } as const;
 
 export const gradient = {
-  background: ['#000000', '#0A0D0F'] as const,
+  // Ambient top-light on OLED canvas: barely-visible lighter center → pure dark
+  background: ['#14151C', '#0E0F14'] as const,
   angle: 145,
 } as const;

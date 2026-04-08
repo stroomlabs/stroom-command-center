@@ -33,6 +33,7 @@ export function useNotificationPrefs() {
       if (!user) throw new Error('Not signed in');
 
       const { data, error: err } = await supabase
+        .schema('intel')
         .from('operator_profiles')
         .select('preferences')
         .eq('user_id', user.id)
@@ -67,6 +68,7 @@ export function useNotificationPrefs() {
 
         // Read current row to merge preferences, then upsert with merged JSONB
         const { data: existing } = await supabase
+          .schema('intel')
           .from('operator_profiles')
           .select('preferences')
           .eq('user_id', user.id)
@@ -79,6 +81,7 @@ export function useNotificationPrefs() {
         };
 
         const { error: err } = await supabase
+          .schema('intel')
           .from('operator_profiles')
           .upsert(
             { user_id: user.id, preferences: merged },

@@ -27,7 +27,7 @@ export function useSiblingSources(sourceId: string | null | undefined) {
     }
     setLoading(true);
     try {
-      const { data, error: rpcError } = await supabase.rpc(
+      const { data, error: rpcError } = await supabase.schema('intel').rpc(
         'get_sibling_sources',
         { source_id: sourceId }
       );

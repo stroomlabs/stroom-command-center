@@ -22,6 +22,7 @@ export function useOnboarding(sessionReady: boolean) {
         }
 
         const { data, error } = await supabase
+          .schema('intel')
           .from('operator_profiles')
           .select('preferences')
           .eq('user_id', user.id)
@@ -51,6 +52,7 @@ export function useOnboarding(sessionReady: boolean) {
       if (!user) return;
 
       const { data: existing } = await supabase
+        .schema('intel')
         .from('operator_profiles')
         .select('preferences')
         .eq('user_id', user.id)
@@ -63,6 +65,7 @@ export function useOnboarding(sessionReady: boolean) {
       };
 
       await supabase
+        .schema('intel')
         .from('operator_profiles')
         .upsert({ user_id: user.id, preferences: merged }, { onConflict: 'user_id' });
     } catch {

@@ -3,8 +3,8 @@ import { View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { EntityClaim } from '@stroom/supabase';
 import { StatusBadge } from './StatusBadge';
-import { titleCase } from './JsonView';
 import { PressScale } from './PressScale';
+import { resolveClaimDisplayValue } from '../lib/resolveDisplayValue';
 import { colors, fonts, spacing, radius } from '../constants/brand';
 
 interface ClaimListItemProps {
@@ -14,9 +14,10 @@ interface ClaimListItemProps {
 
 function ClaimListItemImpl({ claim, onPress }: ClaimListItemProps) {
   const predicate = formatPredicate(claim.predicate ?? 'unknown');
-  const value = resolveDisplayValue(
+  const value = resolveClaimDisplayValue(
     claim.value_jsonb,
-    claim.object_entity?.canonical_name ?? null
+    claim.object_entity?.canonical_name ?? null,
+    claim.predicate
   );
   const sourceName = claim.source?.source_name ?? 'Unknown';
   const trust = Number(claim.source?.trust_score ?? 0);
@@ -63,34 +64,6 @@ function ClaimListItemImpl({ claim, onPress }: ClaimListItemProps) {
 function formatPredicate(pred: string): string {
   const last = pred.includes('.') ? pred.split('.').pop()! : pred;
   return last.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
-function resolveDisplayValue(
-  jsonb: Record<string, unknown> | null,
-  objectName: string | null
-): string {
-  if (objectName) return objectName;
-  if (!jsonb) return '—';
-  if ('value' in jsonb && typeof jsonb.value !== 'object') return String(jsonb.value);
-  if ('name' in jsonb) return String(jsonb.name);
-  if ('range' in jsonb) return String(jsonb.range);
-  if ('type' in jsonb) {
-    const parts: string[] = [];
-    if (jsonb.tier) parts.push(`T${jsonb.tier}`);
-    parts.push(titleCase(String(jsonb.type)));
-    return parts.join(' · ');
-  }
-  if ('data' in jsonb && Array.isArray(jsonb.data)) {
-    const arr = jsonb.data as any[];
-    if (arr.length === 0) return '(empty)';
-    const first = arr[0];
-    const name = first?.name || first?.driver || first?.team || Object.values(first)[0];
-    return arr.length === 1 ? String(name) : `${name} + ${arr.length - 1} more`;
-  }
-  const entries = Object.entries(jsonb).slice(0, 2);
-  return entries
-    .map(([k, v]) => `${titleCase(k)}: ${String(v).slice(0, 30)}`)
-    .join('\n');
 }
 
 const styles = StyleSheet.create({

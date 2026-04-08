@@ -35,6 +35,7 @@ export function useSourcesSearch(query: string, enabled: boolean) {
     const handle = setTimeout(async () => {
       try {
         let builder = supabase
+          .schema('intel')
           .from('sources')
           .select(
             'id, source_name, source_class, trust_score, domain, source_url, auto_approve, canary_status'
@@ -56,6 +57,7 @@ export function useSourcesSearch(query: string, enabled: boolean) {
           rows.map(async (r) => {
             try {
               const { count } = await supabase
+                .schema('intel')
                 .from('claims')
                 .select('id', { count: 'exact', head: true })
                 .eq('asserted_source_id', r.id);

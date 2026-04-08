@@ -3,15 +3,17 @@ import { View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { EntitySearchResult } from '@stroom/supabase';
 import { PressScale } from './PressScale';
+import { HighlightedText } from './HighlightedText';
 import { colors, fonts, spacing, radius } from '../constants/brand';
 
 interface EntityRowProps {
   entity: EntitySearchResult;
   onPress: () => void;
   onLongPress?: () => void;
+  query?: string;
 }
 
-function EntityRowImpl({ entity, onPress, onLongPress }: EntityRowProps) {
+function EntityRowImpl({ entity, onPress, onLongPress, query }: EntityRowProps) {
   const name = entity.canonical_name || entity.name || 'Unnamed entity';
   const type = entity.entity_type || entity.entity_class || 'entity';
   const domain = entity.domain;
@@ -26,9 +28,12 @@ function EntityRowImpl({ entity, onPress, onLongPress }: EntityRowProps) {
       style={styles.row}
     >
       <View style={styles.body}>
-        <Text style={styles.name} numberOfLines={1}>
-          {name}
-        </Text>
+        <HighlightedText
+          text={name}
+          query={query}
+          style={styles.name}
+          numberOfLines={1}
+        />
         <View style={styles.metaRow}>
           <View style={styles.typeChip}>
             <Text style={styles.typeText}>{type}</Text>

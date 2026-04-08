@@ -15,6 +15,7 @@ import { useModalTransition } from '../hooks/useModalTransition';
 import { ClaimDiff } from './ClaimDiff';
 import supabase from '../lib/supabase';
 import { colors, fonts, spacing, radius } from '../constants/brand';
+import { ModalBackdrop } from './ModalBackdrop';
 
 interface ClaimDiffSheetProps {
   visible: boolean;
@@ -50,6 +51,7 @@ export function ClaimDiffSheet({
     (async () => {
       try {
         const { data, error: err } = await supabase
+          .schema('intel')
           .from('claims')
           .select('value_jsonb')
           .eq('id', targetClaimId)
@@ -77,7 +79,7 @@ export function ClaimDiffSheet({
       onRequestClose={onDismiss}
       statusBarTranslucent
     >
-      <Pressable style={styles.backdrop} onPress={onDismiss}>
+      <ModalBackdrop onPress={onDismiss}>
         <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
         <Animated.View style={[styles.sheetWrap, cardStyle]}>
           <Pressable style={styles.sheet} onPress={() => {}}>
@@ -115,23 +117,18 @@ export function ClaimDiffSheet({
             )}
           </Pressable>
         </Animated.View>
-      </Pressable>
+      </ModalBackdrop>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'flex-end',
-  },
   sheetWrap: {
     paddingHorizontal: spacing.md,
     paddingBottom: spacing.xl,
   },
   sheet: {
-    backgroundColor: colors.surfaceElevated,
+    backgroundColor: colors.surfaceSheet,
     borderWidth: 1,
     borderColor: colors.glassBorder,
     borderRadius: radius.lg,

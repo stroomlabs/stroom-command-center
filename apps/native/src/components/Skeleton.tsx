@@ -54,6 +54,45 @@ export function SkeletonMetricCard() {
   );
 }
 
+// Generic row placeholder — entity/source search result, predicate list row,
+// sibling source card, anything that renders as a title + short meta line.
+export function SkeletonListRow() {
+  return (
+    <View style={styles.listRow}>
+      <Skeleton height={14} width={'70%'} style={{ marginBottom: 6 }} />
+      <Skeleton height={10} width={'40%'} />
+    </View>
+  );
+}
+
+// Stack of SkeletonListRow — use as ListEmptyComponent while data loads so
+// the screen doesn't flash a bare ActivityIndicator.
+export function SkeletonListPlaceholder({ count = 6 }: { count?: number }) {
+  return (
+    <View>
+      {Array.from({ length: count }, (_, i) => (
+        <SkeletonListRow key={`skel-row-${i}`} />
+      ))}
+    </View>
+  );
+}
+
+// Detail-screen placeholder — large title block + stacked body lines. Used on
+// claim / entity / source detail screens while the RPC is in flight.
+export function SkeletonDetail() {
+  return (
+    <View style={styles.detail}>
+      <Skeleton height={28} width={'75%'} style={{ marginBottom: spacing.sm }} />
+      <Skeleton height={12} width={'45%'} style={{ marginBottom: spacing.lg }} />
+      <Skeleton height={80} width={'100%'} style={{ marginBottom: spacing.md }} />
+      <Skeleton height={14} width={'60%'} style={{ marginBottom: 8 }} />
+      <Skeleton height={14} width={'80%'} style={{ marginBottom: 8 }} />
+      <Skeleton height={14} width={'55%'} style={{ marginBottom: spacing.lg }} />
+      <Skeleton height={60} width={'100%'} />
+    </View>
+  );
+}
+
 // Matches the shape of a ClaimCard — used in Queue loading state.
 export function SkeletonClaimCard() {
   return (
@@ -99,5 +138,17 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: spacing.md,
+  },
+  listRow: {
+    backgroundColor: colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    borderRadius: radius.md,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  detail: {
+    padding: spacing.lg,
   },
 });

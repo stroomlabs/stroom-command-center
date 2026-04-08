@@ -21,6 +21,7 @@ export function useEntityActivity(entityId: string | null, limit = 10) {
     try {
       // 1) Audit rows directly targeting this entity
       const { data: direct, error: e1 } = await supabase
+        .schema('intel')
         .from('audit_log')
         .select('*')
         .eq('entity_table', 'entities')
@@ -31,6 +32,7 @@ export function useEntityActivity(entityId: string | null, limit = 10) {
 
       // 2) Audit rows on claims where this entity is the subject or object
       const { data: claimIdsRows } = await supabase
+        .schema('intel')
         .from('claims')
         .select('id')
         .or(`subject_entity_id.eq.${entityId},object_entity_id.eq.${entityId}`)
@@ -40,6 +42,7 @@ export function useEntityActivity(entityId: string | null, limit = 10) {
       let claimAudit: AuditLogEntry[] = [];
       if (claimIds.length > 0) {
         const { data } = await supabase
+          .schema('intel')
           .from('audit_log')
           .select('*')
           .eq('entity_table', 'claims')

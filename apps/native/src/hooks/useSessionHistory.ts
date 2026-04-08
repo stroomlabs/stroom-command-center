@@ -11,6 +11,7 @@ export function useSessionHistory() {
     setLoading(true);
     try {
       const { data, error: err } = await supabase
+        .schema('intel')
         .from('command_sessions')
         .select('*')
         .order('updated_at', { ascending: false })

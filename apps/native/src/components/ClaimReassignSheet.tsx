@@ -21,6 +21,7 @@ import { useBrandToast } from './BrandToast';
 import supabase from '../lib/supabase';
 import type { EntitySearchResult } from '@stroom/supabase';
 import { colors, fonts, spacing, radius } from '../constants/brand';
+import { ModalBackdrop } from './ModalBackdrop';
 
 interface ClaimReassignSheetProps {
   visible: boolean;
@@ -66,7 +67,7 @@ export function ClaimReassignSheet({
     if (!claimId || !selected) return;
     setSaving(true);
     try {
-      const { error } = await supabase.rpc('reassign_or_supersede_claim', {
+      const { error } = await supabase.schema('intel').rpc('reassign_or_supersede_claim', {
         claim_id: claimId,
         new_subject_entity_id: selected.id,
       });
@@ -93,7 +94,7 @@ export function ClaimReassignSheet({
       onRequestClose={onDismiss}
       statusBarTranslucent
     >
-      <Pressable style={styles.backdrop} onPress={onDismiss}>
+      <ModalBackdrop onPress={onDismiss}>
         <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -217,7 +218,7 @@ export function ClaimReassignSheet({
             </Pressable>
           </Animated.View>
         </KeyboardAvoidingView>
-      </Pressable>
+      </ModalBackdrop>
     </Modal>
   );
 }
@@ -236,7 +237,7 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xl,
   },
   sheet: {
-    backgroundColor: colors.surfaceElevated,
+    backgroundColor: colors.surfaceSheet,
     borderWidth: 1,
     borderColor: colors.glassBorder,
     borderRadius: radius.lg,

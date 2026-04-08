@@ -10,6 +10,7 @@ export function useResearchQueue(limit = 50) {
   const refresh = useCallback(async () => {
     try {
       const { data, error: err } = await supabase
+        .schema('intel')
         .from('research_queue')
         .select('*')
         .order('created_at', { ascending: false })

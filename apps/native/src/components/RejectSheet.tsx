@@ -14,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { REJECTION_REASONS, type RejectionReason } from '@stroom/types';
 import { useModalTransition } from '../hooks/useModalTransition';
 import { colors, fonts, spacing, radius } from '../constants/brand';
+import { ModalBackdrop } from './ModalBackdrop';
 
 interface RejectSheetProps {
   visible: boolean;
@@ -46,7 +47,7 @@ export function RejectSheet({ visible, onDismiss, onReject }: RejectSheetProps) 
       transparent
       onRequestClose={handleDismiss}
     >
-      <Pressable style={styles.backdrop} onPress={handleDismiss}>
+      <ModalBackdrop onPress={handleDismiss}>
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={styles.keyboardView}
@@ -109,28 +110,23 @@ export function RejectSheet({ visible, onDismiss, onReject }: RejectSheetProps) 
           </Pressable>
           </Animated.View>
         </KeyboardAvoidingView>
-      </Pressable>
+      </ModalBackdrop>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'flex-end',
-  },
   keyboardView: {
     justifyContent: 'flex-end',
   },
   sheet: {
-    backgroundColor: colors.surfaceElevated,
+    backgroundColor: colors.surfaceSheet,
     borderTopLeftRadius: radius.xl,
     borderTopRightRadius: radius.xl,
     borderTopWidth: 1,
     borderLeftWidth: 1,
     borderRightWidth: 1,
-    borderColor: colors.glassBorder,
+    borderColor: colors.sheetBorder,
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.xxl,
   },
