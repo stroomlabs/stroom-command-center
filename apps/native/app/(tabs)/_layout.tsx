@@ -162,21 +162,6 @@ export default function TabLayout() {
           ),
         }}
       />
-      <Tabs.Screen
-        name="verticals"
-        options={{
-          title: 'Verticals',
-          tabBarAccessibilityLabel: 'Verticals tab',
-          tabBarIcon: ({ color, size, focused }) => (
-            <TabIcon
-              name="grid-outline"
-              size={size}
-              color={color}
-              focused={focused}
-            />
-          ),
-        }}
-      />
     </Tabs>
   );
 }

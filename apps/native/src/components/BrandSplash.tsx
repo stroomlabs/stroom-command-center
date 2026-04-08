@@ -1,106 +1,145 @@
 import React, { useEffect } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, Image, StyleSheet, Dimensions } from 'react-native';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
+  useAnimatedProps,
   withTiming,
   Easing,
   runOnJS,
+  interpolate,
 } from 'react-native-reanimated';
-import { colors, fonts, spacing } from '../constants/brand';
+import Svg, { Circle } from 'react-native-svg';
+import { fonts } from '../constants/brand';
 
 interface BrandSplashProps {
-  // Called once the splash has shown for at least MIN_DURATION_MS and the
-  // fade-out animation has completed.
+  // Called once the fade-out animation has completed.
   onDone: () => void;
-  // Flips true when the host app is ready to proceed (auth resolved, etc).
-  // Until this flips true the splash stays fully visible; once it flips
-  // true the splash waits for the minimum duration to elapse and then
-  // fades out.
+  // Flips true when the host app is ready to proceed (fonts loaded, etc).
+  // Once true the splash fades out.
   ready: boolean;
 }
 
-const MIN_DURATION_MS = 1500;
-const FADE_DURATION_MS = 300;
+const FADE_IN_MS = 400;
+const FADE_OUT_MS = 200;
+const RIPPLE_MS = 800;
 
-// Full-screen brand splash shown on app launch before the auth check
-// resolves. Matches the login screen logo treatment: 72px Archivo Black
-// teal "S" with glow, "STROOM" wordmark below, breathing halo behind.
-// Stays visible for a minimum of 1.5s even if the app is ready sooner,
-// then fades out over 300ms.
+const EMBLEM_SIZE = 96;
+const WORDMARK_GAP = 24;
+
+const AnimatedCircle = Animated.createAnimatedComponent(Circle);
+
+// Minimal pre-TestFlight splash. Pitch black background, Stroom teal
+// emblem centered, STROOM COMMAND wordmark below, and a single silver
+// ripple expanding from the emblem center on mount. Nothing else — no
+// gradient, no subtitle, no decoration.
 export function BrandSplash({ onDone, ready }: BrandSplashProps) {
-  const opacity = useSharedValue(1);
-  const startedAtRef = React.useRef(Date.now());
+  const contentOpacity = useSharedValue(0);
+  const rippleProgress = useSharedValue(0);
+  const rootOpacity = useSharedValue(1);
   const doneRef = React.useRef(false);
 
+  const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
+  const rippleMaxRadius = (screenWidth * 1.5) / 2;
+  // SVG canvas must be large enough to host the fully expanded ripple
+  // centered on the emblem — oversize to the larger screen dimension.
+  const svgSize = Math.max(screenWidth, screenHeight) * 2;
+
+  // Mount: fade content in + play the single ripple
+  useEffect(() => {
+    contentOpacity.value = withTiming(1, {
+      duration: FADE_IN_MS,
+      easing: Easing.out(Easing.ease),
+    });
+    rippleProgress.value = withTiming(1, {
+      duration: RIPPLE_MS,
+      easing: Easing.out(Easing.ease),
+    });
+  }, [contentOpacity, rippleProgress]);
+
+  // Ready: fade root out then hand off
   useEffect(() => {
     if (!ready || doneRef.current) return;
-    const elapsed = Date.now() - startedAtRef.current;
-    const wait = Math.max(0, MIN_DURATION_MS - elapsed);
-    const timer = setTimeout(() => {
-      if (doneRef.current) return;
-      doneRef.current = true;
-      opacity.value = withTiming(
-        0,
-        { duration: FADE_DURATION_MS, easing: Easing.out(Easing.ease) },
-        (finished) => {
-          if (finished) runOnJS(onDone)();
-        }
-      );
-    }, wait);
-    return () => clearTimeout(timer);
-  }, [ready, onDone, opacity]);
+    doneRef.current = true;
+    rootOpacity.value = withTiming(
+      0,
+      { duration: FADE_OUT_MS, easing: Easing.out(Easing.ease) },
+      (finished) => {
+        if (finished) runOnJS(onDone)();
+      }
+    );
+  }, [ready, onDone, rootOpacity]);
 
-  const animatedStyle = useAnimatedStyle(() => ({
-    opacity: opacity.value,
+  const rootStyle = useAnimatedStyle(() => ({
+    opacity: rootOpacity.value,
+  }));
+
+  const contentStyle = useAnimatedStyle(() => ({
+    opacity: contentOpacity.value,
+  }));
+
+  const rippleProps = useAnimatedProps(() => ({
+    r: rippleProgress.value * rippleMaxRadius,
+    strokeOpacity: interpolate(rippleProgress.value, [0, 1], [0.2, 0]),
   }));
 
   return (
     <Animated.View
       pointerEvents={ready ? 'none' : 'auto'}
-      style={[StyleSheet.absoluteFill, styles.container, animatedStyle]}
+      style={[StyleSheet.absoluteFill, styles.container, rootStyle]}
     >
-      <View style={styles.center}>
-        <Text style={styles.parentLockup}>STROOM LABS</Text>
-        <Text style={styles.logoMark}>S</Text>
-        <Text style={styles.productLockup}>Command Center</Text>
+      {/* Ripple layer — centered, oversized SVG canvas so the stroked
+          circle can grow past screen edges without clipping. */}
+      <View style={styles.rippleLayer} pointerEvents="none">
+        <Svg width={svgSize} height={svgSize}>
+          <AnimatedCircle
+            cx={svgSize / 2}
+            cy={svgSize / 2}
+            stroke="#C8CCCE"
+            strokeWidth={1}
+            fill="none"
+            animatedProps={rippleProps}
+          />
+        </Svg>
       </View>
+
+      <Animated.View style={[styles.center, contentStyle]}>
+        <Image
+          source={require('../../assets/icon.png')}
+          style={styles.emblem}
+          resizeMode="contain"
+        />
+        <Text style={styles.wordmark}>STROOM COMMAND</Text>
+      </Animated.View>
     </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#0E0F14',
+    backgroundColor: '#000000',
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 100,
   },
+  rippleLayer: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   center: {
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  parentLockup: {
+  emblem: {
+    width: EMBLEM_SIZE,
+    height: EMBLEM_SIZE,
+  },
+  wordmark: {
     fontFamily: fonts.archivo.black,
-    fontSize: 28,
-    color: colors.silver,
-    letterSpacing: 1.6,
-    marginBottom: spacing.md,
-  },
-  logoMark: {
-    fontFamily: fonts.archivo.black,
-    fontSize: 72,
-    color: colors.teal,
-    letterSpacing: -2,
-    textShadowColor: 'rgba(0, 161, 155, 0.5)',
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 24,
-    lineHeight: 80,
-  },
-  productLockup: {
-    fontFamily: fonts.archivo.bold,
     fontSize: 18,
-    color: colors.teal,
-    letterSpacing: 0.4,
-    marginTop: spacing.sm,
+    color: '#C8CCCE',
+    letterSpacing: -0.5,
+    marginTop: WORDMARK_GAP,
   },
 });

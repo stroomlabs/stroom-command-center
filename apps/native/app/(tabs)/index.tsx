@@ -506,9 +506,10 @@ export default function PulseScreen() {
 
         <Text style={styles.headerSub}>StroomHelix Intelligence Graph</Text>
 
-        {/* Vertical toggle — 5 buckets, persisted to AsyncStorage. Changing
-            the selection refetches get_command_pulse with the new domains[]
-            filter and triggers a pulse-flash on the metric grid. */}
+        {/* Vertical toggle — 6 buckets (All / Racing / Sports / Cruises /
+            Parks / Other), persisted to AsyncStorage. Changing the selection
+            refetches get_command_pulse with the new domains[] filter and
+            triggers a pulse-flash on the metric grid. */}
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}

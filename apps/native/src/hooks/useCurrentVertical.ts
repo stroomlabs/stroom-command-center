@@ -12,7 +12,6 @@ export type VerticalKey =
   | 'theme_parks'
   | 'nfl'
   | 'nba'
-  | 'intelligence'
   | 'general'
   | string;
 
