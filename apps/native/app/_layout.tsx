@@ -135,6 +135,7 @@ export default function RootLayout() {
           <Stack.Screen name="change-password" />
           <Stack.Screen name="my-role" />
           <Stack.Screen name="users" />
+          <Stack.Screen name="users/invite" />
           <Stack.Screen name="users/[id]" />
           <Stack.Screen name="dismissed-merges" />
           <Stack.Screen name="source/[id]" />

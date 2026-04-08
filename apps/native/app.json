@@ -24,6 +24,8 @@
         "NSMicrophoneUsageDescription": "Stroom Command uses the microphone for voice governance commands.",
         "NSUserActivityTypes": [
           "com.stroomlabs.commandcenter.runsweep",
+          "com.stroomlabs.commandcenter.checkqueue",
+          "com.stroomlabs.commandcenter.runsweep",
           "com.stroomlabs.commandcenter.checkqueue"
         ],
         "NSSupportsLiveActivities": true,
@@ -41,6 +43,8 @@
       },
       "package": "com.stroomlabs.commandcenter",
       "permissions": [
+        "android.permission.USE_BIOMETRIC",
+        "android.permission.USE_FINGERPRINT",
         "android.permission.USE_BIOMETRIC",
         "android.permission.USE_FINGERPRINT"
       ]
@@ -73,6 +77,12 @@
       "eas": {
         "projectId": "20985dd9-a6a9-440f-afb4-64ddb3b14ddd"
       }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/20985dd9-a6a9-440f-afb4-64ddb3b14ddd"
     }
   }
 }

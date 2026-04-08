@@ -253,6 +253,7 @@ function subscribeAuthOnce() {
 }
 
 export interface UseCapabilitiesResult {
+  userId: string | null;
   role: RoleMeta | null;
   email: string | null;
   displayName: string | null;
@@ -309,6 +310,7 @@ export function useCapabilities(): UseCapabilitiesResult {
   }, []);
 
   return {
+    userId: snap.userId,
     role: snap.role,
     email: snap.email,
     displayName: snap.displayName,

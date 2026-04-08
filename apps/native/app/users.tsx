@@ -15,6 +15,7 @@ import supabase from '../src/lib/supabase';
 import { ScreenCanvas } from '../src/components/ScreenCanvas';
 import { ScreenWatermark } from '../src/components/ScreenWatermark';
 import { useCapabilities } from '../src/hooks/useCapabilities';
+import { CapabilityGate } from '../src/components/CapabilityGate';
 import { useBrandToast } from '../src/components/BrandToast';
 import { colors, fonts, spacing, radius } from '../src/constants/brand';
 
@@ -172,7 +173,23 @@ export default function UsersScreen() {
           <Ionicons name="chevron-back" size={24} color={colors.alabaster} />
           <Text style={styles.backText}>Ops</Text>
         </Pressable>
-        <Text style={styles.title}>Operators</Text>
+        <View style={styles.titleRow}>
+          <Text style={styles.title}>Operators</Text>
+          <CapabilityGate capability="admin.manage_users">
+            <Pressable
+              onPress={() => router.push('/users/invite' as any)}
+              style={({ pressed }) => [
+                styles.inviteBtn,
+                pressed && { opacity: 0.75, transform: [{ scale: 0.97 }] },
+              ]}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Invite operator"
+            >
+              <Ionicons name="add" size={20} color={colors.obsidian} />
+            </Pressable>
+          </CapabilityGate>
+        </View>
         <Text style={styles.subtitle}>
           {rows.length} {rows.length === 1 ? 'operator' : 'operators'} ·
           sorted by last active
@@ -287,11 +304,31 @@ const styles = StyleSheet.create({
     color: colors.alabaster,
     marginLeft: 2,
   },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
   title: {
+    flex: 1,
     fontFamily: fonts.archivo.bold,
     fontSize: 34,
     color: colors.teal,
     letterSpacing: -0.8,
+  },
+  inviteBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.teal,
+    shadowColor: colors.teal,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.4,
+    shadowRadius: 10,
+    elevation: 4,
   },
   subtitle: {
     fontFamily: fonts.archivo.regular,
