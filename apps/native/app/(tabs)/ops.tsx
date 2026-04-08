@@ -32,6 +32,7 @@ import { Share } from 'react-native';
 import { useBrandToast } from '../../src/components/BrandToast';
 import { ScreenCanvas } from '../../src/components/ScreenCanvas';
 import { ScreenWatermark } from '../../src/components/ScreenWatermark';
+import { ScreenHeader } from '../../src/components/ScreenHeader';
 import { CollapsibleSection } from '../../src/components/CollapsibleSection';
 import { CapabilityGate } from '../../src/components/CapabilityGate';
 import { useCapabilities } from '../../src/hooks/useCapabilities';
@@ -558,44 +559,45 @@ export default function OpsScreen() {
       <ScreenWatermark />
       <ScreenTransition>
 
-      <View style={[styles.header, { paddingTop: insets.top + spacing.lg }]}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.headerTitle}>Ops</Text>
-          <Text style={styles.headerSub}>{headerSummary}</Text>
-          {pulse && (
-            <Text style={styles.headerDetail}>
-              {(health?.stale_sources ?? 0).toLocaleString()} stale sources ·{' '}
-              {(health?.orphaned_entities ?? 0).toLocaleString()} orphaned entities
-            </Text>
-          )}
-        </View>
-        <View style={styles.headerBtns}>
-          <Pressable
-            onPress={generateSnapshot}
-            disabled={snapshotLoading}
-            style={({ pressed }) => [
-              styles.snapshotBtn,
-              (pressed || snapshotLoading) && { opacity: 0.6 },
-            ]}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel="Generate graph snapshot"
-          >
-            {snapshotLoading ? (
-              <ActivityIndicator size={14} color={colors.teal} />
-            ) : (
-              <Ionicons name="camera-outline" size={18} color={colors.teal} />
-            )}
-          </Pressable>
-          <Pressable
-            onPress={() => router.push('/more' as any)}
-            style={({ pressed }) => [styles.gearBtn, pressed && { opacity: 0.6 }]}
-            hitSlop={8}
-          >
-            <Ionicons name="settings-outline" size={20} color={colors.silver} />
-          </Pressable>
-        </View>
-      </View>
+      <ScreenHeader
+        title="Ops"
+        subtitle={headerSummary}
+        actions={
+          <View style={styles.headerBtns}>
+            <Pressable
+              onPress={generateSnapshot}
+              disabled={snapshotLoading}
+              style={({ pressed }) => [
+                styles.snapshotBtn,
+                (pressed || snapshotLoading) && { opacity: 0.6 },
+              ]}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Generate graph snapshot"
+            >
+              {snapshotLoading ? (
+                <ActivityIndicator size={14} color={colors.teal} />
+              ) : (
+                <Ionicons name="camera-outline" size={18} color={colors.teal} />
+              )}
+            </Pressable>
+            <Pressable
+              onPress={() => router.push('/more' as any)}
+              style={({ pressed }) => [styles.gearBtn, pressed && { opacity: 0.6 }]}
+              hitSlop={8}
+            >
+              <Ionicons name="settings-outline" size={20} color={colors.silver} />
+            </Pressable>
+          </View>
+        }
+      >
+        {pulse && (
+          <Text style={styles.headerDetail}>
+            {(health?.stale_sources ?? 0).toLocaleString()} stale sources ·{' '}
+            {(health?.orphaned_entities ?? 0).toLocaleString()} orphaned entities
+          </Text>
+        )}
+      </ScreenHeader>
 
       <ScrollView
         ref={scrollRef}
@@ -1334,26 +1336,6 @@ function VerticalBreakdownSection({
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.lg,
-    gap: spacing.md,
-  },
-  headerTitle: {
-    fontFamily: fonts.archivo.bold,
-    fontSize: 34,
-    color: colors.teal,
-    letterSpacing: -0.8,
-  },
-  headerSub: {
-    fontFamily: fonts.archivo.semibold,
-    fontSize: 13,
-    color: colors.teal,
-    marginTop: 4,
-    letterSpacing: -0.1,
-  },
   headerDetail: {
     fontFamily: fonts.mono.regular,
     fontSize: 11,

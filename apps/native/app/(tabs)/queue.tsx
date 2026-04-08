@@ -47,6 +47,7 @@ import type { RejectionReason, ClaimStatus } from '@stroom/types';
 import type { QueueClaim } from '@stroom/supabase';
 import { ScreenCanvas } from '../../src/components/ScreenCanvas';
 import { ScreenWatermark } from '../../src/components/ScreenWatermark';
+import { ScreenHeader } from '../../src/components/ScreenHeader';
 import { colors, fonts, spacing, radius, gradient } from '../../src/constants/brand';
 
 type StatusFilter = 'all' | 'draft' | 'pending_review';
@@ -633,60 +634,66 @@ export default function QueueScreen() {
       <ScreenCanvas />
       <ScreenWatermark />
       <ScreenTransition>
-      {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top + spacing.lg }]}>
-        <Text style={styles.headerTitle}>Queue</Text>
-        <Animated.View style={isHot ? [styles.badgeGlowWrap, badgeAnimatedStyle] : undefined}>
-          <Pressable
-            onLongPress={enterSelectMode}
-            delayLongPress={400}
-            style={({ pressed }) => [
-              styles.countBadge,
-              selectMode && styles.countBadgeActive,
-              isHot && !selectMode && styles.countBadgeHot,
-              pressed && { opacity: 0.7 },
-            ]}
+      <ScreenHeader
+        title="Queue"
+        actions={
+          <Animated.View
+            style={isHot ? [styles.badgeGlowWrap, badgeAnimatedStyle] : undefined}
           >
-            <Text
-              style={[
-                styles.countText,
-                selectMode && styles.countTextActive,
-                isHot && !selectMode && styles.countTextHot,
+            <Pressable
+              onLongPress={enterSelectMode}
+              delayLongPress={400}
+              style={({ pressed }) => [
+                styles.countBadge,
+                selectMode && styles.countBadgeActive,
+                isHot && !selectMode && styles.countBadgeHot,
+                pressed && { opacity: 0.7 },
               ]}
             >
-              {filteredClaims.length}
+              <Text
+                style={[
+                  styles.countText,
+                  selectMode && styles.countTextActive,
+                  isHot && !selectMode && styles.countTextHot,
+                ]}
+              >
+                {filteredClaims.length}
+              </Text>
+            </Pressable>
+          </Animated.View>
+        }
+        subtitle={
+          <View style={kbStyles.subRow}>
+            <Text style={styles.headerSub}>Claims pending governance review</Text>
+            <Pressable
+              onPress={() => {
+                haptics.tap.light();
+                setShowKbLegend((v) => !v);
+              }}
+              style={({ pressed }) => [
+                kbStyles.hintBadge,
+                pressed && { opacity: 0.6 },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel="Toggle keyboard shortcuts legend"
+            >
+              <Text style={kbStyles.hintText}>⌨</Text>
+            </Pressable>
+          </View>
+        }
+      >
+        {showKbLegend && (
+          <View style={kbStyles.legend}>
+            <Text style={kbStyles.legendRow}>
+              <Text style={kbStyles.legendKey}>J/K</Text> Move focus
+              <Text style={kbStyles.legendKey}>  A</Text> Approve
+              <Text style={kbStyles.legendKey}>  R</Text> Reject
+              <Text style={kbStyles.legendKey}>  ↵</Text> Open
+              <Text style={kbStyles.legendKey}>  Esc</Text> Dismiss
             </Text>
-          </Pressable>
-        </Animated.View>
-      </View>
-      <View style={kbStyles.subRow}>
-        <Text style={styles.headerSub}>Claims pending governance review</Text>
-        <Pressable
-          onPress={() => {
-            haptics.tap.light();
-            setShowKbLegend((v) => !v);
-          }}
-          style={({ pressed }) => [
-            kbStyles.hintBadge,
-            pressed && { opacity: 0.6 },
-          ]}
-          accessibilityRole="button"
-          accessibilityLabel="Toggle keyboard shortcuts legend"
-        >
-          <Text style={kbStyles.hintText}>⌨</Text>
-        </Pressable>
-      </View>
-      {showKbLegend && (
-        <View style={kbStyles.legend}>
-          <Text style={kbStyles.legendRow}>
-            <Text style={kbStyles.legendKey}>J/K</Text> Move focus
-            <Text style={kbStyles.legendKey}>  A</Text> Approve
-            <Text style={kbStyles.legendKey}>  R</Text> Reject
-            <Text style={kbStyles.legendKey}>  ↵</Text> Open
-            <Text style={kbStyles.legendKey}>  Esc</Text> Dismiss
-          </Text>
-        </View>
-      )}
+          </View>
+        )}
+      </ScreenHeader>
 
       {/* Search bar + sort */}
       <View style={styles.searchRow}>
@@ -1376,18 +1383,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: 'transparent',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: spacing.lg,
-    gap: spacing.sm,
-  },
-  headerTitle: {
-    fontFamily: fonts.archivo.bold,
-    fontSize: 34,
-    color: colors.teal,
-    letterSpacing: -0.8,
   },
   countBadge: {
     backgroundColor: colors.tealDim,

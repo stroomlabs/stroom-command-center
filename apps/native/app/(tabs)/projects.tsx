@@ -12,6 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { ScreenCanvas } from '../../src/components/ScreenCanvas';
 import { ScreenWatermark } from '../../src/components/ScreenWatermark';
 import { ScreenTransition } from '../../src/components/ScreenTransition';
+import { ScreenHeader } from '../../src/components/ScreenHeader';
 import { GlassCard } from '../../src/components/GlassCard';
 import { haptics } from '../../src/lib/haptics';
 import {
@@ -38,19 +39,14 @@ export default function ProjectsScreen() {
       <ScreenCanvas />
       <ScreenWatermark />
       <ScreenTransition>
+        <ScreenHeader title="Projects" subtitle="Stroom Labs client hub" />
         <ScrollView
           contentContainerStyle={[
             styles.scroll,
-            {
-              paddingTop: insets.top + spacing.lg,
-              paddingBottom: insets.bottom + spacing.xxl,
-            },
+            { paddingBottom: insets.bottom + spacing.xxl },
           ]}
           showsVerticalScrollIndicator={false}
         >
-          <Text style={styles.title}>Projects</Text>
-          <Text style={styles.subtitle}>Stroom Labs client hub</Text>
-
           <View style={styles.list}>
             {PROJECTS.map((project) => (
               <ProjectCard
@@ -168,19 +164,6 @@ const styles = StyleSheet.create({
   },
   scroll: {
     paddingHorizontal: spacing.lg,
-  },
-  title: {
-    fontFamily: fonts.archivo.bold,
-    fontSize: 34,
-    color: colors.teal,
-    letterSpacing: -0.8,
-  },
-  subtitle: {
-    fontFamily: fonts.archivo.regular,
-    fontSize: 13,
-    color: colors.slate,
-    marginTop: 4,
-    marginBottom: spacing.lg,
   },
   list: {
     gap: spacing.md,

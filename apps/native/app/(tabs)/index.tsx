@@ -32,6 +32,7 @@ import { useClaimSparkline } from '../../src/hooks/useClaimSparkline';
 import { Sparkline } from '../../src/components/Sparkline';
 import { ScreenCanvas } from '../../src/components/ScreenCanvas';
 import { ScreenWatermark } from '../../src/components/ScreenWatermark';
+import { ScreenHeader } from '../../src/components/ScreenHeader';
 import { useOfflineSync } from '../../src/lib/OfflineSyncContext';
 import { usePulseDeltas } from '../../src/hooks/usePulseDeltas';
 import { usePushNotifications } from '../../src/hooks/usePushNotifications';
@@ -563,10 +564,7 @@ export default function PulseScreen() {
         ref={scrollRef as any}
         onScroll={peekScrollHandler}
         scrollEventThrottle={16}
-        contentContainerStyle={[
-          styles.scroll,
-          { paddingTop: insets.top + spacing.lg },
-        ]}
+        contentContainerStyle={styles.scroll}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -575,41 +573,41 @@ export default function PulseScreen() {
           />
         }
       >
-        {/* Header */}
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>Pulse</Text>
-          <View style={styles.headerRight}>
-            <Pressable
-              onPress={() => router.push('/notifications' as any)}
-              hitSlop={10}
-              style={({ pressed }) => [
-                styles.bellBtn,
-                pressed && { opacity: 0.6, transform: [{ scale: 0.97 }] },
-              ]}
-              accessibilityRole="button"
-              accessibilityLabel="Open notifications"
-            >
-              <Ionicons
-                name="notifications-outline"
-                size={20}
-                color={colors.silver}
-              />
-            </Pressable>
-            <View style={styles.liveColumn}>
-              <View style={styles.liveIndicator}>
-                <Animated.View style={[styles.liveDot, liveDotStyle]} />
-                <Text style={styles.liveText}>LIVE</Text>
+        <ScreenHeader
+          title="Pulse"
+          subtitle="StroomHelix Intelligence Graph"
+          actions={
+            <View style={styles.headerRight}>
+              <Pressable
+                onPress={() => router.push('/notifications' as any)}
+                hitSlop={10}
+                style={({ pressed }) => [
+                  styles.bellBtn,
+                  pressed && { opacity: 0.6, transform: [{ scale: 0.97 }] },
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel="Open notifications"
+              >
+                <Ionicons
+                  name="notifications-outline"
+                  size={20}
+                  color={colors.silver}
+                />
+              </Pressable>
+              <View style={styles.liveColumn}>
+                <View style={styles.liveIndicator}>
+                  <Animated.View style={[styles.liveDot, liveDotStyle]} />
+                  <Text style={styles.liveText}>LIVE</Text>
+                </View>
+                {lastUpdatedAt && (
+                  <Text style={styles.lastUpdated}>
+                    {formatLastUpdated(lastUpdatedAt, nowTick)}
+                  </Text>
+                )}
               </View>
-              {lastUpdatedAt && (
-                <Text style={styles.lastUpdated}>
-                  {formatLastUpdated(lastUpdatedAt, nowTick)}
-                </Text>
-              )}
             </View>
-          </View>
-        </View>
-
-        <Text style={styles.headerSub}>StroomHelix Intelligence Graph</Text>
+          }
+        />
 
         {/* Vertical toggle — 6 buckets (All / Racing / Sports / Cruises /
             Parks / Other), persisted to AsyncStorage. Changing the selection
@@ -946,12 +944,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.xxl,
   },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: spacing.xs,
-  },
   headerRight: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -979,12 +971,6 @@ const styles = StyleSheet.create({
     color: colors.slate,
     fontVariant: ['tabular-nums'],
   },
-  headerTitle: {
-    fontFamily: fonts.archivo.bold,
-    fontSize: 34,
-    color: colors.teal,
-    letterSpacing: -0.8,
-  },
   liveIndicator: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1007,12 +993,6 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: colors.teal,
     letterSpacing: 1.5,
-  },
-  headerSub: {
-    fontFamily: fonts.archivo.regular,
-    fontSize: 14,
-    color: colors.slate,
-    marginBottom: spacing.md,
   },
   verticalRow: {
     flexDirection: 'row',

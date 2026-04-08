@@ -53,6 +53,7 @@ import { resolveClaimDisplayValue } from '../../src/lib/resolveDisplayValue';
 import { HighlightedText } from '../../src/components/HighlightedText';
 import { ScreenCanvas } from '../../src/components/ScreenCanvas';
 import { ScreenWatermark } from '../../src/components/ScreenWatermark';
+import { ScreenHeader } from '../../src/components/ScreenHeader';
 import { colors, fonts, spacing, radius, gradient } from '../../src/constants/brand';
 
 export default function ExploreScreen() {
@@ -266,10 +267,23 @@ export default function ExploreScreen() {
       <ScreenCanvas />
       <ScreenWatermark />
       <ScreenTransition>
-      <View style={[styles.header, { paddingTop: insets.top + spacing.lg }]}>
-        <View style={styles.headerRow}>
-          <Text style={styles.headerTitle}>Explore</Text>
-          {segment === 'entities' && (
+      <ScreenHeader
+        title="Explore"
+        subtitle={
+          segment === 'entities'
+            ? trimmed
+              ? `Entities matching "${trimmed}"`
+              : 'Recent entities'
+            : segment === 'claims'
+            ? trimmed
+              ? `Claims matching "${trimmed}"`
+              : 'Recent claims'
+            : trimmed
+            ? `Sources matching "${trimmed}"`
+            : 'Trusted sources'
+        }
+        actions={
+          segment === 'entities' ? (
             <Pressable
               onPress={toggleSelectMode}
               hitSlop={10}
@@ -293,24 +307,10 @@ export default function ExploreScreen() {
                 {selectMode ? 'Done' : 'Select'}
               </Text>
             </Pressable>
-          )}
-        </View>
-        <Text style={styles.headerSub}>
-          {segment === 'entities'
-            ? segment === 'entities'
-              ? trimmed
-                ? `Entities matching "${trimmed}"`
-                : 'Recent entities'
-              : segment === 'claims'
-              ? trimmed
-                ? `Claims matching "${trimmed}"`
-                : 'Recent claims'
-              : trimmed
-              ? `Sources matching "${trimmed}"`
-              : 'Trusted sources'
-            : 'Search the graph'}
-        </Text>
-
+          ) : null
+        }
+      />
+      <View style={styles.headerControls}>
         {/* Segment control — entities / claims / sources */}
         <View style={styles.segment}>
           {(['entities', 'claims', 'sources'] as const).map((key) => {
@@ -1536,20 +1536,9 @@ const fabStyles = StyleSheet.create({
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
-  header: {
+  headerControls: {
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.md,
-  },
-  headerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  headerTitle: {
-    fontFamily: fonts.archivo.bold,
-    fontSize: 34,
-    color: colors.teal,
-    letterSpacing: -0.8,
   },
   selectToggle: {
     flexDirection: 'row',
@@ -1654,13 +1643,6 @@ const styles = StyleSheet.create({
     fontFamily: fonts.archivo.bold,
     fontSize: 13,
     color: colors.obsidian,
-  },
-  headerSub: {
-    fontFamily: fonts.archivo.regular,
-    fontSize: 14,
-    color: colors.slate,
-    marginTop: spacing.xs,
-    marginBottom: spacing.md,
   },
   segment: {
     flexDirection: 'row',
