@@ -8,13 +8,13 @@ import {
   Pressable,
   RefreshControl,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import type { ResearchQueueItem } from '@stroom/types';
 import { useResearchQueue } from '../src/hooks/useResearchQueue';
 import { EmptyState } from '../src/components/EmptyState';
+import { ScreenCanvas } from '../src/components/ScreenCanvas';
 import { colors, fonts, spacing, radius, gradient } from '../src/constants/brand';
 
 export default function ResearchQueueScreen() {
@@ -35,17 +35,15 @@ export default function ResearchQueueScreen() {
   );
 
   return (
-    <LinearGradient
-      colors={[gradient.background[0], gradient.background[1]]}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 0.5, y: 1 }}
-      style={styles.container}
-    >
+    <View style={styles.container}>
+      <ScreenCanvas />
       <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
         <Pressable
           onPress={() => router.back()}
           style={({ pressed }) => [styles.backBtn, pressed && { opacity: 0.6 }]}
           hitSlop={10}
+          accessibilityRole="button"
+          accessibilityLabel="Back"
         >
           <Ionicons name="chevron-back" size={24} color={colors.alabaster} />
           <Text style={styles.backText}>More</Text>
@@ -79,6 +77,8 @@ export default function ResearchQueueScreen() {
           contentContainerStyle={styles.list}
           showsVerticalScrollIndicator={false}
           keyboardDismissMode="on-drag"
+          maxToRenderPerBatch={10}
+          windowSize={5}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -88,7 +88,7 @@ export default function ResearchQueueScreen() {
           }
         />
       )}
-    </LinearGradient>
+    </View>
   );
 }
 

@@ -9,8 +9,8 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { GlowSpot } from '../src/components/GlowSpot';
+import { ScreenCanvas } from '../src/components/ScreenCanvas';
 import supabase from '../src/lib/supabase';
 import { colors, fonts, spacing, radius, gradient } from '../src/constants/brand';
 
@@ -37,13 +37,10 @@ export default function LoginScreen() {
   };
 
   return (
-    <LinearGradient
-      colors={[gradient.background[0], gradient.background[1]]}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 0.5, y: 1 }}
-      style={styles.container}
-    >
-      {/* Breathing teal halo behind the logo mark */}
+    <View style={styles.container}>
+      <ScreenCanvas />
+      {/* Breathing teal halo behind the logo mark — kept as login-specific
+          foreground decoration on top of the universal canvas. */}
       <GlowSpot size={560} opacity={0.02} style={styles.haloOuter} breathe />
       <GlowSpot size={320} opacity={0.024} style={styles.haloInner} breathe />
 
@@ -116,7 +113,7 @@ export default function LoginScreen() {
 
         <Text style={styles.footer}>Stroom Labs · Operator Access Only</Text>
       </KeyboardAvoidingView>
-    </LinearGradient>
+    </View>
   );
 }
 

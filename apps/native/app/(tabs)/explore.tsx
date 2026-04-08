@@ -51,7 +51,7 @@ import type { EntitySearchResult } from '@stroom/supabase';
 import type { Predicate } from '@stroom/types';
 import { resolveClaimDisplayValue } from '../../src/lib/resolveDisplayValue';
 import { HighlightedText } from '../../src/components/HighlightedText';
-import { BackgroundCanvas } from '../../src/components/BackgroundCanvas';
+import { ScreenCanvas } from '../../src/components/ScreenCanvas';
 import { colors, fonts, spacing, radius, gradient } from '../../src/constants/brand';
 
 export default function ExploreScreen() {
@@ -263,7 +263,7 @@ export default function ExploreScreen() {
   return (
     <ScreenTransition>
     <View style={styles.container}>
-      <BackgroundCanvas />
+      <ScreenCanvas />
       <View style={[styles.header, { paddingTop: insets.top + spacing.lg }]}>
         <View style={styles.headerRow}>
           <Text style={styles.headerTitle}>Explore</Text>

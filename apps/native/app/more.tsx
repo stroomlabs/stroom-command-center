@@ -8,7 +8,6 @@ import {
   ActivityIndicator,
   Switch,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -27,6 +26,7 @@ import {
 import { useBrandAlert } from '../src/components/BrandAlert';
 import { useBrandToast } from '../src/components/BrandToast';
 import supabase from '../src/lib/supabase';
+import { ScreenCanvas } from '../src/components/ScreenCanvas';
 import { colors, fonts, spacing, radius, gradient } from '../src/constants/brand';
 
 export default function MoreScreen() {
@@ -299,12 +299,8 @@ export default function MoreScreen() {
   };
 
   return (
-    <LinearGradient
-      colors={[gradient.background[0], gradient.background[1]]}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 0.5, y: 1 }}
-      style={styles.container}
-    >
+    <View style={styles.container}>
+      <ScreenCanvas />
       <ScrollView
         contentContainerStyle={[
           styles.inner,
@@ -683,7 +679,7 @@ export default function MoreScreen() {
           <Text style={styles.signOutText}>Sign Out</Text>
         </Pressable>
       </ScrollView>
-    </LinearGradient>
+    </View>
   );
 }
 

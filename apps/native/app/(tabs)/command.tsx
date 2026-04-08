@@ -11,7 +11,6 @@ import {
   ActivityIndicator,
   Keyboard,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRouter, useLocalSearchParams } from 'expo-router';
@@ -43,7 +42,7 @@ import { useBrandToast } from '../../src/components/BrandToast';
 import { usePulseContext } from '../../src/lib/PulseContext';
 import { useOfflineSync } from '../../src/lib/OfflineSyncContext';
 import { GlowSpot } from '../../src/components/GlowSpot';
-import { BackgroundCanvas } from '../../src/components/BackgroundCanvas';
+import { ScreenCanvas } from '../../src/components/ScreenCanvas';
 import { ScreenTransition } from '../../src/components/ScreenTransition';
 import type { CommandSession } from '@stroom/types';
 import { colors, fonts, spacing, radius, gradient } from '../../src/constants/brand';
@@ -688,7 +687,7 @@ export default function CommandScreen() {
   return (
     <ScreenTransition>
     <View style={styles.container}>
-      <BackgroundCanvas />
+      <ScreenCanvas />
 
       <KeyboardAvoidingView
         style={styles.container}

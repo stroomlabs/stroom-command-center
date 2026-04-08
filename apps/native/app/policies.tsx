@@ -10,7 +10,6 @@ import {
   Switch,
   TextInput,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -23,6 +22,7 @@ import {
   type GovernanceSweepFrequency,
 } from '../src/hooks/useNotificationPrefs';
 import { useBrandAlert } from '../src/components/BrandAlert';
+import { ScreenCanvas } from '../src/components/ScreenCanvas';
 import { colors, fonts, spacing, radius, gradient } from '../src/constants/brand';
 
 const ACTIONS: { key: GovernanceAction; label: string; color: string }[] = [
@@ -92,12 +92,8 @@ export default function PoliciesScreen() {
   };
 
   return (
-    <LinearGradient
-      colors={[gradient.background[0], gradient.background[1]]}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 0.5, y: 1 }}
-      style={styles.container}
-    >
+    <View style={styles.container}>
+      <ScreenCanvas />
       <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
         <Pressable
           onPress={() => router.back()}
@@ -199,7 +195,7 @@ export default function PoliciesScreen() {
           )}
         </ScrollView>
       )}
-    </LinearGradient>
+    </View>
   );
 }
 
@@ -233,6 +229,8 @@ function ScheduleCard({
           trackColor={{ false: colors.surfaceCard, true: colors.teal }}
           thumbColor={colors.alabaster}
           ios_backgroundColor={colors.surfaceCard}
+          accessibilityRole="switch"
+          accessibilityLabel={`Automatic sweep schedule: ${enabled ? 'on' : 'off'}`}
         />
       </View>
       {enabled && (
@@ -321,6 +319,8 @@ function PolicyCard({
           trackColor={{ false: colors.surfaceCard, true: colors.teal }}
           thumbColor={colors.alabaster}
           ios_backgroundColor={colors.surfaceCard}
+          accessibilityRole="switch"
+          accessibilityLabel={`Auto-approve policy ${policy.name}: ${policy.is_active ? 'on' : 'off'}`}
         />
       </View>
 
@@ -431,6 +431,8 @@ function ThresholdSlider({
           Haptics.selectionAsync();
           onChange(v);
         }}
+        accessibilityRole="adjustable"
+        accessibilityLabel={`${label}: ${local.toFixed(step < 1 ? 1 : 0)} out of ${max}`}
       />
     </View>
   );

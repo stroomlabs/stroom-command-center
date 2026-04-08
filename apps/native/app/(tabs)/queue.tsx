@@ -21,7 +21,6 @@ import Animated, {
   Easing,
   cancelAnimation,
 } from 'react-native-reanimated';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQueueClaims } from '../../src/hooks/useQueueClaims';
 import supabase from '../../src/lib/supabase';
@@ -44,7 +43,7 @@ import {
 } from '../../src/components/ActionSheet';
 import type { RejectionReason, ClaimStatus } from '@stroom/types';
 import type { QueueClaim } from '@stroom/supabase';
-import { BackgroundCanvas } from '../../src/components/BackgroundCanvas';
+import { ScreenCanvas } from '../../src/components/ScreenCanvas';
 import { colors, fonts, spacing, radius, gradient } from '../../src/constants/brand';
 
 type StatusFilter = 'all' | 'draft' | 'pending_review';
@@ -619,7 +618,7 @@ export default function QueueScreen() {
   return (
     <ScreenTransition>
     <View style={styles.container}>
-      <BackgroundCanvas />
+      <ScreenCanvas />
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + spacing.lg }]}>
         <Text style={styles.headerTitle}>Queue</Text>

@@ -9,7 +9,6 @@ import {
   RefreshControl,
   ScrollView,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -44,6 +43,7 @@ import Animated, {
 import { ActionSheet, type ActionSheetAction } from '../../src/components/ActionSheet';
 import * as Haptics from 'expo-haptics';
 import type { ClaimStatus } from '@stroom/types';
+import { ScreenCanvas } from '../../src/components/ScreenCanvas';
 import { colors, fonts, spacing, radius, gradient } from '../../src/constants/brand';
 
 type StatusFilter = 'all' | 'published' | 'draft' | 'pending_review' | 'rejected';
@@ -407,12 +407,8 @@ export default function EntityDetailScreen() {
   const keyExtractor = useCallback((item: EntityClaim) => item.id, []);
 
   return (
-    <LinearGradient
-      colors={[gradient.background[0], gradient.background[1]]}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 0.5, y: 1 }}
-      style={styles.container}
-    >
+    <View style={styles.container}>
+      <ScreenCanvas />
       {/* Header with back button + edit */}
       <View style={[styles.topBar, { paddingTop: insets.top + spacing.sm }]}>
         <Pressable
@@ -1023,7 +1019,7 @@ export default function EntityDetailScreen() {
         actions={dismissActions}
         onDismiss={() => setDismissTarget(null)}
       />
-    </LinearGradient>
+    </View>
   );
 }
 

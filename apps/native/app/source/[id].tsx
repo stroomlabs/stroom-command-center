@@ -10,7 +10,6 @@ import {
   Linking,
   Switch,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -27,6 +26,7 @@ import {
   type SiblingSource,
 } from '../../src/hooks/useSiblingSources';
 import { RetryCard } from '../../src/components/RetryCard';
+import { SkeletonDetail } from '../../src/components/Skeleton';
 import { StatusBadge } from '../../src/components/StatusBadge';
 import {
   ActionSheet,
@@ -35,6 +35,7 @@ import {
 import { useBrandToast } from '../../src/components/BrandToast';
 import { useBrandAlert } from '../../src/components/BrandAlert';
 import supabase from '../../src/lib/supabase';
+import { ScreenCanvas } from '../../src/components/ScreenCanvas';
 import { colors, fonts, spacing, radius, gradient } from '../../src/constants/brand';
 
 export default function SourceDetailScreen() {
@@ -221,12 +222,8 @@ export default function SourceDetailScreen() {
   }, []);
 
   return (
-    <LinearGradient
-      colors={[gradient.background[0], gradient.background[1]]}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 0.5, y: 1 }}
-      style={styles.container}
-    >
+    <View style={styles.container}>
+      <ScreenCanvas />
       <View style={[styles.topBar, { paddingTop: insets.top + spacing.sm }]}>
         <Pressable
           onPress={() => router.back()}
@@ -239,9 +236,7 @@ export default function SourceDetailScreen() {
       </View>
 
       {loading && !source ? (
-        <View style={styles.centered}>
-          <ActivityIndicator color={colors.teal} size="large" />
-        </View>
+        <SkeletonDetail />
       ) : error ? (
         <View style={styles.centered}>
           <RetryCard
@@ -261,6 +256,8 @@ export default function SourceDetailScreen() {
           contentContainerStyle={styles.list}
           showsVerticalScrollIndicator={false}
           keyboardDismissMode="on-drag"
+          maxToRenderPerBatch={10}
+          windowSize={5}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -325,6 +322,8 @@ export default function SourceDetailScreen() {
                     }
                   }}
                   disabled={saving}
+                  accessibilityRole="adjustable"
+                  accessibilityLabel={`Trust score: ${(trustDraft ?? Number(source.trust_score)).toFixed(1)} out of 10`}
                 />
               </View>
 
@@ -343,6 +342,8 @@ export default function SourceDetailScreen() {
                   thumbColor={colors.alabaster}
                   ios_backgroundColor={colors.surfaceCard}
                   disabled={saving}
+                  accessibilityRole="switch"
+                  accessibilityLabel={`Auto-approve: ${source.auto_approve ? 'on' : 'off'}`}
                 />
               </View>
 
@@ -503,11 +504,11 @@ export default function SourceDetailScreen() {
         actions={applyActions}
         onDismiss={() => setApplySheetVisible(false)}
       />
-    </LinearGradient>
+    </View>
   );
 }
 
-function SiblingCard({
+const SiblingCard = React.memo(function SiblingCard({
   sibling,
   isCurrent,
   onPress,
@@ -571,7 +572,7 @@ function SiblingCard({
       )}
     </Pressable>
   );
-}
+});
 
 // Colored source class badge — matches the Stroom Source Control dashboard
 // palette. Falls back to the neutral teal chip for unknown classes.
@@ -586,6 +587,9 @@ function SourceClassBadge({ sourceClass }: { sourceClass: string }) {
           borderColor: palette.border,
         },
       ]}
+      accessible
+      accessibilityRole="text"
+      accessibilityLabel={`Source class: ${sourceClass.replace(/_/g, ' ')}`}
     >
       <Text style={[styles.classBadgeText, { color: palette.fg }]}>
         {sourceClass.replace(/_/g, ' ').toUpperCase()}

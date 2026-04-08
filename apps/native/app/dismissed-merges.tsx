@@ -8,13 +8,12 @@ import {
   ActivityIndicator,
   RefreshControl,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import Animated, { FadeOutRight } from 'react-native-reanimated';
-import { BackgroundCanvas } from '../src/components/BackgroundCanvas';
+import { ScreenCanvas } from '../src/components/ScreenCanvas';
 import { EmptyState } from '../src/components/EmptyState';
 import { useBrandToast } from '../src/components/BrandToast';
 import supabase from '../src/lib/supabase';
@@ -110,11 +109,8 @@ export default function DismissedMergesScreen() {
   }, [fetchRows]);
 
   return (
-    <LinearGradient
-      colors={['#000000', '#0A0D0F']}
-      style={styles.container}
-    >
-      <BackgroundCanvas />
+    <View style={styles.container}>
+      <ScreenCanvas />
 
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
@@ -237,7 +233,7 @@ export default function DismissedMergesScreen() {
           })
         )}
       </ScrollView>
-    </LinearGradient>
+    </View>
   );
 }
 

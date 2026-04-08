@@ -8,12 +8,12 @@ import {
   ActivityIndicator,
   RefreshControl,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import supabase from '../src/lib/supabase';
 import { GlowSpot } from '../src/components/GlowSpot';
+import { ScreenCanvas } from '../src/components/ScreenCanvas';
 import { colors, fonts, spacing, radius, gradient } from '../src/constants/brand';
 
 interface DayBucket {
@@ -65,6 +65,7 @@ export default function AnalyticsScreen() {
 
       // 1) Approvals per day (last 7 days) — read from audit_log
       const { data: approvals } = await supabase
+        .schema('intel')
         .from('audit_log')
         .select('created_at, action_type')
         .in('action_type', ['approve', 'auto_approve'])
@@ -88,6 +89,7 @@ export default function AnalyticsScreen() {
       // 2) Governance velocity — avg delta between created_at and updated_at
       //    for claims in 'approved' or 'published' status from the last 30d.
       const { data: velocityRows } = await supabase
+        .schema('intel')
         .from('claims')
         .select('created_at, updated_at, status')
         .in('status', ['approved', 'published'])
@@ -114,6 +116,7 @@ export default function AnalyticsScreen() {
       //    claims whose subject_entity_id is the entity. Approximation: pull
       //    recent claim-targeted audit rows, join via claim lookup, bucket.
       const { data: editRows } = await supabase
+        .schema('intel')
         .from('audit_log')
         .select('entity_id, action_type')
         .eq('entity_table', 'claims')
@@ -128,6 +131,7 @@ export default function AnalyticsScreen() {
       let topEntities: TopEntity[] = [];
       if (claimIds.length > 0) {
         const { data: claimRows } = await supabase
+          .schema('intel')
           .from('claims')
           .select(
             'id, subject_entity_id, subject_entity:entities!claims_subject_entity_id_fkey(canonical_name)'
@@ -161,10 +165,12 @@ export default function AnalyticsScreen() {
       // 4) Source utilization — sources with at least one claim in the last
       //    30 days / total sources.
       const { count: totalSources } = await supabase
+        .schema('intel')
         .from('sources')
         .select('id', { count: 'exact', head: true });
 
       const { data: recentClaimSources } = await supabase
+        .schema('intel')
         .from('claims')
         .select('source_id')
         .gte('created_at', thirtyDaysAgo.toISOString())
@@ -210,19 +216,15 @@ export default function AnalyticsScreen() {
   );
 
   return (
-    <LinearGradient
-      colors={[gradient.background[0], gradient.background[1]]}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 0.5, y: 1 }}
-      style={styles.container}
-    >
-      <GlowSpot size={420} opacity={0.06} top={insets.top + 40} left={-100} breathe />
-
+    <View style={styles.container}>
+      <ScreenCanvas />
       <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
         <Pressable
           onPress={() => router.back()}
           style={({ pressed }) => [styles.backBtn, pressed && { opacity: 0.6 }]}
           hitSlop={10}
+          accessibilityRole="button"
+          accessibilityLabel="Back"
         >
           <Ionicons name="chevron-back" size={24} color={colors.alabaster} />
           <Text style={styles.backText}>Ops</Text>
@@ -349,7 +351,7 @@ export default function AnalyticsScreen() {
           </View>
         </ScrollView>
       ) : null}
-    </LinearGradient>
+    </View>
   );
 }
 

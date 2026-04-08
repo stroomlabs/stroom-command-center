@@ -7,7 +7,6 @@ import {
   Pressable,
   ActivityIndicator,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -17,6 +16,7 @@ import {
 } from '@stroom/supabase';
 import supabase from '../../src/lib/supabase';
 import { StatusBadge } from '../../src/components/StatusBadge';
+import { ScreenCanvas } from '../../src/components/ScreenCanvas';
 import { colors, fonts, spacing, radius, gradient } from '../../src/constants/brand';
 
 export default function PredicateDetailScreen() {
@@ -46,12 +46,8 @@ export default function PredicateDetailScreen() {
   const domain = (key ?? '').includes('.') ? (key ?? '').split('.')[0] : null;
 
   return (
-    <LinearGradient
-      colors={[gradient.background[0], gradient.background[1]]}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 0.5, y: 1 }}
-      style={styles.container}
-    >
+    <View style={styles.container}>
+      <ScreenCanvas />
       <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
         <Pressable
           onPress={() => router.back()}
@@ -90,6 +86,8 @@ export default function PredicateDetailScreen() {
           contentContainerStyle={styles.list}
           showsVerticalScrollIndicator={false}
           keyboardDismissMode="on-drag"
+          maxToRenderPerBatch={10}
+          windowSize={5}
           renderItem={({ item }) => (
             <Pressable
               onPress={() =>
@@ -130,7 +128,7 @@ export default function PredicateDetailScreen() {
           }
         />
       )}
-    </LinearGradient>
+    </View>
   );
 }
 

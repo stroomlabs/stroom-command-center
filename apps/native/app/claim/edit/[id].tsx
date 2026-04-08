@@ -10,7 +10,6 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -21,6 +20,7 @@ import { useClaimDetail } from '../../../src/hooks/useClaimDetail';
 import supabase from '../../../src/lib/supabase';
 import { titleCase } from '../../../src/components/JsonView';
 import { useBrandAlert } from '../../../src/components/BrandAlert';
+import { ScreenCanvas } from '../../../src/components/ScreenCanvas';
 import { colors, fonts, spacing, radius, gradient } from '../../../src/constants/brand';
 
 const STATUS_OPTIONS: ClaimStatus[] = [
@@ -132,40 +132,32 @@ export default function ClaimEditScreen() {
 
   if (loading) {
     return (
-      <LinearGradient
-        colors={[gradient.background[0], gradient.background[1]]}
-        style={styles.container}
-      >
+      <View style={styles.container}>
+        <ScreenCanvas />
         <View style={styles.centered}>
           <ActivityIndicator color={colors.teal} size="large" />
         </View>
-      </LinearGradient>
+      </View>
     );
   }
 
   if (error || !claim) {
     return (
-      <LinearGradient
-        colors={[gradient.background[0], gradient.background[1]]}
-        style={styles.container}
-      >
+      <View style={styles.container}>
+        <ScreenCanvas />
         <View style={[styles.topBar, { paddingTop: insets.top + spacing.sm }]}>
           <BackButton onPress={() => router.back()} />
         </View>
         <View style={styles.centered}>
           <Text style={styles.errorText}>{error ?? 'Claim not found'}</Text>
         </View>
-      </LinearGradient>
+      </View>
     );
   }
 
   return (
-    <LinearGradient
-      colors={[gradient.background[0], gradient.background[1]]}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 0.5, y: 1 }}
-      style={styles.container}
-    >
+    <View style={styles.container}>
+      <ScreenCanvas />
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -316,7 +308,7 @@ export default function ClaimEditScreen() {
           </Pressable>
         </View>
       </KeyboardAvoidingView>
-    </LinearGradient>
+    </View>
   );
 }
 
@@ -326,6 +318,8 @@ function BackButton({ onPress }: { onPress: () => void }) {
       onPress={onPress}
       style={({ pressed }) => [styles.backBtn, pressed && { opacity: 0.6 }]}
       hitSlop={10}
+      accessibilityRole="button"
+      accessibilityLabel="Back"
     >
       <Ionicons name="chevron-back" size={24} color={colors.alabaster} />
       <Text style={styles.backText}>Back</Text>

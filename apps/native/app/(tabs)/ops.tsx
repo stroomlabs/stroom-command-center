@@ -8,7 +8,6 @@ import {
   RefreshControl,
   ActivityIndicator,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -32,7 +31,7 @@ import {
 import * as Clipboard from 'expo-clipboard';
 import { Share } from 'react-native';
 import { useBrandToast } from '../../src/components/BrandToast';
-import { BackgroundCanvas } from '../../src/components/BackgroundCanvas';
+import { ScreenCanvas } from '../../src/components/ScreenCanvas';
 import { CollapsibleSection } from '../../src/components/CollapsibleSection';
 import { colors, fonts, spacing, radius, gradient } from '../../src/constants/brand';
 
@@ -545,7 +544,7 @@ export default function OpsScreen() {
   return (
     <ScreenTransition>
     <View style={styles.container}>
-      <BackgroundCanvas />
+      <ScreenCanvas />
 
       <View style={[styles.header, { paddingTop: insets.top + spacing.lg }]}>
         <View style={{ flex: 1 }}>

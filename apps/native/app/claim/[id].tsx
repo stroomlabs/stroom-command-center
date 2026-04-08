@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -9,7 +9,6 @@ import {
   Linking,
   TextInput,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -31,8 +30,15 @@ import { ClaimDiffSheet } from '../../src/components/ClaimDiffSheet';
 import { ClaimReassignSheet } from '../../src/components/ClaimReassignSheet';
 import { useBrandAlert } from '../../src/components/BrandAlert';
 import { RetryCard } from '../../src/components/RetryCard';
+import { SkeletonDetail } from '../../src/components/Skeleton';
+import { resolveClaimDisplayValue } from '../../src/lib/resolveDisplayValue';
+import {
+  useFreshnessMap,
+  isClaimStale,
+} from '../../src/hooks/useFreshnessMap';
 import { GlowSpot } from '../../src/components/GlowSpot';
 import { useBrandToast } from '../../src/components/BrandToast';
+import { useOfflineSync } from '../../src/lib/OfflineSyncContext';
 import Slider from '@react-native-community/slider';
 import Animated, {
   useSharedValue,
@@ -44,6 +50,7 @@ import Animated, {
 import supabase from '../../src/lib/supabase';
 import type { ClaimCorroborationDetail } from '@stroom/supabase';
 import type { RejectionReason } from '@stroom/types';
+import { ScreenCanvas } from '../../src/components/ScreenCanvas';
 import { colors, fonts, spacing, radius, gradient } from '../../src/constants/brand';
 
 export default function ClaimDetailScreen() {
@@ -53,6 +60,56 @@ export default function ClaimDetailScreen() {
   const { claim, corroborations, loading, error, refresh: refreshClaim } =
     useClaimDetail(id);
   const { show: showToast } = useBrandToast();
+  const { enqueueIfOffline } = useOfflineSync();
+  const freshnessMap = useFreshnessMap();
+  const stale = isClaimStale(
+    claim?.created_at,
+    claim?.predicate,
+    freshnessMap
+  );
+  // Existing published/approved claims with the same entity+predicate.
+  // Used to render an inline diff when this draft updates existing data,
+  // and to detect value conflicts against published claims.
+  const [existingValue, setExistingValue] = useState<Record<string, unknown> | null>(null);
+  const [conflicts, setConflicts] = useState<
+    Array<{ id: string; value_jsonb: Record<string, unknown> | null }>
+  >([]);
+  useEffect(() => {
+    if (!claim?.subject_entity_id || !claim?.predicate) return;
+    let cancelled = false;
+    supabase
+      .schema('intel')
+      .from('claims')
+      .select('id, value_jsonb')
+      .eq('subject_entity_id', claim.subject_entity_id)
+      .eq('predicate', claim.predicate)
+      .in('status', ['published', 'approved'])
+      .neq('id', claim.id)
+      .order('created_at', { ascending: false })
+      .limit(5)
+      .then(({ data }) => {
+        if (cancelled || !data || data.length === 0) return;
+        const rows = data as Array<{
+          id: string;
+          value_jsonb: Record<string, unknown> | null;
+        }>;
+        // First match is the "existing" for the diff card.
+        if (
+          claim.status === 'draft' ||
+          claim.status === 'pending_review'
+        ) {
+          setExistingValue(rows[0].value_jsonb);
+        }
+        // Conflicts: rows whose serialized value differs from ours.
+        const currentStr = JSON.stringify(claim.value_jsonb ?? {});
+        const conflicting = rows.filter(
+          (r) => JSON.stringify(r.value_jsonb ?? {}) !== currentStr
+        );
+        if (!cancelled) setConflicts(conflicting);
+      });
+    return () => { cancelled = true; };
+  }, [claim?.id, claim?.subject_entity_id, claim?.predicate, claim?.status, claim?.value_jsonb]);
+
   const [supersedes, setSupersedes] = useState<SupersedingClaim[]>([]);
   const [diffTargetId, setDiffTargetId] = useState<string | null>(null);
   const [observation, setObservation] = useState<{
@@ -98,7 +155,7 @@ export default function ClaimDetailScreen() {
       if (current != null && Math.abs(next - current) < 0.05) return;
       setConfidenceSaving(true);
       try {
-        const { error: rpcError } = await supabase.rpc(
+        const { error: rpcError } = await supabase.schema('intel').rpc(
           'update_claim_confidence',
           {
             claim_id: claim.id,
@@ -223,6 +280,7 @@ export default function ClaimDetailScreen() {
     (async () => {
       try {
         const { data } = await supabase
+          .schema('intel')
           .from('audit_log')
           .select('id, action_type, actor, old_state, new_state, created_at')
           .eq('entity_table', 'claims')
@@ -251,6 +309,7 @@ export default function ClaimDetailScreen() {
     (async () => {
       try {
         const { data } = await supabase
+          .schema('intel')
           .from('observations')
           .select('id, extraction_method, captured_at, raw_excerpt')
           .eq('source_id', claim.source!.id)
@@ -295,18 +354,25 @@ export default function ClaimDetailScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setActing(true);
     try {
-      await approveClaim(supabase, claim.id);
+      const queued = await enqueueIfOffline({
+        type: 'approve',
+        claim_id: claim.id,
+        new_status: 'approved',
+      });
+      if (!queued) {
+        await approveClaim(supabase, claim.id);
+      }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setOverrideStatus('approved');
       animateBadgeSwap();
-      showToast('Claim approved', 'success');
+      if (!queued) showToast('Claim approved', 'success');
       setTimeout(() => router.back(), 500);
     } catch (e: any) {
       setActing(false);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       showToast(e?.message ?? 'Approve failed', 'error');
     }
-  }, [claim, acting, router, showToast]);
+  }, [claim, acting, router, showToast, enqueueIfOffline]);
 
   const openRejectSheet = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -319,11 +385,20 @@ export default function ClaimDetailScreen() {
       setRejectVisible(false);
       setActing(true);
       try {
-        await rejectClaim(supabase, claim.id, reason, notes);
+        const queued = await enqueueIfOffline({
+          type: 'reject',
+          claim_id: claim.id,
+          new_status: 'rejected',
+          reason,
+          notes,
+        });
+        if (!queued) {
+          await rejectClaim(supabase, claim.id, reason, notes);
+        }
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
         setOverrideStatus('rejected');
         animateBadgeSwap();
-        showToast('Claim rejected', 'warn');
+        if (!queued) showToast('Claim rejected', 'warn');
         setTimeout(() => router.back(), 500);
       } catch (e: any) {
         setActing(false);
@@ -331,7 +406,7 @@ export default function ClaimDetailScreen() {
         showToast(e?.message ?? 'Reject failed', 'error');
       }
     },
-    [claim, router, showToast]
+    [claim, router, showToast, enqueueIfOffline]
   );
 
   const handleCopyId = useCallback(async () => {
@@ -354,7 +429,7 @@ export default function ClaimDetailScreen() {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
             setActing(true);
             try {
-              const { error } = await supabase.rpc(
+              const { error } = await supabase.schema('intel').rpc(
                 'reassign_or_supersede_claim',
                 {
                   claim_id: claim.id,
@@ -389,23 +464,17 @@ export default function ClaimDetailScreen() {
 
   if (loading) {
     return (
-      <LinearGradient
-        colors={[gradient.background[0], gradient.background[1]]}
-        style={styles.container}
-      >
-        <View style={styles.centered}>
-          <ActivityIndicator color={colors.teal} size="large" />
-        </View>
-      </LinearGradient>
+      <View style={styles.container}>
+        <ScreenCanvas />
+        <SkeletonDetail />
+      </View>
     );
   }
 
   if (error || !claim) {
     return (
-      <LinearGradient
-        colors={[gradient.background[0], gradient.background[1]]}
-        style={styles.container}
-      >
+      <View style={styles.container}>
+        <ScreenCanvas />
         <View style={[styles.topBar, { paddingTop: insets.top + spacing.sm }]}>
           <BackButton onPress={() => router.back()} />
         </View>
@@ -420,7 +489,7 @@ export default function ClaimDetailScreen() {
             <Text style={styles.errorText}>Claim not found</Text>
           )}
         </View>
-      </LinearGradient>
+      </View>
     );
   }
 
@@ -432,21 +501,8 @@ export default function ClaimDetailScreen() {
   const corrobScore = claim.corroboration_score ?? 0;
 
   return (
-    <LinearGradient
-      colors={[gradient.background[0], gradient.background[1]]}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 0.5, y: 1 }}
-      style={styles.container}
-    >
-      {/* Status-matched atmospheric glow behind the badge */}
-      <GlowSpot
-        size={360}
-        opacity={0.08}
-        color={STATUS_COLORS[claim.status] ?? colors.teal}
-        top={insets.top + 20}
-        left={-80}
-      />
-
+    <View style={styles.container}>
+      <ScreenCanvas />
       <View style={[styles.topBar, { paddingTop: insets.top + spacing.sm }]}>
         <BackButton onPress={() => router.back()} />
       </View>
@@ -464,6 +520,16 @@ export default function ClaimDetailScreen() {
             <StatusBadge status={(overrideStatus ?? claim.status) as any} />
           </Animated.View>
           <Text style={styles.age}>{formatDate(claim.created_at)}</Text>
+          {stale && (
+            <View
+              style={styles.staleBadge}
+              accessible
+              accessibilityRole="text"
+              accessibilityLabel="Stale claim"
+            >
+              <Text style={styles.staleBadgeText}>STALE</Text>
+            </View>
+          )}
         </View>
 
         {/* Subject → Object */}
@@ -486,6 +552,65 @@ export default function ClaimDetailScreen() {
           <Text style={styles.predicateLabel}>{predicateLabel}</Text>
           <Text style={styles.predicateRaw}>{predicate}</Text>
         </View>
+
+        {/* Inline diff — shown when this draft updates an existing published claim */}
+        {existingValue && (
+          <View style={styles.diffCard}>
+            <View style={styles.diffHeaderRow}>
+              <Ionicons name="git-compare-outline" size={12} color={colors.statusPending} />
+              <Text style={styles.diffHeaderText}>Updates existing claim</Text>
+            </View>
+            <View style={styles.diffRow}>
+              <Text style={styles.diffLabel}>OLD</Text>
+              <Text style={styles.diffOld} numberOfLines={3}>
+                {resolveClaimDisplayValue(existingValue, null, claim.predicate)}
+              </Text>
+            </View>
+            <View style={styles.diffRow}>
+              <Text style={styles.diffLabel}>NEW</Text>
+              <Text style={styles.diffNew} numberOfLines={3}>
+                {resolveClaimDisplayValue(claim.value_jsonb, null, claim.predicate)}
+              </Text>
+            </View>
+          </View>
+        )}
+
+        {/* Conflict banner — other published claims with same entity+predicate
+            but different value. Surfaces contradictions at decision time. */}
+        {conflicts.length > 0 && (
+          <View style={styles.conflictCard}>
+            <View style={styles.conflictHeader}>
+              <Ionicons name="alert-circle-outline" size={14} color={colors.statusPending} />
+              <Text style={styles.conflictHeaderText}>
+                {conflicts.length === 1
+                  ? 'Conflicts with published claim'
+                  : `${conflicts.length} conflicting claims`}
+              </Text>
+            </View>
+            {conflicts.slice(0, 3).map((c) => (
+              <Pressable
+                key={c.id}
+                onPress={() =>
+                  router.push({
+                    pathname: '/claim/[id]',
+                    params: { id: c.id },
+                  } as any)
+                }
+                style={({ pressed }) => [
+                  styles.conflictRow,
+                  pressed && { opacity: 0.7 },
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel="View conflicting claim"
+              >
+                <Text style={styles.conflictValue} numberOfLines={2}>
+                  {resolveClaimDisplayValue(c.value_jsonb, null, claim.predicate)}
+                </Text>
+                <Ionicons name="chevron-forward" size={14} color={colors.slate} />
+              </Pressable>
+            ))}
+          </View>
+        )}
 
         {/* Value payload */}
         <View style={styles.valueCard}>
@@ -535,6 +660,8 @@ export default function ClaimDetailScreen() {
                           styles.editFieldDisplay,
                           pressed && { opacity: 0.7 },
                         ]}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Edit ${key}`}
                       >
                         <Text style={styles.editFieldValue} numberOfLines={3}>
                           {value == null || value === '' ? '—' : String(value)}
@@ -616,6 +743,8 @@ export default function ClaimDetailScreen() {
               }}
               disabled={confidenceSaving}
               style={styles.confidenceSlider}
+              accessibilityRole="adjustable"
+              accessibilityLabel={`Confidence: ${(confidenceDraft ?? (confidence != null ? Number(confidence) : 0)).toFixed(1)} out of 10`}
             />
           </View>
           <View style={styles.scoreBox}>
@@ -867,6 +996,8 @@ export default function ClaimDetailScreen() {
               styles.supersedeBtn,
               (pressed || acting) && { opacity: 0.7 },
             ]}
+            accessibilityRole="button"
+            accessibilityLabel="Supersede claim"
           >
             <Ionicons
               name="git-compare-outline"
@@ -886,6 +1017,8 @@ export default function ClaimDetailScreen() {
             styles.rejectBtn,
             (pressed || acting) && { opacity: 0.7 },
           ]}
+          accessibilityRole="button"
+          accessibilityLabel="Reject claim"
         >
           <Ionicons name="close" size={18} color={colors.statusReject} />
           <Text style={[styles.actionText, { color: colors.statusReject }]}>
@@ -901,6 +1034,8 @@ export default function ClaimDetailScreen() {
             styles.editBtn,
             (pressed || acting) && { opacity: 0.7 },
           ]}
+          accessibilityRole="button"
+          accessibilityLabel="Edit claim"
         >
           <Ionicons name="create-outline" size={18} color={colors.teal} />
           <Text style={[styles.actionText, { color: colors.teal }]}>Edit</Text>
@@ -917,6 +1052,8 @@ export default function ClaimDetailScreen() {
             styles.reassignBtn,
             (pressed || acting) && { opacity: 0.7 },
           ]}
+          accessibilityRole="button"
+          accessibilityLabel="Reassign claim"
         >
           <Ionicons name="swap-horizontal" size={18} color={colors.statusPending} />
           <Text style={[styles.actionText, { color: colors.statusPending }]}>
@@ -932,6 +1069,8 @@ export default function ClaimDetailScreen() {
             styles.approveBtn,
             (pressed || acting) && { opacity: 0.7 },
           ]}
+          accessibilityRole="button"
+          accessibilityLabel="Approve claim"
         >
           {acting ? (
             <ActivityIndicator size="small" color={colors.statusApprove} />
@@ -969,7 +1108,7 @@ export default function ClaimDetailScreen() {
           void refreshClaim();
         }}
       />
-    </LinearGradient>
+    </View>
   );
 }
 
@@ -979,6 +1118,8 @@ function BackButton({ onPress }: { onPress: () => void }) {
       onPress={onPress}
       style={({ pressed }) => [styles.backBtn, pressed && { opacity: 0.6 }]}
       hitSlop={10}
+      accessibilityRole="button"
+      accessibilityLabel="Back"
     >
       <Ionicons name="chevron-back" size={24} color={colors.alabaster} />
       <Text style={styles.backText}>Back</Text>
@@ -1246,6 +1387,105 @@ const styles = StyleSheet.create({
     fontFamily: fonts.mono.regular,
     fontSize: 11,
     color: colors.slate,
+  },
+  conflictCard: {
+    backgroundColor: colors.surfaceCard,
+    borderWidth: 1,
+    borderColor: 'rgba(245, 158, 11, 0.4)',
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  conflictHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: spacing.sm,
+  },
+  conflictHeaderText: {
+    fontFamily: fonts.archivo.semibold,
+    fontSize: 12,
+    color: colors.statusPending,
+    letterSpacing: 0.3,
+  },
+  conflictRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    borderTopColor: colors.glassBorder,
+  },
+  conflictValue: {
+    flex: 1,
+    fontFamily: fonts.archivo.regular,
+    fontSize: 13,
+    color: colors.alabaster,
+  },
+  diffCard: {
+    backgroundColor: colors.surfaceCard,
+    borderWidth: 1,
+    borderColor: 'rgba(245, 158, 11, 0.3)',
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    gap: spacing.sm,
+  },
+  diffHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 2,
+  },
+  diffHeaderText: {
+    fontFamily: fonts.archivo.semibold,
+    fontSize: 11,
+    color: colors.statusPending,
+    letterSpacing: 0.5,
+  },
+  diffRow: {
+    gap: 2,
+  },
+  diffLabel: {
+    fontFamily: fonts.archivo.bold,
+    fontSize: 9,
+    color: colors.slate,
+    letterSpacing: 1,
+  },
+  diffOld: {
+    fontFamily: fonts.archivo.regular,
+    fontSize: 13,
+    color: colors.statusReject,
+    backgroundColor: 'rgba(239, 68, 68, 0.08)',
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: radius.sm,
+    overflow: 'hidden',
+  },
+  diffNew: {
+    fontFamily: fonts.archivo.regular,
+    fontSize: 13,
+    color: colors.statusApprove,
+    backgroundColor: 'rgba(34, 197, 94, 0.08)',
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: radius.sm,
+    overflow: 'hidden',
+  },
+  staleBadge: {
+    marginLeft: spacing.xs,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.statusPending,
+    backgroundColor: 'rgba(245, 158, 11, 0.12)',
+  },
+  staleBadgeText: {
+    fontFamily: fonts.archivo.bold,
+    fontSize: 9,
+    color: colors.statusPending,
+    letterSpacing: 0.8,
   },
   entityLink: {
     fontFamily: fonts.archivo.bold,

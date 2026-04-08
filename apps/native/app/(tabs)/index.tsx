@@ -8,7 +8,6 @@ import {
   Pressable,
   ActivityIndicator,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -30,7 +29,7 @@ import { useGraphHealth } from '../../src/hooks/useGraphHealth';
 import { useWatchlist, type WatchedEntity } from '../../src/hooks/useWatchlist';
 import { useClaimSparkline } from '../../src/hooks/useClaimSparkline';
 import { Sparkline } from '../../src/components/Sparkline';
-import { BackgroundCanvas } from '../../src/components/BackgroundCanvas';
+import { ScreenCanvas } from '../../src/components/ScreenCanvas';
 import { useOfflineSync } from '../../src/lib/OfflineSyncContext';
 import { usePulseDeltas } from '../../src/hooks/usePulseDeltas';
 import { usePushNotifications } from '../../src/hooks/usePushNotifications';
@@ -41,7 +40,6 @@ import { useBrandToast } from '../../src/components/BrandToast';
 import { PulseMetric } from '../../src/components/PulseMetric';
 import { GlassCard } from '../../src/components/GlassCard';
 import { SkeletonMetricCard } from '../../src/components/Skeleton';
-import { GlowSpot } from '../../src/components/GlowSpot';
 import { ScreenTransition } from '../../src/components/ScreenTransition';
 import { RetryCard } from '../../src/components/RetryCard';
 import { colors, fonts, spacing, radius, gradient } from '../../src/constants/brand';
@@ -397,14 +395,7 @@ export default function PulseScreen() {
   return (
     <ScreenTransition>
     <View style={styles.container}>
-      <BackgroundCanvas />
-      {/* Atmospheric glow spots — behind metrics + status breakdown */}
-      {/* Layered breathing glows — two spots at different cycle durations
-          (4s and 5s) so they never sync, creating organic visual depth. */}
-      <GlowSpot size={520} opacity={0.016} top={insets.top + 40} left={-120} breathe cycleDuration={4000} />
-      <GlowSpot size={420} opacity={0.012} top={insets.top + 180} left={40} breathe cycleDuration={5000} />
-      <GlowSpot size={360} opacity={0.012} top={insets.top + 480} right={-100} breathe cycleDuration={4000} />
-      <GlowSpot size={300} opacity={0.01} top={insets.top + 560} right={60} breathe cycleDuration={5000} />
+      <ScreenCanvas />
 
       {/* Pull-down stats peek panel — hidden above the scroll area */}
       <Animated.View style={[peekStyles.panel, peekPanelStyle]} pointerEvents="none">

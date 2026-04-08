@@ -8,12 +8,12 @@ import {
   ActivityIndicator,
   RefreshControl,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import supabase from '../src/lib/supabase';
 import { GlowSpot } from '../src/components/GlowSpot';
+import { ScreenCanvas } from '../src/components/ScreenCanvas';
 import { colors, fonts, spacing, radius, gradient } from '../src/constants/brand';
 
 type NotificationKind =
@@ -126,6 +126,7 @@ export default function NotificationsScreen() {
       // Governance events from audit_log (last 50) — approvals, rejections,
       // auto-approvals, corrections, etc.
       const { data: auditRows } = await supabase
+        .schema('intel')
         .from('audit_log')
         .select('id, action_type, entity_table, entity_id, created_at, metadata')
         .order('created_at', { ascending: false })
@@ -133,6 +134,7 @@ export default function NotificationsScreen() {
 
       // Recently ingested claims — last 20 drafts/pending for context.
       const { data: claimRows } = await supabase
+        .schema('intel')
         .from('claims')
         .select(
           'id, predicate, status, created_at, subject_entity:entities!claims_subject_entity_id_fkey(canonical_name)'
@@ -142,6 +144,7 @@ export default function NotificationsScreen() {
 
       // Recently flagged/failing sources.
       const { data: sourceRows } = await supabase
+        .schema('intel')
         .from('sources')
         .select('id, source_name, trust_score, updated_at')
         .lt('trust_score', 5)
@@ -150,6 +153,7 @@ export default function NotificationsScreen() {
 
       // Completed research rows.
       const { data: researchRows } = await supabase
+        .schema('intel')
         .from('research_queue')
         .select('id, topic, status, completed_at, updated_at')
         .eq('status', 'completed')
@@ -240,19 +244,15 @@ export default function NotificationsScreen() {
   const grouped = useMemo(() => groupByDay(items), [items]);
 
   return (
-    <LinearGradient
-      colors={[gradient.background[0], gradient.background[1]]}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 0.5, y: 1 }}
-      style={styles.container}
-    >
-      <GlowSpot size={420} opacity={0.06} top={insets.top + 40} right={-100} breathe />
-
+    <View style={styles.container}>
+      <ScreenCanvas />
       <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
         <Pressable
           onPress={() => router.back()}
           style={({ pressed }) => [styles.backBtn, pressed && { opacity: 0.6 }]}
           hitSlop={10}
+          accessibilityRole="button"
+          accessibilityLabel="Back"
         >
           <Ionicons name="chevron-back" size={24} color={colors.alabaster} />
           <Text style={styles.backText}>Pulse</Text>
@@ -344,7 +344,7 @@ export default function NotificationsScreen() {
           ))}
         </ScrollView>
       )}
-    </LinearGradient>
+    </View>
   );
 }
 
