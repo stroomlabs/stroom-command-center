@@ -1,22 +1,21 @@
 import React from 'react';
-import { View, StyleSheet, Image } from 'react-native';
+import { View, StyleSheet, Image, useWindowDimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { GlowSpot } from './GlowSpot';
 import { useCurrentVertical } from '../hooks/useCurrentVertical';
 
 // Universal full-screen background. Mounts at the root of every screen as
-// the single source of truth for atmosphere — replaces all per-screen
-// BackgroundCanvas + GlowSpot stacks. Renders absolutely-positioned with
-// zIndex -1 and pointer-events disabled so it sits fully behind every
+// the single source of truth for atmosphere. Renders absolutely-positioned
+// with zIndex -1 and pointer-events disabled so it sits fully behind every
 // other element without intercepting touches.
 //
 // Composition (back → front):
 //   1. 5-stop diagonal gradient (the cinematic base)
 //   2. Silver atmospheric wash (bottom-left to top-right)
 //   3. Apex flare (warm secondary wash)
-//   4. Noise grain (4% opacity, optional asset)
-//   5. Four staggered breathing teal glow spots at the 28.5 reduced
-//      amplitude (0.010 → 0.016)
+//   4. Noise grain (4% opacity, tiled 128x128 PNG)
+//
+// Static — no breathing glows, no animation, no radial pulses. The
+// background is the canvas; the foreground does the moving.
 //
 // The deepest gradient stop is shifted 2% toward the active vertical's
 // accent color so each vertical feels distinct without breaking the
@@ -52,6 +51,13 @@ export function ScreenCanvas({ vertical }: ScreenCanvasProps = {}) {
   const active = vertical ?? stored;
   const tint = active ? VERTICAL_TINT[active] : null;
 
+  // useWindowDimensions gives explicit pixel width/height that updates on
+  // rotation. Image with resizeMode="repeat" only tiles reliably when given
+  // concrete dimensions — StyleSheet.absoluteFill (right/bottom: 0) was
+  // causing the noise PNG to render once at native size in the top-left
+  // corner instead of tiling. Explicit width/height fixes the seam.
+  const { width, height } = useWindowDimensions();
+
   // Mix the deepest stop ('#050506') 2% toward the vertical accent.
   // Stays barely perceptible — visible only side-by-side.
   const deepStop = mixHex('#050506', tint, 0.02);
@@ -83,48 +89,22 @@ export function ScreenCanvas({ vertical }: ScreenCanvasProps = {}) {
         style={StyleSheet.absoluteFill}
       />
 
-      {/* Layer 4 — grain texture */}
+      {/* Layer 4 — grain texture (explicit dimensions so resizeMode="repeat"
+          tiles the 128x128 PNG seamlessly across the full screen) */}
       {noiseSource && (
         <Image
           source={noiseSource}
           resizeMode="repeat"
-          style={[StyleSheet.absoluteFill, styles.grain]}
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width,
+            height,
+            opacity: 0.04,
+          }}
         />
       )}
-
-      {/* Layer 5 — four staggered breathing teal glows at 28.5 amplitude */}
-      <GlowSpot
-        size={520}
-        opacity={0.016}
-        top={80}
-        left={-120}
-        breathe
-        cycleDuration={4000}
-      />
-      <GlowSpot
-        size={420}
-        opacity={0.012}
-        top={220}
-        left={40}
-        breathe
-        cycleDuration={5000}
-      />
-      <GlowSpot
-        size={360}
-        opacity={0.012}
-        top={520}
-        right={-100}
-        breathe
-        cycleDuration={4000}
-      />
-      <GlowSpot
-        size={300}
-        opacity={0.010}
-        top={600}
-        right={60}
-        breathe
-        cycleDuration={5000}
-      />
     </View>
   );
 }
@@ -164,8 +144,5 @@ const styles = StyleSheet.create({
   canvas: {
     ...StyleSheet.absoluteFillObject,
     zIndex: -1,
-  },
-  grain: {
-    opacity: 0.04,
   },
 });

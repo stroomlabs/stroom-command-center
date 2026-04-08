@@ -18,7 +18,6 @@ import { usePulseContext } from '../../src/lib/PulseContext';
 import { useGraphHealth } from '../../src/hooks/useGraphHealth';
 import { useQueueClaims } from '../../src/hooks/useQueueClaims';
 import { useSourcesList, pickUnhealthySources } from '../../src/hooks/useSourcesList';
-import { GlowSpot } from '../../src/components/GlowSpot';
 import { ScreenTransition } from '../../src/components/ScreenTransition';
 import { useBrandAlert } from '../../src/components/BrandAlert';
 import { EmptyState } from '../../src/components/EmptyState';

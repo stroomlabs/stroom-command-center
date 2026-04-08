@@ -1,7 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { GlowSpot } from './GlowSpot';
 import {
   useBiometricLock,
   biometricLabel,
@@ -60,7 +59,6 @@ export function BiometricGate({ children, ready }: BiometricGateProps) {
 
   return (
     <View style={styles.container}>
-      <GlowSpot size={520} opacity={0.016} style={styles.halo} breathe />
       <View style={styles.center}>
         <View style={styles.iconCircle}>
           <Ionicons

@@ -7,7 +7,6 @@ import Animated, {
   Easing,
   runOnJS,
 } from 'react-native-reanimated';
-import { GlowSpot } from './GlowSpot';
 import { colors, fonts } from '../constants/brand';
 
 interface BrandSplashProps {
@@ -61,8 +60,6 @@ export function BrandSplash({ onDone, ready }: BrandSplashProps) {
       pointerEvents={ready ? 'none' : 'auto'}
       style={[StyleSheet.absoluteFill, styles.container, animatedStyle]}
     >
-      <GlowSpot size={560} opacity={0.02} style={styles.haloOuter} breathe />
-      <GlowSpot size={320} opacity={0.024} style={styles.haloInner} breathe />
       <View style={styles.center}>
         <Text style={styles.logoMark}>S</Text>
         <Text style={styles.wordmark}>STROOM</Text>

@@ -12,7 +12,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import supabase from '../src/lib/supabase';
-import { GlowSpot } from '../src/components/GlowSpot';
 import { ScreenCanvas } from '../src/components/ScreenCanvas';
 import { colors, fonts, spacing, radius, gradient } from '../src/constants/brand';
 

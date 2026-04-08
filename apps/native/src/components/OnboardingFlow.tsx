@@ -19,7 +19,6 @@ import Animated, {
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { usePulseData } from '../hooks/usePulseData';
-import { GlowSpot } from './GlowSpot';
 import { colors, fonts, spacing, radius, gradient } from '../constants/brand';
 
 interface OnboardingFlowProps {
@@ -77,21 +76,6 @@ export function OnboardingFlow({ visible, onComplete }: OnboardingFlowProps) {
         end={{ x: 0.5, y: 1 }}
         style={styles.container}
       >
-        <GlowSpot
-          size={560}
-          opacity={0.016}
-          top={insets.top + 60}
-          left={-120}
-          breathe
-        />
-        <GlowSpot
-          size={360}
-          opacity={0.012}
-          bottom={insets.bottom + 80}
-          right={-80}
-          breathe
-        />
-
         <View style={[styles.inner, { paddingTop: insets.top + spacing.xxl, paddingBottom: insets.bottom + spacing.xl }]}>
           {/* Step indicator */}
           <View style={styles.indicatorRow}>

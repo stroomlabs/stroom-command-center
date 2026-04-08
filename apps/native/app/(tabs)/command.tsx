@@ -41,7 +41,6 @@ import { useBrandAlert } from '../../src/components/BrandAlert';
 import { useBrandToast } from '../../src/components/BrandToast';
 import { usePulseContext } from '../../src/lib/PulseContext';
 import { useOfflineSync } from '../../src/lib/OfflineSyncContext';
-import { GlowSpot } from '../../src/components/GlowSpot';
 import { ScreenCanvas } from '../../src/components/ScreenCanvas';
 import { ScreenTransition } from '../../src/components/ScreenTransition';
 import type { CommandSession } from '@stroom/types';

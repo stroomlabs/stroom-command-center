@@ -36,7 +36,6 @@ import {
   useFreshnessMap,
   isClaimStale,
 } from '../../src/hooks/useFreshnessMap';
-import { GlowSpot } from '../../src/components/GlowSpot';
 import { useBrandToast } from '../../src/components/BrandToast';
 import { useOfflineSync } from '../../src/lib/OfflineSyncContext';
 import Slider from '@react-native-community/slider';
