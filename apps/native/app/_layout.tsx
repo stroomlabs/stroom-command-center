@@ -16,6 +16,9 @@ import { BiometricGate } from '../src/components/BiometricGate';
 import { OnboardingFlow } from '../src/components/OnboardingFlow';
 import { useOnboarding } from '../src/hooks/useOnboarding';
 import { PulseProvider } from '../src/lib/PulseContext';
+import { OfflineSyncProvider } from '../src/lib/OfflineSyncContext';
+import { ShakeReportProvider } from '../src/lib/ShakeReportContext';
+import { GestureHintsOverlay } from '../src/components/GestureHintsOverlay';
 import { colors, gradient } from '../src/constants/brand';
 
 // Keep splash visible while loading
@@ -82,7 +85,7 @@ export default function RootLayout() {
           IBMPlexMono_600SemiBold: require('../assets/fonts/IBMPlexMono-SemiBold.ttf'),
         });
       } catch (e) {
-        console.warn('Font loading failed, falling back to system fonts:', e);
+        if (__DEV__) console.warn('Font loading failed, falling back to system fonts:', e);
       } finally {
         setFontsLoaded(true);
         // Hand off from the native expo-splash-screen (which is covering the
@@ -105,9 +108,11 @@ export default function RootLayout() {
       <AuthProvider>
         <BrandAlertProvider>
         <BrandToastProvider>
+        <OfflineSyncProvider>
         <StatusBar style="light" />
         <RouteGuard>
           <PulseProvider>
+          <ShakeReportProvider>
           <ErrorBoundary>
           <Stack
           screenOptions={{
@@ -126,6 +131,7 @@ export default function RootLayout() {
           <Stack.Screen name="research" />
           <Stack.Screen name="more" />
           <Stack.Screen name="notification-prefs" />
+          <Stack.Screen name="dismissed-merges" />
           <Stack.Screen name="source/[id]" />
           <Stack.Screen name="sources" />
           <Stack.Screen name="predicate/[key]" />
@@ -137,9 +143,12 @@ export default function RootLayout() {
           <Stack.Screen name="notifications" />
         </Stack>
           </ErrorBoundary>
+          </ShakeReportProvider>
           </PulseProvider>
         </RouteGuard>
         <OfflineBanner />
+        <GestureHintsOverlay />
+        </OfflineSyncProvider>
         </BrandToastProvider>
         </BrandAlertProvider>
       </AuthProvider>

@@ -19,6 +19,7 @@ import * as Haptics from 'expo-haptics';
 import { useAuth } from '../src/lib/auth';
 import { useGovernanceStats } from '../src/hooks/useGovernanceStats';
 import { useTeam } from '../src/hooks/useTeam';
+import { usePulseContext } from '../src/lib/PulseContext';
 import {
   useBiometricLock,
   biometricLabel,
@@ -33,6 +34,7 @@ export default function MoreScreen() {
   const router = useRouter();
   const { user, signOut } = useAuth();
   const { stats, loading: statsLoading } = useGovernanceStats();
+  const { data: pulse } = usePulseContext();
   const { alert } = useBrandAlert();
   const { show: showToast } = useBrandToast();
   const { members, myInviteCode, generateInvite, refresh: refreshTeam } =
@@ -75,6 +77,7 @@ export default function MoreScreen() {
     (async () => {
       try {
         const { error } = await supabase
+          .schema('intel')
           .from('entities')
           .select('id', { count: 'exact', head: true })
           .limit(1);
@@ -125,6 +128,7 @@ export default function MoreScreen() {
     setExporting(true);
     try {
       const { data, error } = await supabase
+        .schema('intel')
         .from('command_sessions')
         .select('*')
         .order('updated_at', { ascending: false });
@@ -148,6 +152,144 @@ export default function MoreScreen() {
       setExporting(false);
     }
   }, [exporting, appVersion, user, showToast]);
+
+  const [exportingSummary, setExportingSummary] = useState(false);
+
+  const handleExportGraphSummary = useCallback(async () => {
+    if (exportingSummary) return;
+    setExportingSummary(true);
+    try {
+      // Pull top 5 domains by claim count from the vertical breakdown RPC.
+      // If the call fails we still produce a summary — the domains section
+      // just becomes "(unavailable)".
+      let topDomains: Array<{ domain: string; claim_count: number }> = [];
+      try {
+        const { data } = await supabase.schema('intel').rpc('get_vertical_breakdown');
+        if (Array.isArray(data)) {
+          topDomains = (data as Array<{ domain: string; claim_count: number }>)
+            .sort((a, b) => (b.claim_count ?? 0) - (a.claim_count ?? 0))
+            .slice(0, 5);
+        }
+      } catch {
+        // Swallow — topDomains stays empty and we render "(unavailable)".
+      }
+
+      // Count distinct predicates via a head count on the predicates table.
+      let predicateCount: number | null = null;
+      try {
+        const { count } = await supabase
+          .schema('intel')
+          .from('predicates')
+          .select('predicate_key', { count: 'exact', head: true });
+        predicateCount = count ?? null;
+      } catch {
+        predicateCount = null;
+      }
+
+      const lines = [
+        'STROOM COMMAND CENTER — GRAPH SUMMARY',
+        `Generated: ${new Date().toLocaleString()}`,
+        `App version: v${appVersion}`,
+        '',
+        '── Graph totals ──',
+        `Claims:     ${(pulse?.totalClaims ?? 0).toLocaleString()}`,
+        `Entities:   ${(pulse?.totalEntities ?? 0).toLocaleString()}`,
+        `Sources:    ${(pulse?.totalSources ?? 0).toLocaleString()}`,
+        `Predicates: ${predicateCount !== null ? predicateCount.toLocaleString() : '(unavailable)'}`,
+        '',
+        '── Governance ──',
+        `Queue depth:     ${pulse?.queueDepth ?? 0}`,
+        `Correction rate: ${((pulse?.correctionRate ?? 0) * 100).toFixed(1)}%`,
+        `Research active: ${pulse?.researchActive ?? 0}`,
+        `Claims today:    ${pulse?.claimsToday ?? 0}`,
+        '',
+        '── Top 5 domains by claim count ──',
+        topDomains.length > 0
+          ? topDomains
+              .map(
+                (d, i) =>
+                  `${i + 1}. ${d.domain} — ${(d.claim_count ?? 0).toLocaleString()}`
+              )
+              .join('\n')
+          : '(unavailable)',
+      ];
+      await Clipboard.setStringAsync(lines.join('\n'));
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      showToast('Copied to clipboard', 'success');
+    } catch (e: any) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      showToast(e?.message ?? 'Export failed', 'error');
+    } finally {
+      setExportingSummary(false);
+    }
+  }, [exportingSummary, appVersion, pulse, showToast]);
+
+  const handleClearAllSessions = useCallback(() => {
+    alert(
+      'Clear all sessions?',
+      'This permanently deletes every Command chat thread stored in the graph. This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete All',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              // Supabase requires a WHERE clause on delete; filter on a
+              // column that's always populated to clear every row.
+              const { error } = await supabase
+                .schema('intel')
+                .from('command_sessions')
+                .delete()
+                .not('id', 'is', null);
+              if (error) throw error;
+              Haptics.notificationAsync(
+                Haptics.NotificationFeedbackType.Success
+              );
+              showToast('All sessions cleared', 'success');
+            } catch (e: any) {
+              Haptics.notificationAsync(
+                Haptics.NotificationFeedbackType.Error
+              );
+              showToast(e?.message ?? 'Clear failed', 'error');
+            }
+          },
+        },
+      ]
+    );
+  }, [alert, showToast]);
+
+  const handleResetPreferences = useCallback(() => {
+    alert(
+      'Reset preferences?',
+      'Clears all locally stored preferences. This will reset your biometric lock setting, last-visit timestamps, onboarding state, and Command session id. You will stay signed in.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Reset',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const keys = await AsyncStorage.getAllKeys();
+              // Skip auth tokens so the user stays signed in.
+              const targets = keys.filter(
+                (k) => !k.startsWith('sb-') && !k.includes('auth-token')
+              );
+              if (targets.length > 0) {
+                await AsyncStorage.multiRemove(targets);
+              }
+              Haptics.notificationAsync(
+                Haptics.NotificationFeedbackType.Success
+              );
+              showToast(`Reset ${targets.length} preferences`, 'success');
+            } catch (e: any) {
+              showToast(e?.message ?? 'Reset failed', 'error');
+            }
+          },
+        },
+      ]
+    );
+  }, [alert, showToast]);
 
   const handleSignOut = () => {
     alert('Sign Out', 'End your Command Center session?', [
@@ -174,11 +316,78 @@ export default function MoreScreen() {
           onPress={() => router.back()}
           style={({ pressed }) => [styles.backBtn, pressed && { opacity: 0.6 }]}
           hitSlop={10}
+          accessibilityRole="button"
+          accessibilityLabel="Back"
         >
           <Ionicons name="chevron-back" size={24} color={colors.alabaster} />
           <Text style={styles.backText}>Command</Text>
         </Pressable>
         <Text style={styles.headerTitle}>More</Text>
+
+        {/* About — version, build, backend connection, and graph totals.
+            Sits at the top of the screen so operators can confirm what
+            they're looking at before they touch anything else. */}
+        <View style={styles.aboutCard}>
+          <Text style={styles.sectionLabel}>ABOUT</Text>
+          <View style={styles.aboutRow}>
+            <Text style={styles.aboutKey}>Version</Text>
+            <Text style={styles.aboutValue}>v{appVersion}</Text>
+          </View>
+          <View style={styles.aboutRow}>
+            <Text style={styles.aboutKey}>Build</Text>
+            <Text style={styles.aboutValue}>
+              {(Constants.expoConfig as any)?.ios?.buildNumber ??
+                (Constants.expoConfig as any)?.android?.versionCode ??
+                'dev'}
+            </Text>
+          </View>
+          <View style={styles.aboutRow}>
+            <Text style={styles.aboutKey}>Supabase</Text>
+            <View style={styles.aboutStatusRow}>
+              <View
+                style={[
+                  styles.connectionDot,
+                  {
+                    backgroundColor:
+                      connected === null
+                        ? colors.slate
+                        : connected
+                        ? colors.statusApprove
+                        : colors.statusReject,
+                  },
+                ]}
+              />
+              <Text style={styles.aboutValue}>
+                {connected === null
+                  ? 'Checking…'
+                  : connected
+                  ? 'Connected'
+                  : 'Unreachable'}
+              </Text>
+            </View>
+          </View>
+          <View style={styles.aboutDivider} />
+          <View style={styles.aboutGraphRow}>
+            <View style={styles.aboutGraphCell}>
+              <Text style={styles.aboutGraphValue}>
+                {(pulse?.totalClaims ?? 0).toLocaleString()}
+              </Text>
+              <Text style={styles.aboutGraphLabel}>CLAIMS</Text>
+            </View>
+            <View style={styles.aboutGraphCell}>
+              <Text style={styles.aboutGraphValue}>
+                {(pulse?.totalEntities ?? 0).toLocaleString()}
+              </Text>
+              <Text style={styles.aboutGraphLabel}>ENTITIES</Text>
+            </View>
+            <View style={styles.aboutGraphCell}>
+              <Text style={styles.aboutGraphValue}>
+                {(pulse?.totalSources ?? 0).toLocaleString()}
+              </Text>
+              <Text style={styles.aboutGraphLabel}>SOURCES</Text>
+            </View>
+          </View>
+        </View>
 
         {/* Quick Stats */}
         <View style={styles.statsCard}>
@@ -319,6 +528,8 @@ export default function MoreScreen() {
               trackColor={{ false: colors.surfaceCard, true: colors.teal }}
               thumbColor={colors.alabaster}
               ios_backgroundColor={colors.surfaceCard}
+              accessibilityRole="switch"
+              accessibilityLabel={`Require Face ID: ${biometricEnabled ? 'on' : 'off'}`}
             />
           </View>
         )}
@@ -340,6 +551,11 @@ export default function MoreScreen() {
             label="Notification Prefs"
             onPress={() => router.push('/notification-prefs' as any)}
           />
+          <MenuItem
+            icon="git-compare-outline"
+            label="Dismissed merges"
+            onPress={() => router.push('/dismissed-merges' as any)}
+          />
           <MenuItem icon="settings-outline" label="Policy Config" disabled />
           <MenuItem
             icon="trash-outline"
@@ -352,6 +568,76 @@ export default function MoreScreen() {
             onPress={exporting ? undefined : handleExport}
             disabled={exporting}
           />
+        </View>
+
+        {/* Tools — non-destructive export helpers. */}
+        <Text style={styles.sectionHeader}>TOOLS</Text>
+        <View style={styles.menu}>
+          <MenuItem
+            icon={
+              exportingSummary ? 'hourglass-outline' : 'clipboard-outline'
+            }
+            label={
+              exportingSummary
+                ? 'Copying…'
+                : 'Export Graph Summary'
+            }
+            onPress={exportingSummary ? undefined : handleExportGraphSummary}
+            disabled={exportingSummary}
+          />
+        </View>
+
+        {/* Danger Zone — destructive operations. Both actions require
+            confirmation and show a red left border on the section card. */}
+        <Text style={[styles.sectionHeader, styles.dangerHeader]}>
+          DANGER ZONE
+        </Text>
+        <View style={styles.dangerCard}>
+          <Pressable
+            onPress={handleClearAllSessions}
+            style={({ pressed }) => [
+              styles.dangerItem,
+              pressed && styles.dangerPressed,
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel="Clear all command sessions"
+          >
+            <Ionicons
+              name="chatbubbles-outline"
+              size={18}
+              color={colors.statusReject}
+            />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.dangerLabel}>Clear All Sessions</Text>
+              <Text style={styles.dangerSub}>
+                Delete every Command chat thread
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={colors.slate} />
+          </Pressable>
+          <View style={styles.dangerDivider} />
+          <Pressable
+            onPress={handleResetPreferences}
+            style={({ pressed }) => [
+              styles.dangerItem,
+              pressed && styles.dangerPressed,
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel="Reset all preferences"
+          >
+            <Ionicons
+              name="refresh-circle-outline"
+              size={18}
+              color={colors.statusReject}
+            />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.dangerLabel}>Reset Preferences</Text>
+              <Text style={styles.dangerSub}>
+                Clear biometric lock & local settings
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={colors.slate} />
+          </Pressable>
         </View>
 
         {/* App info */}
@@ -746,5 +1032,112 @@ const styles = StyleSheet.create({
     fontFamily: fonts.archivo.semibold,
     fontSize: 14,
     color: colors.statusReject,
+  },
+  aboutCard: {
+    backgroundColor: colors.surfaceElevated,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  sectionLabel: {
+    fontFamily: fonts.archivo.medium,
+    fontSize: 10,
+    color: colors.slate,
+    letterSpacing: 1.2,
+    marginBottom: spacing.sm,
+  },
+  aboutRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 4,
+  },
+  aboutKey: {
+    fontFamily: fonts.archivo.medium,
+    fontSize: 12,
+    color: colors.silver,
+  },
+  aboutValue: {
+    fontFamily: fonts.mono.regular,
+    fontSize: 12,
+    color: colors.alabaster,
+  },
+  aboutStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  aboutDivider: {
+    height: 1,
+    backgroundColor: colors.glassBorder,
+    marginVertical: spacing.sm,
+  },
+  aboutGraphRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  aboutGraphCell: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 2,
+  },
+  aboutGraphValue: {
+    fontFamily: fonts.mono.semibold,
+    fontSize: 16,
+    color: colors.teal,
+    fontVariant: ['tabular-nums'],
+  },
+  aboutGraphLabel: {
+    fontFamily: fonts.archivo.medium,
+    fontSize: 9,
+    color: colors.slate,
+    letterSpacing: 0.9,
+  },
+  sectionHeader: {
+    fontFamily: fonts.archivo.medium,
+    fontSize: 10,
+    color: colors.slate,
+    letterSpacing: 1.2,
+    marginBottom: spacing.sm,
+    marginTop: spacing.md,
+    paddingHorizontal: 2,
+  },
+  dangerHeader: {
+    color: colors.statusReject,
+  },
+  dangerCard: {
+    backgroundColor: colors.surfaceElevated,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.25)',
+    marginBottom: spacing.xl,
+    overflow: 'hidden',
+  },
+  dangerItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: 14,
+    paddingHorizontal: spacing.md,
+  },
+  dangerPressed: {
+    backgroundColor: 'rgba(239, 68, 68, 0.06)',
+  },
+  dangerDivider: {
+    height: 1,
+    backgroundColor: 'rgba(239, 68, 68, 0.18)',
+  },
+  dangerLabel: {
+    fontFamily: fonts.archivo.semibold,
+    fontSize: 14,
+    color: colors.statusReject,
+  },
+  dangerSub: {
+    fontFamily: fonts.mono.regular,
+    fontSize: 10,
+    color: colors.slate,
+    marginTop: 2,
   },
 });

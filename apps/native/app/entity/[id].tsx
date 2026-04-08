@@ -14,16 +14,35 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useEntityDetail } from '../../src/hooks/useEntityDetail';
+import { useExploreSearch } from '../../src/hooks/useExploreSearch';
+import { HighlightedText } from '../../src/components/HighlightedText';
 import { useSimilarEntities } from '../../src/hooks/useSimilarEntities';
 import { useEntityActivity } from '../../src/hooks/useEntityActivity';
 import { useRecentlyViewed } from '../../src/hooks/useRecentlyViewed';
+import { useFreshnessMap, isClaimStale } from '../../src/hooks/useFreshnessMap';
+import { useClaimSparkline } from '../../src/hooks/useClaimSparkline';
+import { Sparkline } from '../../src/components/Sparkline';
+import { useWatchlist } from '../../src/hooks/useWatchlist';
 import { EntityMiniMap } from '../../src/components/EntityMiniMap';
 import { RetryCard } from '../../src/components/RetryCard';
 import { ClaimListItem } from '../../src/components/ClaimListItem';
 import { EntityCompareSheet } from '../../src/components/EntityCompareSheet';
 import { EntityEditSheet } from '../../src/components/EntityEditSheet';
+import { SkeletonDetail } from '../../src/components/Skeleton';
+import { useBrandAlert } from '../../src/components/BrandAlert';
+import { useBrandToast } from '../../src/components/BrandToast';
+import supabase from '../../src/lib/supabase';
+import { mergeEntities, type EntityClaim, type EntityConnection } from '@stroom/supabase';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  useAnimatedScrollHandler,
+  interpolate,
+  Extrapolation,
+  FadeOutRight,
+} from 'react-native-reanimated';
+import { ActionSheet, type ActionSheetAction } from '../../src/components/ActionSheet';
 import * as Haptics from 'expo-haptics';
-import type { EntityClaim, EntityConnection } from '@stroom/supabase';
 import type { ClaimStatus } from '@stroom/types';
 import { colors, fonts, spacing, radius, gradient } from '../../src/constants/brand';
 
@@ -43,7 +62,7 @@ export default function EntityDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { entity, claims, connections, loading, error, refresh } =
     useEntityDetail(id);
-  const { similar } = useSimilarEntities(
+  const { similar, dismissLocal } = useSimilarEntities(
     entity?.id,
     entity?.canonical_name ?? entity?.name
   );
@@ -60,12 +79,152 @@ export default function EntityDetailScreen() {
       type: entity.entity_type ?? entity.entity_class ?? null,
     });
   }, [entity?.id, entity?.canonical_name, entity?.name, entity?.entity_type, recordRecent]);
+  const { isWatched, toggle: toggleWatch } = useWatchlist();
+  const sparklineData = useClaimSparkline(entity?.id);
+  const watching = isWatched(entity?.id ?? '');
+
   const [compareId, setCompareId] = useState<string | null>(null);
+  const [compareSearchOpen, setCompareSearchOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
+  const [mergingId, setMergingId] = useState<string | null>(null);
+  const [dismissTarget, setDismissTarget] = useState<{
+    id: string;
+    canonical_name: string | null;
+  } | null>(null);
+  const { alert } = useBrandAlert();
+  const { show: showToast } = useBrandToast();
+
+  const handleDismissDuplicate = useCallback(
+    async (
+      duplicate: { id: string; canonical_name: string | null },
+      reason: 'not_duplicate' | 'similar_name_different_entity' | 'decide_later'
+    ) => {
+      if (!entity) return;
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      // Optimistically remove from local state — Reanimated's exiting layout
+      // animation handles the FadeOutRight transition on unmount.
+      dismissLocal(duplicate.id);
+      try {
+        const { error: rpcError } = await supabase
+          .schema('intel')
+          .rpc('dismiss_merge_suggestion', {
+            entity_a_id: entity.id,
+            entity_b_id: duplicate.id,
+            reason,
+            notes: null,
+          });
+        if (rpcError) throw rpcError;
+        showToast(
+          'Dismissed. Tap Settings → Dismissed merges to undo.',
+          'success'
+        );
+      } catch (e: any) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        showToast(e?.message ?? 'Dismiss failed', 'error');
+        // Refetch so the row reappears if the RPC failed.
+        await refresh();
+      }
+    },
+    [entity, dismissLocal, showToast, refresh]
+  );
+
+  const dismissActions: ActionSheetAction[] = React.useMemo(() => {
+    if (!dismissTarget) return [];
+    return [
+      {
+        label: 'Not a duplicate',
+        icon: 'close-circle-outline',
+        tone: 'destructive',
+        onPress: () => handleDismissDuplicate(dismissTarget, 'not_duplicate'),
+      },
+      {
+        label: 'Different entity, similar name',
+        icon: 'people-outline',
+        tone: 'default',
+        onPress: () =>
+          handleDismissDuplicate(
+            dismissTarget,
+            'similar_name_different_entity'
+          ),
+      },
+      {
+        label: 'Decide later — remind me in 30 days',
+        icon: 'time-outline',
+        tone: 'default',
+        onPress: () => handleDismissDuplicate(dismissTarget, 'decide_later'),
+      },
+    ];
+  }, [dismissTarget, handleDismissDuplicate]);
+
+  const handleMerge = useCallback(
+    (duplicate: { id: string; canonical_name: string | null }) => {
+      if (!entity) return;
+      const targetName = entity.canonical_name ?? entity.name ?? 'this entity';
+      const dupName = duplicate.canonical_name ?? 'the duplicate entity';
+      // Count claims attached to the duplicate so we can show a preview.
+      (async () => {
+        const { count } = await supabase
+          .schema('intel')
+          .from('claims')
+          .select('id', { count: 'exact', head: true })
+          .eq('subject_entity_id', duplicate.id);
+        const n = count ?? 0;
+        alert(
+          'Merge into this entity?',
+          `${n} claim${n === 1 ? '' : 's'} will be reassigned from ${dupName} to ${targetName}. The duplicate entity will be archived.`,
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Merge',
+              style: 'destructive',
+              onPress: async () => {
+                setMergingId(duplicate.id);
+                try {
+                  const moved = await mergeEntities(supabase, {
+                    targetEntityId: entity.id,
+                    duplicateEntityId: duplicate.id,
+                  });
+                  Haptics.notificationAsync(
+                    Haptics.NotificationFeedbackType.Success
+                  );
+                  showToast(
+                    `Merged ${moved} claim${moved === 1 ? '' : 's'} from ${dupName}`,
+                    'success'
+                  );
+                  await refresh();
+                } catch (e: any) {
+                  Haptics.notificationAsync(
+                    Haptics.NotificationFeedbackType.Error
+                  );
+                  showToast(e?.message ?? 'Merge failed', 'error');
+                } finally {
+                  setMergingId(null);
+                }
+              },
+            },
+          ]
+        );
+      })();
+    },
+    [entity, alert, showToast, refresh]
+  );
   const [viewMode, setViewMode] = useState<'list' | 'timeline'>('list');
   const [filter, setFilter] = useState<StatusFilter>('all');
   const [refreshing, setRefreshing] = useState(false);
   const flatListRef = React.useRef<FlatList>(null);
+
+  // Parallax scroll tracking — header moves at 70% of scroll speed
+  const scrollY = useSharedValue(0);
+  const scrollHandler = useAnimatedScrollHandler({
+    onScroll: (e) => {
+      scrollY.value = e.contentOffset.y;
+    },
+  });
+  const headerParallaxStyle = useAnimatedStyle(() => {
+    const ty = interpolate(scrollY.value, [0, 200], [0, 60], Extrapolation.CLAMP);
+    const opacity = interpolate(scrollY.value, [0, 200], [1, 0.85], Extrapolation.CLAMP);
+    return { transform: [{ translateY: ty }], opacity };
+  });
   const coverageOffsetRef = React.useRef<number>(0);
 
   const buildResearchPrompt = useCallback(() => {
@@ -126,40 +285,123 @@ export default function EntityDetailScreen() {
     setRefreshing(false);
   }, [refresh]);
 
-  const filtered =
-    filter === 'all'
-      ? claims
-      : claims.filter((c) => c.status === (filter as ClaimStatus));
+  // Top-predicate drill-down filter — set by tapping a row in the Top
+  // Predicates section. Tapping the same row again clears it. This stacks
+  // with the status filter chips above.
+  const [predicateFilter, setPredicateFilter] = useState<string | null>(null);
 
-  // Sorted by created_at descending for the timeline view
+  // Freshness map for stale-claim detection. Cached at the module level so
+  // this only fires the network call once per app session.
+  const freshnessMap = useFreshnessMap();
+  const staleCount = React.useMemo(() => {
+    if (!freshnessMap) return 0;
+    let count = 0;
+    for (const c of claims) {
+      if (isClaimStale(c.created_at, c.predicate, freshnessMap)) count++;
+    }
+    return count;
+  }, [claims, freshnessMap]);
+
+  const filtered = React.useMemo(() => {
+    let rows =
+      filter === 'all'
+        ? claims
+        : claims.filter((c) => c.status === (filter as ClaimStatus));
+    if (predicateFilter) {
+      rows = rows.filter((c) => c.predicate === predicateFilter);
+    }
+    return rows;
+  }, [claims, filter, predicateFilter]);
+
+  // Timeline sort direction — default Latest first; toggle flips to Earliest.
+  const [timelineAsc, setTimelineAsc] = useState(false);
+
+  // Sorted and grouped by month for the timeline view. Mixed array of month
+  // headers and claim rows so the FlatList renders them in order.
+  type TimelineItem =
+    | { kind: 'month'; label: string; key: string }
+    | { kind: 'claim'; claim: EntityClaim; isFirst: boolean; isLast: boolean };
+
+  const timelineItems: TimelineItem[] = React.useMemo(() => {
+    const sorted = [...filtered].sort((a, b) => {
+      const diff =
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      return timelineAsc ? -diff : diff;
+    });
+    const items: TimelineItem[] = [];
+    let lastMonth = '';
+    for (let i = 0; i < sorted.length; i++) {
+      const d = new Date(sorted[i].created_at);
+      const monthKey = `${d.getFullYear()}-${d.getMonth()}`;
+      if (monthKey !== lastMonth) {
+        lastMonth = monthKey;
+        items.push({
+          kind: 'month',
+          label: d.toLocaleDateString('en-US', {
+            month: 'long',
+            year: 'numeric',
+          }),
+          key: `month-${monthKey}`,
+        });
+      }
+      items.push({
+        kind: 'claim',
+        claim: sorted[i],
+        isFirst: i === 0,
+        isLast: i === sorted.length - 1,
+      });
+    }
+    return items;
+  }, [filtered, timelineAsc]);
+
+  // Flat sorted list for backward-compat references (claim count header).
   const timelineOrdered = React.useMemo(
-    () =>
-      [...filtered].sort(
-        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-      ),
-    [filtered]
+    () => timelineItems.filter((t): t is TimelineItem & { kind: 'claim' } => t.kind === 'claim').map((t) => t.claim),
+    [timelineItems]
   );
 
   const renderItem = useCallback(
-    ({ item, index }: { item: EntityClaim; index: number }) => {
-      const handlePress = () =>
-        router.push({
-          pathname: '/claim/[id]',
-          params: { id: item.id },
-        } as any);
+    ({ item }: { item: EntityClaim | TimelineItem }) => {
+      // Timeline mode uses the mixed TimelineItem array.
       if (viewMode === 'timeline') {
+        const tItem = item as TimelineItem;
+        if (tItem.kind === 'month') {
+          return (
+            <View style={styles.monthHeader}>
+              <Text style={styles.monthHeaderText}>{tItem.label}</Text>
+            </View>
+          );
+        }
+        const c = tItem.claim;
         return (
           <TimelineRow
-            claim={item}
-            onPress={handlePress}
-            isFirst={index === 0}
-            isLast={index === timelineOrdered.length - 1}
+            claim={c}
+            onPress={() =>
+              router.push({
+                pathname: '/claim/[id]',
+                params: { id: c.id },
+              } as any)
+            }
+            isFirst={tItem.isFirst}
+            isLast={tItem.isLast}
           />
         );
       }
-      return <ClaimListItem claim={item} onPress={handlePress} />;
+      // List mode — item is EntityClaim.
+      const claim = item as EntityClaim;
+      return (
+        <ClaimListItem
+          claim={claim}
+          onPress={() =>
+            router.push({
+              pathname: '/claim/[id]',
+              params: { id: claim.id },
+            } as any)
+          }
+        />
+      );
     },
-    [router, viewMode, timelineOrdered.length]
+    [router, viewMode]
   );
 
   const keyExtractor = useCallback((item: EntityClaim) => item.id, []);
@@ -182,29 +424,68 @@ export default function EntityDetailScreen() {
           <Text style={styles.backText}>Explore</Text>
         </Pressable>
         {entity && (
-          <Pressable
-            onPress={() => {
-              Haptics.selectionAsync();
-              setEditOpen(true);
-            }}
-            hitSlop={10}
-            style={({ pressed }) => [
-              styles.editEntityBtn,
-              pressed && { opacity: 0.7, transform: [{ scale: 0.97 }] },
-            ]}
-            accessibilityRole="button"
-            accessibilityLabel="Edit entity"
-          >
-            <Ionicons name="create-outline" size={18} color={colors.teal} />
-            <Text style={styles.editEntityText}>Edit</Text>
-          </Pressable>
+          <View style={styles.headerActions}>
+            <Pressable
+              onPress={() => {
+                Haptics.selectionAsync();
+                toggleWatch({
+                  id: entity.id,
+                  canonical_name: entity.canonical_name ?? entity.name ?? 'Unnamed',
+                  domain: entity.domain ?? null,
+                });
+              }}
+              hitSlop={10}
+              style={({ pressed }) => [
+                styles.watchBtn,
+                watching && styles.watchBtnActive,
+                pressed && { opacity: 0.7 },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel={watching ? 'Unwatch entity' : 'Watch entity'}
+            >
+              <Ionicons
+                name={watching ? 'eye' : 'eye-outline'}
+                size={16}
+                color={watching ? colors.teal : colors.silver}
+              />
+            </Pressable>
+            <Pressable
+              onPress={() => {
+                Haptics.selectionAsync();
+                setCompareSearchOpen(true);
+              }}
+              hitSlop={10}
+              style={({ pressed }) => [
+                styles.watchBtn,
+                pressed && { opacity: 0.7 },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel="Compare with another entity"
+            >
+              <Ionicons name="git-compare-outline" size={16} color={colors.silver} />
+            </Pressable>
+            <Pressable
+              onPress={() => {
+                Haptics.selectionAsync();
+                setEditOpen(true);
+              }}
+              hitSlop={10}
+              style={({ pressed }) => [
+                styles.editEntityBtn,
+                pressed && { opacity: 0.7, transform: [{ scale: 0.97 }] },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel="Edit entity"
+            >
+              <Ionicons name="create-outline" size={18} color={colors.teal} />
+              <Text style={styles.editEntityText}>Edit</Text>
+            </Pressable>
+          </View>
         )}
       </View>
 
       {loading && !entity ? (
-        <View style={styles.loadingWrap}>
-          <ActivityIndicator color={colors.teal} size="large" />
-        </View>
+        <SkeletonDetail />
       ) : error ? (
         <View style={styles.emptyWrap}>
           <RetryCard
@@ -218,14 +499,24 @@ export default function EntityDetailScreen() {
           <Text style={styles.emptyTitle}>Entity not found</Text>
         </View>
       ) : (
-        <FlatList
-          ref={flatListRef}
-          data={viewMode === 'timeline' ? timelineOrdered : filtered}
-          renderItem={renderItem}
-          keyExtractor={keyExtractor}
+        <Animated.FlatList
+          ref={flatListRef as any}
+          onScroll={scrollHandler}
+          scrollEventThrottle={16}
+          data={(viewMode === 'timeline' ? timelineItems : filtered) as any[]}
+          renderItem={renderItem as any}
+          keyExtractor={(item: any) =>
+            viewMode === 'timeline'
+              ? item.kind === 'month'
+                ? item.key
+                : item.claim.id
+              : item.id
+          }
           contentContainerStyle={styles.list}
           showsVerticalScrollIndicator={false}
           keyboardDismissMode="on-drag"
+          maxToRenderPerBatch={10}
+          windowSize={5}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -234,7 +525,7 @@ export default function EntityDetailScreen() {
             />
           }
           ListHeaderComponent={
-            <View style={styles.headerBlock}>
+            <Animated.View style={[styles.headerBlock, headerParallaxStyle]}>
               <Text style={styles.entityName}>
                 {entity.canonical_name || entity.name}
               </Text>
@@ -365,11 +656,23 @@ export default function EntityDetailScreen() {
                   coverageOffsetRef.current = e.nativeEvent.layout.y;
                 }}
               >
-                <CoverageScore claims={claims} />
+                <CoverageScore claims={claims} staleCount={staleCount} />
               </View>
 
               {/* Claim distribution by predicate category */}
               <ClaimDistribution claims={claims} />
+
+              {/* Top predicates — tap a row to drill in. Gives the operator
+                  instant coverage visibility for this entity. */}
+              <TopPredicates
+                claims={claims}
+                selected={predicateFilter}
+                sparklineData={sparklineData}
+                onSelect={(key) => {
+                  Haptics.selectionAsync();
+                  setPredicateFilter((prev) => (prev === key ? null : key));
+                }}
+              />
 
               {/* Possible duplicates */}
               {similar.length > 0 && (
@@ -378,27 +681,87 @@ export default function EntityDetailScreen() {
                     <Ionicons name="git-compare-outline" size={14} color={colors.statusPending} />
                     <Text style={styles.duplicatesTitle}>Possible Duplicates</Text>
                   </View>
-                  {similar.map((s) => (
-                    <Pressable
-                      key={s.id}
-                      onPress={() => setCompareId(s.id)}
-                      style={({ pressed }) => [
-                        styles.duplicateRow,
-                        pressed && { opacity: 0.75 },
-                      ]}
-                    >
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.duplicateName} numberOfLines={1}>
-                          {s.canonical_name ?? '—'}
-                        </Text>
-                        <Text style={styles.duplicateMeta}>
-                          {s.entity_type ?? 'entity'} · edit distance {s.distance}
-                        </Text>
-                      </View>
-                      <Text style={styles.duplicateCompare}>Compare</Text>
-                      <Ionicons name="chevron-forward" size={12} color={colors.slate} />
-                    </Pressable>
-                  ))}
+                  {similar.map((s) => {
+                    const merging = mergingId === s.id;
+                    return (
+                      <Animated.View
+                        key={s.id}
+                        exiting={FadeOutRight.duration(200)}
+                        style={styles.duplicateRow}
+                      >
+                        <Pressable
+                          onPress={() => setCompareId(s.id)}
+                          style={({ pressed }) => [
+                            { flex: 1 },
+                            pressed && { opacity: 0.7 },
+                          ]}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Compare ${s.canonical_name ?? 'duplicate'}`}
+                        >
+                          <Text style={styles.duplicateName} numberOfLines={1}>
+                            {s.canonical_name ?? '—'}
+                          </Text>
+                          <Text style={styles.duplicateMeta}>
+                            {s.entity_type ?? 'entity'} · edit distance {s.distance}
+                          </Text>
+                        </Pressable>
+                        <Pressable
+                          onPress={() => setCompareId(s.id)}
+                          hitSlop={8}
+                          style={({ pressed }) => [pressed && { opacity: 0.6 }]}
+                          accessibilityRole="button"
+                          accessibilityLabel="Compare"
+                        >
+                          <Text style={styles.duplicateCompare}>Compare</Text>
+                        </Pressable>
+                        <Pressable
+                          onPress={() => !merging && handleMerge(s)}
+                          disabled={merging || mergingId !== null}
+                          style={({ pressed }) => [
+                            styles.mergeBtn,
+                            (pressed || merging) && { opacity: 0.7 },
+                          ]}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Merge ${s.canonical_name ?? 'duplicate'} into this entity`}
+                        >
+                          {merging ? (
+                            <ActivityIndicator size="small" color={colors.teal} />
+                          ) : (
+                            <Ionicons
+                              name="git-merge-outline"
+                              size={12}
+                              color={colors.teal}
+                            />
+                          )}
+                          <Text style={styles.mergeBtnText}>
+                            {merging ? 'Merging…' : 'Merge'}
+                          </Text>
+                        </Pressable>
+                        <Pressable
+                          onPress={() => {
+                            Haptics.selectionAsync();
+                            setDismissTarget({
+                              id: s.id,
+                              canonical_name: s.canonical_name,
+                            });
+                          }}
+                          hitSlop={10}
+                          style={({ pressed }) => [
+                            styles.dismissBtn,
+                            pressed && { opacity: 0.6 },
+                          ]}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Dismiss ${s.canonical_name ?? 'duplicate'}`}
+                        >
+                          <Ionicons
+                            name="close"
+                            size={14}
+                            color={colors.slate}
+                          />
+                        </Pressable>
+                      </Animated.View>
+                    );
+                  })}
                 </View>
               )}
 
@@ -475,6 +838,50 @@ export default function EntityDetailScreen() {
                 </Pressable>
               </View>
 
+              {/* Timeline sort toggle — Latest / Earliest */}
+              {viewMode === 'timeline' && (
+                <View style={styles.timelineSortRow}>
+                  <Pressable
+                    onPress={() => {
+                      Haptics.selectionAsync();
+                      setTimelineAsc(false);
+                    }}
+                    style={[
+                      styles.viewToggleBtn,
+                      !timelineAsc && styles.viewToggleBtnActive,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.viewToggleText,
+                        !timelineAsc && styles.viewToggleTextActive,
+                      ]}
+                    >
+                      Latest
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => {
+                      Haptics.selectionAsync();
+                      setTimelineAsc(true);
+                    }}
+                    style={[
+                      styles.viewToggleBtn,
+                      timelineAsc && styles.viewToggleBtnActive,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.viewToggleText,
+                        timelineAsc && styles.viewToggleTextActive,
+                      ]}
+                    >
+                      Earliest
+                    </Text>
+                  </Pressable>
+                </View>
+              )}
+
               {/* Filter pills (list mode only) */}
               {viewMode === 'list' && (
                 <FlatList
@@ -512,7 +919,7 @@ export default function EntityDetailScreen() {
                 {(viewMode === 'timeline' ? timelineOrdered : filtered).length}{' '}
                 {viewMode === 'timeline' ? 'events' : 'claims'}
               </Text>
-            </View>
+            </Animated.View>
           }
           ListEmptyComponent={
             <View style={styles.listEmpty}>
@@ -567,6 +974,18 @@ export default function EntityDetailScreen() {
         />
       )}
 
+      {/* Compare entity search modal */}
+      {compareSearchOpen && (
+        <CompareSearchModal
+          currentId={entity?.id ?? ''}
+          onSelect={(selectedId) => {
+            setCompareSearchOpen(false);
+            setCompareId(selectedId);
+          }}
+          onDismiss={() => setCompareSearchOpen(false)}
+        />
+      )}
+
       <EntityCompareSheet
         visible={compareId !== null}
         current={entity}
@@ -595,6 +1014,14 @@ export default function EntityDetailScreen() {
         onSaved={() => {
           void refresh();
         }}
+      />
+
+      <ActionSheet
+        visible={dismissTarget !== null}
+        title="Dismiss this duplicate?"
+        subtitle={dismissTarget?.canonical_name ?? undefined}
+        actions={dismissActions}
+        onDismiss={() => setDismissTarget(null)}
       />
     </LinearGradient>
   );
@@ -625,17 +1052,25 @@ function TimelineRow({
         })()
       : null);
 
+  // Status-colored dot — teal for published, amber for draft/pending, gray for superseded/retracted.
+  const dotColor =
+    claim.status === 'published'
+      ? colors.teal
+      : claim.status === 'approved'
+      ? colors.statusApprove
+      : claim.status === 'draft' || claim.status === 'pending_review'
+      ? colors.statusPending
+      : colors.slate;
+
   return (
     <View style={styles.timelineRow}>
       <View style={styles.timelineRail}>
+        {!isFirst && (
+          <View style={styles.timelineRailLineTop} />
+        )}
         <View
-          style={[
-            styles.timelineRailLine,
-            { top: 0, height: isFirst ? '50%' : '100%' },
-            isFirst && { top: '50%' },
-          ]}
+          style={[styles.timelineDot, { backgroundColor: dotColor, borderColor: dotColor }]}
         />
-        <View style={styles.timelineDot} />
         {!isLast && <View style={styles.timelineRailLineBottom} />}
       </View>
       <Pressable
@@ -665,7 +1100,232 @@ function TimelineRow({
   );
 }
 
-function CoverageScore({ claims }: { claims: EntityClaim[] }) {
+// Predicate family mapping for the coverage heatmap. Keys are the category
+// prefix (before the first dot); multiple prefixes can map to one family.
+// Inline entity search modal for picking a compare target. Reuses the
+// existing useExploreSearch hook with a focused TextInput.
+function CompareSearchModal({
+  currentId,
+  onSelect,
+  onDismiss,
+}: {
+  currentId: string;
+  onSelect: (entityId: string) => void;
+  onDismiss: () => void;
+}) {
+  const [q, setQ] = React.useState('');
+  const { results, loading } = useExploreSearch(q);
+  const filtered = results.filter((r) => r.id !== currentId);
+  const insets = useSafeAreaInsets();
+
+  return (
+    <View style={compareSearchStyles.overlay}>
+      <View style={[compareSearchStyles.container, { paddingTop: insets.top + spacing.md }]}>
+        <View style={compareSearchStyles.header}>
+          <View style={compareSearchStyles.inputWrap}>
+            <Ionicons name="git-compare-outline" size={16} color={colors.teal} />
+            <TextInput
+              value={q}
+              onChangeText={setQ}
+              placeholder="Search entity to compare…"
+              placeholderTextColor={colors.slate}
+              style={compareSearchStyles.input}
+              autoFocus
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+          </View>
+          <Pressable onPress={onDismiss} hitSlop={8}>
+            <Text style={compareSearchStyles.cancel}>Cancel</Text>
+          </Pressable>
+        </View>
+        <FlatList
+          data={filtered}
+          keyExtractor={(r) => r.id}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          renderItem={({ item }) => (
+            <Pressable
+              onPress={() => onSelect(item.id)}
+              style={({ pressed }) => [
+                compareSearchStyles.row,
+                pressed && { backgroundColor: colors.surfaceCard },
+              ]}
+            >
+              <HighlightedText
+                text={item.canonical_name || item.name || 'Unnamed'}
+                query={q}
+                style={compareSearchStyles.name}
+                numberOfLines={1}
+              />
+              <Text style={compareSearchStyles.meta} numberOfLines={1}>
+                {item.entity_type ?? 'entity'}
+                {item.domain ? ` · ${item.domain}` : ''}
+              </Text>
+            </Pressable>
+          )}
+          ListEmptyComponent={
+            loading ? (
+              <ActivityIndicator color={colors.teal} style={{ marginTop: spacing.xxl }} />
+            ) : q.trim().length > 0 ? (
+              <Text style={compareSearchStyles.empty}>No entities found</Text>
+            ) : (
+              <Text style={compareSearchStyles.empty}>Type to search…</Text>
+            )
+          }
+        />
+      </View>
+    </View>
+  );
+}
+
+const compareSearchStyles = StyleSheet.create({
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 100,
+    backgroundColor: 'rgba(5, 5, 7, 0.97)',
+  },
+  container: {
+    flex: 1,
+    paddingHorizontal: spacing.lg,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    marginBottom: spacing.md,
+  },
+  inputWrap: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: colors.teal,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    height: 42,
+  },
+  input: {
+    flex: 1,
+    fontFamily: fonts.archivo.medium,
+    fontSize: 15,
+    color: colors.alabaster,
+    paddingVertical: 0,
+  },
+  cancel: {
+    fontFamily: fonts.archivo.semibold,
+    fontSize: 14,
+    color: colors.teal,
+  },
+  row: {
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.glassBorder,
+  },
+  name: {
+    fontFamily: fonts.archivo.semibold,
+    fontSize: 15,
+    color: colors.alabaster,
+  },
+  meta: {
+    fontFamily: fonts.mono.regular,
+    fontSize: 10,
+    color: colors.slate,
+    marginTop: 3,
+  },
+  empty: {
+    fontFamily: fonts.archivo.regular,
+    fontSize: 14,
+    color: colors.slate,
+    textAlign: 'center',
+    marginTop: spacing.xxl,
+  },
+});
+
+const FAMILY_MAP: Record<string, string> = {
+  identity: 'Identity',
+  performance: 'Performance',
+  stats: 'Performance',
+  relationship: 'Relationships',
+  team: 'Relationships',
+  economics: 'Economics',
+  financial: 'Economics',
+  history: 'History',
+  career: 'History',
+  media: 'Media',
+  content: 'Media',
+  operational: 'Operational',
+  logistics: 'Operational',
+};
+const FAMILY_ORDER = [
+  'Identity',
+  'Performance',
+  'Relationships',
+  'Economics',
+  'History',
+  'Media',
+  'Operational',
+  'Metadata',
+];
+
+function CoverageHeatmap({ claims }: { claims: EntityClaim[] }) {
+  const familyCounts = React.useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const fam of FAMILY_ORDER) counts.set(fam, 0);
+    for (const c of claims) {
+      if (!c.predicate) continue;
+      const prefix = c.predicate.includes('.')
+        ? c.predicate.split('.')[0]
+        : 'other';
+      const family = FAMILY_MAP[prefix] ?? 'Metadata';
+      counts.set(family, (counts.get(family) ?? 0) + 1);
+    }
+    return FAMILY_ORDER.map((fam) => ({ family: fam, count: counts.get(fam) ?? 0 }));
+  }, [claims]);
+
+  return (
+    <View style={styles.heatmapGrid}>
+      {familyCounts.map((f) => {
+        const bg =
+          f.count === 0
+            ? 'rgba(255,255,255,0.04)'
+            : f.count <= 3
+            ? 'rgba(245, 158, 11, 0.18)'
+            : 'rgba(0, 161, 155, 0.22)';
+        const fg =
+          f.count === 0
+            ? colors.slate
+            : f.count <= 3
+            ? colors.statusPending
+            : colors.teal;
+        return (
+          <View
+            key={f.family}
+            style={[styles.heatmapCell, { backgroundColor: bg }]}
+            accessible
+            accessibilityLabel={`${f.family}: ${f.count} claims`}
+          >
+            <Text style={[styles.heatmapCount, { color: fg }]}>{f.count}</Text>
+            <Text style={[styles.heatmapLabel, { color: fg }]} numberOfLines={1}>
+              {f.family}
+            </Text>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+function CoverageScore({
+  claims,
+  staleCount,
+}: {
+  claims: EntityClaim[];
+  staleCount: number;
+}) {
   const { pct, claimScore, predicateScore, corrobScore, recencyScore } =
     React.useMemo(() => {
       const claimCount = claims.length;
@@ -724,6 +1384,18 @@ function CoverageScore({ claims }: { claims: EntityClaim[] }) {
         <CoverageFacet label="Corrob" score={corrobScore} />
         <CoverageFacet label="Recency" score={recencyScore} />
       </View>
+
+      {/* Coverage heatmap — 8-cell grid showing claim depth per family */}
+      <CoverageHeatmap claims={claims} />
+
+      {staleCount > 0 && (
+        <View style={styles.staleRow}>
+          <Ionicons name="time-outline" size={12} color={colors.statusPending} />
+          <Text style={styles.staleText}>
+            {staleCount} stale claim{staleCount === 1 ? '' : 's'}
+          </Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -738,6 +1410,102 @@ const DISTRIBUTION_COLORS = [
   '#F472B6',
   '#22D3EE',
 ];
+
+function TopPredicates({
+  claims,
+  selected,
+  onSelect,
+  sparklineData,
+}: {
+  claims: EntityClaim[];
+  selected: string | null;
+  onSelect: (predicateKey: string) => void;
+  sparklineData?: number[];
+}) {
+  const rows = React.useMemo(() => {
+    const map = new Map<string, number>();
+    for (const c of claims) {
+      if (!c.predicate) continue;
+      map.set(c.predicate, (map.get(c.predicate) ?? 0) + 1);
+    }
+    return Array.from(map.entries())
+      .map(([predicate, count]) => ({ predicate, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+  }, [claims]);
+
+  if (rows.length === 0) return null;
+  const max = rows[0].count;
+
+  return (
+    <View style={styles.topPredCard}>
+      <View style={styles.topPredHeaderRow}>
+        <Text style={styles.topPredHeader}>TOP PREDICATES</Text>
+        {sparklineData && sparklineData.length > 1 && (
+          <Sparkline data={sparklineData} width={80} height={28} />
+        )}
+        <View style={{ flex: 1 }} />
+        {selected && (
+          <Pressable
+            onPress={() => onSelect(selected)}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel="Clear predicate filter"
+          >
+            <Text style={styles.topPredClear}>Clear filter</Text>
+          </Pressable>
+        )}
+      </View>
+      <View style={{ gap: spacing.sm }}>
+        {rows.map((r) => {
+          const isSelected = selected === r.predicate;
+          const pct = Math.max(2, Math.round((r.count / max) * 100));
+          return (
+            <Pressable
+              key={r.predicate}
+              onPress={() => onSelect(r.predicate)}
+              style={({ pressed }) => [
+                styles.topPredRow,
+                isSelected && styles.topPredRowActive,
+                pressed && { opacity: 0.75 },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel={`${formatPredicateLabel(r.predicate)}, ${r.count} claim${r.count === 1 ? '' : 's'}${isSelected ? ', selected' : ''}`}
+            >
+              <View style={styles.topPredTopRow}>
+                <Text
+                  style={[
+                    styles.topPredName,
+                    isSelected && { color: colors.teal },
+                  ]}
+                  numberOfLines={1}
+                >
+                  {formatPredicateLabel(r.predicate)}
+                </Text>
+                <Text style={styles.topPredCount}>{r.count}</Text>
+              </View>
+              <View style={styles.topPredTrack}>
+                <View
+                  style={[
+                    styles.topPredFill,
+                    { width: `${pct}%` },
+                  ]}
+                />
+              </View>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+function formatPredicateLabel(key: string): string {
+  // "person.crew_chief_profile" → "Crew chief profile"
+  const last = key.includes('.') ? key.split('.').pop()! : key;
+  const spaced = last.replace(/_/g, ' ');
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
 
 function ClaimDistribution({ claims }: { claims: EntityClaim[] }) {
   const buckets = React.useMemo(() => {
@@ -956,6 +1724,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     alignSelf: 'flex-start',
   },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  watchBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    backgroundColor: 'transparent',
+  },
+  watchBtnActive: {
+    borderColor: colors.teal,
+    backgroundColor: colors.tealDim,
+  },
   editEntityBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1104,6 +1891,22 @@ const styles = StyleSheet.create({
   viewToggleTextActive: {
     color: colors.teal,
   },
+  timelineSortRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  monthHeader: {
+    paddingVertical: spacing.sm,
+    paddingLeft: 26,
+    marginBottom: 2,
+  },
+  monthHeaderText: {
+    fontFamily: fonts.archivo.bold,
+    fontSize: 13,
+    color: colors.alabaster,
+    letterSpacing: 0.2,
+  },
   timelineRow: {
     flexDirection: 'row',
     gap: spacing.md,
@@ -1113,17 +1916,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     position: 'relative',
   },
-  timelineRailLine: {
+  timelineRailLineTop: {
     position: 'absolute',
+    top: 0,
+    height: 10,
     width: 2,
-    backgroundColor: colors.glassBorder,
+    backgroundColor: colors.teal,
+    opacity: 0.4,
   },
   timelineRailLineBottom: {
     position: 'absolute',
-    top: 16,
+    top: 22,
     bottom: -spacing.md,
     width: 2,
-    backgroundColor: colors.glassBorder,
+    backgroundColor: colors.teal,
+    opacity: 0.4,
   },
   timelineDot: {
     width: 10,
@@ -1131,8 +1938,8 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     backgroundColor: colors.teal,
     borderWidth: 2,
-    borderColor: colors.obsidian,
-    marginTop: 8,
+    borderColor: colors.teal,
+    marginTop: 10,
   },
   timelineCard: {
     flex: 1,
@@ -1209,6 +2016,139 @@ const styles = StyleSheet.create({
     fontFamily: fonts.archivo.semibold,
     fontSize: 11,
     color: colors.teal,
+  },
+  mergeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 161, 155, 0.35)',
+    backgroundColor: colors.tealDim,
+    marginLeft: spacing.xs,
+  },
+  dismissBtn: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 4,
+  },
+  mergeBtnText: {
+    fontFamily: fonts.archivo.semibold,
+    fontSize: 10,
+    color: colors.teal,
+    letterSpacing: 0.3,
+  },
+  topPredCard: {
+    backgroundColor: colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  topPredHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+  },
+  topPredHeader: {
+    fontFamily: fonts.archivo.medium,
+    fontSize: 10,
+    color: colors.slate,
+    letterSpacing: 1.2,
+  },
+  topPredClear: {
+    fontFamily: fonts.archivo.semibold,
+    fontSize: 11,
+    color: colors.teal,
+    letterSpacing: 0.3,
+  },
+  topPredRow: {
+    paddingVertical: 6,
+  },
+  topPredRowActive: {
+    // No background — just the teal predicate text tint handles the state.
+  },
+  topPredTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
+    marginBottom: 4,
+  },
+  topPredName: {
+    fontFamily: fonts.mono.regular,
+    fontSize: 12,
+    color: colors.alabaster,
+    flex: 1,
+    marginRight: spacing.sm,
+  },
+  topPredCount: {
+    fontFamily: fonts.mono.medium,
+    fontSize: 12,
+    color: colors.silver,
+    fontVariant: ['tabular-nums'],
+  },
+  topPredTrack: {
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    overflow: 'hidden',
+  },
+  topPredFill: {
+    height: '100%',
+    backgroundColor: colors.teal,
+    borderRadius: 2,
+  },
+  heatmapGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: spacing.md,
+    paddingTop: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.glassBorder,
+  },
+  heatmapCell: {
+    width: '23%',
+    minWidth: 70,
+    flexGrow: 1,
+    borderRadius: radius.sm,
+    paddingVertical: 8,
+    paddingHorizontal: 6,
+    alignItems: 'center',
+    gap: 2,
+  },
+  heatmapCount: {
+    fontFamily: fonts.mono.semibold,
+    fontSize: 16,
+    fontVariant: ['tabular-nums'],
+  },
+  heatmapLabel: {
+    fontFamily: fonts.archivo.medium,
+    fontSize: 8,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  staleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: spacing.sm,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.glassBorder,
+  },
+  staleText: {
+    fontFamily: fonts.archivo.semibold,
+    fontSize: 11,
+    color: colors.statusPending,
+    letterSpacing: 0.3,
   },
   distCard: {
     backgroundColor: colors.surfaceElevated,
