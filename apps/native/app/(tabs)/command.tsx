@@ -42,6 +42,7 @@ import { useBrandToast } from '../../src/components/BrandToast';
 import { usePulseContext } from '../../src/lib/PulseContext';
 import { useOfflineSync } from '../../src/lib/OfflineSyncContext';
 import { ScreenCanvas } from '../../src/components/ScreenCanvas';
+import { ScreenWatermark } from '../../src/components/ScreenWatermark';
 import { ScreenTransition } from '../../src/components/ScreenTransition';
 import type { CommandSession } from '@stroom/types';
 import { colors, fonts, spacing, radius, gradient } from '../../src/constants/brand';
@@ -686,6 +687,7 @@ export default function CommandScreen() {
   return (
     <View style={styles.container}>
       <ScreenCanvas />
+      <ScreenWatermark />
       <ScreenTransition>
 
       <KeyboardAvoidingView

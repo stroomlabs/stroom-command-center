@@ -10,6 +10,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { ScreenCanvas } from '../../src/components/ScreenCanvas';
+import { ScreenWatermark } from '../../src/components/ScreenWatermark';
 import { GlassCard } from '../../src/components/GlassCard';
 import { EmptyState } from '../../src/components/EmptyState';
 import {
@@ -31,6 +32,7 @@ export default function ProjectDetailScreen() {
   return (
     <View style={styles.container}>
       <ScreenCanvas />
+      <ScreenWatermark />
 
       <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
         <Pressable

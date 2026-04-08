@@ -10,6 +10,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { ScreenCanvas } from '../../src/components/ScreenCanvas';
+import { ScreenWatermark } from '../../src/components/ScreenWatermark';
 import { ScreenTransition } from '../../src/components/ScreenTransition';
 import { GlassCard } from '../../src/components/GlassCard';
 import { haptics } from '../../src/lib/haptics';
@@ -35,6 +36,7 @@ export default function ProjectsScreen() {
   return (
     <View style={styles.container}>
       <ScreenCanvas />
+      <ScreenWatermark />
       <ScreenTransition>
         <ScrollView
           contentContainerStyle={[

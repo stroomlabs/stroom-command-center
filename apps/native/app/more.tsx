@@ -583,6 +583,11 @@ export default function MoreScreen() {
             onPress={() => router.push('/notification-prefs' as any)}
           />
           <MenuItem
+            icon="key-outline"
+            label="Change Password"
+            onPress={() => router.push('/change-password' as any)}
+          />
+          <MenuItem
             icon="git-compare-outline"
             label="Dismissed merges"
             onPress={() => router.push('/dismissed-merges' as any)}

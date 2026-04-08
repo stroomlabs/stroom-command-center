@@ -31,6 +31,7 @@ import * as Clipboard from 'expo-clipboard';
 import { Share } from 'react-native';
 import { useBrandToast } from '../../src/components/BrandToast';
 import { ScreenCanvas } from '../../src/components/ScreenCanvas';
+import { ScreenWatermark } from '../../src/components/ScreenWatermark';
 import { CollapsibleSection } from '../../src/components/CollapsibleSection';
 import { colors, fonts, spacing, radius, gradient } from '../../src/constants/brand';
 
@@ -543,6 +544,7 @@ export default function OpsScreen() {
   return (
     <View style={styles.container}>
       <ScreenCanvas />
+      <ScreenWatermark />
       <ScreenTransition>
 
       <View style={[styles.header, { paddingTop: insets.top + spacing.lg }]}>

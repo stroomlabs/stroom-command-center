@@ -46,6 +46,7 @@ import {
 import type { RejectionReason, ClaimStatus } from '@stroom/types';
 import type { QueueClaim } from '@stroom/supabase';
 import { ScreenCanvas } from '../../src/components/ScreenCanvas';
+import { ScreenWatermark } from '../../src/components/ScreenWatermark';
 import { colors, fonts, spacing, radius, gradient } from '../../src/constants/brand';
 
 type StatusFilter = 'all' | 'draft' | 'pending_review';
@@ -630,6 +631,7 @@ export default function QueueScreen() {
   return (
     <View style={styles.container}>
       <ScreenCanvas />
+      <ScreenWatermark />
       <ScreenTransition>
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + spacing.lg }]}>

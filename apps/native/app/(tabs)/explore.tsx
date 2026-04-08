@@ -52,6 +52,7 @@ import type { Predicate } from '@stroom/types';
 import { resolveClaimDisplayValue } from '../../src/lib/resolveDisplayValue';
 import { HighlightedText } from '../../src/components/HighlightedText';
 import { ScreenCanvas } from '../../src/components/ScreenCanvas';
+import { ScreenWatermark } from '../../src/components/ScreenWatermark';
 import { colors, fonts, spacing, radius, gradient } from '../../src/constants/brand';
 
 export default function ExploreScreen() {
@@ -263,6 +264,7 @@ export default function ExploreScreen() {
   return (
     <View style={styles.container}>
       <ScreenCanvas />
+      <ScreenWatermark />
       <ScreenTransition>
       <View style={[styles.header, { paddingTop: insets.top + spacing.lg }]}>
         <View style={styles.headerRow}>

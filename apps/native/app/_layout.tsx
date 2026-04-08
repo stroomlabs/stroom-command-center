@@ -132,6 +132,7 @@ export default function RootLayout() {
           <Stack.Screen name="research" />
           <Stack.Screen name="more" />
           <Stack.Screen name="notification-prefs" />
+          <Stack.Screen name="change-password" />
           <Stack.Screen name="dismissed-merges" />
           <Stack.Screen name="source/[id]" />
           <Stack.Screen name="sources" />

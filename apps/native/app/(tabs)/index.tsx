@@ -31,6 +31,7 @@ import { useWatchlist, type WatchedEntity } from '../../src/hooks/useWatchlist';
 import { useClaimSparkline } from '../../src/hooks/useClaimSparkline';
 import { Sparkline } from '../../src/components/Sparkline';
 import { ScreenCanvas } from '../../src/components/ScreenCanvas';
+import { ScreenWatermark } from '../../src/components/ScreenWatermark';
 import { useOfflineSync } from '../../src/lib/OfflineSyncContext';
 import { usePulseDeltas } from '../../src/hooks/usePulseDeltas';
 import { usePushNotifications } from '../../src/hooks/usePushNotifications';
@@ -95,6 +96,109 @@ const quickActionStyles = StyleSheet.create({
     fontSize: 12,
     color: colors.teal,
     letterSpacing: 0.3,
+  },
+});
+
+// iOS Maps-style vertical toggle pill. Inactive is a 28pt icon-only circle;
+// active expands smoothly to ~90pt wide showing icon + label. Width and
+// label opacity are driven by reanimated shared values so transitions
+// between the old/new active pill happen in the same 200ms tick.
+const PILL_INACTIVE_SIZE = 28;
+const PILL_ACTIVE_WIDTH = 90;
+
+function VerticalPill({
+  label,
+  icon,
+  active,
+  onPress,
+}: {
+  label: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  active: boolean;
+  onPress: () => void;
+}) {
+  const width = useSharedValue(active ? PILL_ACTIVE_WIDTH : PILL_INACTIVE_SIZE);
+  const labelOpacity = useSharedValue(active ? 1 : 0);
+
+  React.useEffect(() => {
+    width.value = withTiming(active ? PILL_ACTIVE_WIDTH : PILL_INACTIVE_SIZE, {
+      duration: 200,
+      easing: Easing.out(Easing.cubic),
+    });
+    labelOpacity.value = withTiming(active ? 1 : 0, {
+      duration: 200,
+      easing: Easing.out(Easing.cubic),
+    });
+  }, [active, width, labelOpacity]);
+
+  const containerStyle = useAnimatedStyle(() => ({
+    width: width.value,
+  }));
+  const labelStyle = useAnimatedStyle(() => ({
+    opacity: labelOpacity.value,
+  }));
+
+  return (
+    <Animated.View
+      style={[
+        verticalPillStyles.pill,
+        active && verticalPillStyles.pillActive,
+        containerStyle,
+      ]}
+    >
+      <Pressable
+        onPress={onPress}
+        style={verticalPillStyles.press}
+        accessibilityRole="button"
+        accessibilityState={{ selected: active }}
+        accessibilityLabel={`Filter Pulse by ${label}`}
+        hitSlop={4}
+      >
+        <Ionicons
+          name={icon}
+          size={14}
+          color={active ? colors.teal : colors.silver}
+        />
+        {active && (
+          <Animated.Text
+            numberOfLines={1}
+            allowFontScaling={false}
+            style={[verticalPillStyles.label, labelStyle]}
+          >
+            {label}
+          </Animated.Text>
+        )}
+      </Pressable>
+    </Animated.View>
+  );
+}
+
+const verticalPillStyles = StyleSheet.create({
+  pill: {
+    height: PILL_INACTIVE_SIZE,
+    borderRadius: PILL_INACTIVE_SIZE / 2,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    backgroundColor: colors.surfaceElevated,
+    overflow: 'hidden',
+  },
+  pillActive: {
+    borderColor: colors.teal,
+    backgroundColor: colors.tealDim,
+  },
+  press: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    paddingHorizontal: 6,
+  },
+  label: {
+    fontFamily: fonts.archivo.semibold,
+    fontSize: 11,
+    color: colors.teal,
+    letterSpacing: 0.2,
   },
 });
 
@@ -422,6 +526,7 @@ export default function PulseScreen() {
   return (
     <View style={styles.container}>
       <ScreenCanvas />
+      <ScreenWatermark />
       <ScreenTransition>
 
       {/* Pull-down stats peek panel — hidden above the scroll area */}
@@ -509,50 +614,29 @@ export default function PulseScreen() {
         {/* Vertical toggle — 6 buckets (All / Racing / Sports / Cruises /
             Parks / Other), persisted to AsyncStorage. Changing the selection
             refetches get_command_pulse with the new domains[] filter and
-            triggers a pulse-flash on the metric grid. */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.verticalScroll}
-          contentContainerStyle={styles.verticalRow}
-        >
+            triggers a pulse-flash on the metric grid.
+            iOS Maps pattern: inactive pills collapse to a 28pt icon-only
+            circle, the active pill expands to ~90pt to show its label. All
+            6 pills fit on a 375pt screen without horizontal scrolling. */}
+        <View style={styles.verticalRow}>
           {VERTICAL_ORDER.map((key) => {
             const bucket = VERTICAL_BUCKETS[key];
             const active = verticalKey === key;
             return (
-              <Pressable
+              <VerticalPill
                 key={key}
+                label={bucket.label}
+                icon={bucket.icon as keyof typeof Ionicons.glyphMap}
+                active={active}
                 onPress={() => {
                   if (active) return;
                   haptics.tap.light();
                   void setVertical(key);
                 }}
-                style={({ pressed }) => [
-                  styles.verticalPill,
-                  active && styles.verticalPillActive,
-                  pressed && !active && { opacity: 0.75 },
-                ]}
-                accessibilityRole="button"
-                accessibilityState={{ selected: active }}
-                accessibilityLabel={`Filter Pulse by ${bucket.label}`}
-              >
-                <Ionicons
-                  name={bucket.icon as any}
-                  size={12}
-                  color={active ? colors.teal : colors.silver}
-                />
-                <Text
-                  style={[
-                    styles.verticalPillText,
-                    active && styles.verticalPillTextActive,
-                  ]}
-                >
-                  {bucket.label}
-                </Text>
-              </Pressable>
+              />
             );
           })}
-        </ScrollView>
+        </View>
 
         {pendingSyncCount > 0 && (
           <Pressable
@@ -930,38 +1014,11 @@ const styles = StyleSheet.create({
     color: colors.slate,
     marginBottom: spacing.md,
   },
-  verticalScroll: {
-    flexGrow: 0,
-    marginBottom: spacing.lg,
-    marginHorizontal: -spacing.lg,
-  },
   verticalRow: {
-    paddingHorizontal: spacing.lg,
-    gap: 6,
-  },
-  verticalPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: radius.full,
-    borderWidth: 1,
-    borderColor: colors.glassBorder,
-    backgroundColor: colors.surfaceElevated,
-  },
-  verticalPillActive: {
-    borderColor: colors.teal,
-    backgroundColor: colors.tealDim,
-  },
-  verticalPillText: {
-    fontFamily: fonts.archivo.semibold,
-    fontSize: 11,
-    color: colors.silver,
-    letterSpacing: 0.2,
-  },
-  verticalPillTextActive: {
-    color: colors.teal,
+    justifyContent: 'space-between',
+    marginBottom: spacing.lg,
   },
   pendingSyncBanner: {
     flexDirection: 'row',
