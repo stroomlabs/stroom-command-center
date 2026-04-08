@@ -34,11 +34,15 @@ function makeId(): string {
   });
 }
 
+export type SaveState = 'saved' | 'saving' | 'unsaved' | 'offline';
+
 export function useCommandChat() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [saveState, setSaveState] = useState<SaveState>('unsaved');
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const xhrRef = useRef<XMLHttpRequest | null>(null);
   const { memories, save: saveMemory } = useCommandMemory();
   const memoriesRef = useRef(memories);
@@ -85,6 +89,8 @@ export function useCommandChat() {
     setMessages([]);
     setError(null);
     setSending(false);
+    setSaveState('unsaved');
+    setLastSavedAt(null);
   }, [sessionId, messages, saveMemory]);
 
   // Load a previously persisted session (from intel.command_sessions).
@@ -173,6 +179,8 @@ export function useCommandChat() {
           stream: true,
         });
 
+        setSaveState('saving');
+
         await new Promise<void>((resolve, reject) => {
           const xhr = new XMLHttpRequest();
           xhrRef.current = xhr;
@@ -227,6 +235,10 @@ export function useCommandChat() {
                 }
                 return copy;
               });
+              // The edge function persists the session on each successful
+              // request, so mark as saved.
+              setSaveState('saved');
+              setLastSavedAt(new Date());
               resolve();
             } else {
               let errText = xhr.responseText || 'Request failed';
@@ -250,6 +262,7 @@ export function useCommandChat() {
           // Silent — user cancelled or reset
         } else {
           setError(e.message ?? 'Send failed');
+          setSaveState('unsaved');
         }
         // Remove the empty assistant placeholder on failure
         setMessages((prev) => {
@@ -314,6 +327,8 @@ export function useCommandChat() {
     sending,
     error,
     sessionId,
+    saveState,
+    lastSavedAt,
     send,
     cancel,
     resetSession,

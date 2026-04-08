@@ -17,7 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRouter, useLocalSearchParams } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import * as Clipboard from 'expo-clipboard';
-import { useCommandChat, type ChatMessage } from '../../src/hooks/useCommandChat';
+import { useCommandChat, type ChatMessage, type SaveState } from '../../src/hooks/useCommandChat';
 import supabase from '../../src/lib/supabase';
 import { usePinnedMessages } from '../../src/hooks/usePinnedMessages';
 import { useMorningBriefing } from '../../src/hooks/useMorningBriefing';
@@ -39,7 +39,11 @@ import { useSessionHistory } from '../../src/hooks/useSessionHistory';
 import { ActionSheet, type ActionSheetAction } from '../../src/components/ActionSheet';
 import { SessionHistorySheet } from '../../src/components/SessionHistorySheet';
 import { useBrandAlert } from '../../src/components/BrandAlert';
+import { useBrandToast } from '../../src/components/BrandToast';
+import { usePulseContext } from '../../src/lib/PulseContext';
+import { useOfflineSync } from '../../src/lib/OfflineSyncContext';
 import { GlowSpot } from '../../src/components/GlowSpot';
+import { BackgroundCanvas } from '../../src/components/BackgroundCanvas';
 import { ScreenTransition } from '../../src/components/ScreenTransition';
 import type { CommandSession } from '@stroom/types';
 import { colors, fonts, spacing, radius, gradient } from '../../src/constants/brand';
@@ -49,6 +53,8 @@ export default function CommandScreen() {
   const router = useRouter();
   const navigation = useNavigation();
   const params = useLocalSearchParams<{ prompt?: string }>();
+  const { data: pulse } = usePulseContext();
+  const { isOnline } = useOfflineSync();
 
   React.useEffect(() => {
     const unsub = (navigation as any).addListener?.('tabPress', () => {
@@ -64,6 +70,8 @@ export default function CommandScreen() {
     sending,
     error,
     sessionId,
+    saveState,
+    lastSavedAt,
     send,
     resetSession,
     loadSession,
@@ -73,6 +81,7 @@ export default function CommandScreen() {
   const history = useSessionHistory();
   const entityLookup = useEntityNameMap();
   const { alert } = useBrandAlert();
+  const { show: showToast } = useBrandToast();
 
   const handleEntityLinkPress = useCallback(
     (id: string) => {
@@ -204,7 +213,7 @@ export default function CommandScreen() {
         let prompt: string;
         switch (cmd) {
           case 'health': {
-            const { data } = await supabase.rpc('get_graph_health');
+            const { data } = await supabase.schema('intel').rpc('get_graph_health');
             prompt = [
               'Graph health snapshot (run via /health):',
               '',
@@ -217,7 +226,7 @@ export default function CommandScreen() {
             break;
           }
           case 'sweep': {
-            const { data } = await supabase.rpc('run_governance_sweep');
+            const { data } = await supabase.schema('intel').rpc('run_governance_sweep');
             prompt = [
               'Governance sweep just executed (/sweep):',
               '',
@@ -235,6 +244,7 @@ export default function CommandScreen() {
               break;
             }
             const { data } = await supabase
+              .schema('intel')
               .from('entities')
               .select('id, canonical_name, entity_type, domain, description')
               .ilike('canonical_name', `%${arg}%`)
@@ -251,7 +261,7 @@ export default function CommandScreen() {
             break;
           }
           case 'queue': {
-            const { data } = await supabase.rpc('get_command_pulse');
+            const { data } = await supabase.schema('intel').rpc('get_command_pulse');
             const d: any = data ?? {};
             prompt = [
               'Queue summary (/queue):',
@@ -265,8 +275,191 @@ export default function CommandScreen() {
             ].join('\n');
             break;
           }
+          case 'stale': {
+            // Fetch predicate freshness rules then find claims older than
+            // their predicate's freshness window, ordered by staleness.
+            const { data: registry } = await supabase
+              .schema('intel')
+              .from('predicate_registry')
+              .select('predicate_key, freshness_days');
+            const freshMap = new Map<string, number>();
+            for (const r of (registry ?? []) as Array<{
+              predicate_key: string;
+              freshness_days: number | null;
+            }>) {
+              if (r.freshness_days != null && r.freshness_days > 0) {
+                freshMap.set(r.predicate_key, r.freshness_days);
+              }
+            }
+            const predicateKeys = Array.from(freshMap.keys());
+            if (predicateKeys.length === 0) {
+              prompt = 'No predicate freshness rules configured in the registry.';
+              break;
+            }
+            const { data: staleClaims } = await supabase
+              .schema('intel')
+              .from('claims')
+              .select(
+                'id, predicate, created_at, subject_entity:entities!claims_subject_entity_id_fkey(canonical_name)'
+              )
+              .in('predicate', predicateKeys)
+              .in('status', ['published', 'approved'])
+              .order('created_at', { ascending: true })
+              .limit(50);
+            const now = Date.now();
+            const staleRows = ((staleClaims ?? []) as any[])
+              .filter((c) => {
+                const days = freshMap.get(c.predicate);
+                if (!days) return false;
+                return now - new Date(c.created_at).getTime() > days * 86_400_000;
+              })
+              .slice(0, 10);
+            const lines = staleRows.map((c, i) => {
+              const ageDays = Math.floor(
+                (now - new Date(c.created_at).getTime()) / 86_400_000
+              );
+              const name = c.subject_entity?.canonical_name ?? 'Unknown';
+              const pred = (c.predicate ?? '').split('.').pop()?.replace(/_/g, ' ') ?? c.predicate;
+              const threshold = freshMap.get(c.predicate) ?? '?';
+              return `${i + 1}. **${name}** — ${pred} — ${ageDays}d old (threshold: ${threshold}d)`;
+            });
+            prompt = [
+              'Stale claims report (/stale):',
+              '',
+              lines.length > 0 ? lines.join('\n') : 'No stale claims found.',
+              '',
+              'Analyze these stale claims and suggest which predicates to prioritize for refresh.',
+            ].join('\n');
+            break;
+          }
+          case 'coverage': {
+            if (!arg) {
+              prompt = 'Please specify an entity name, e.g. /coverage Max Verstappen';
+              break;
+            }
+            const { data: entities } = await supabase
+              .schema('intel')
+              .from('entities')
+              .select('id, canonical_name, entity_type, domain')
+              .ilike('canonical_name', `%${arg}%`)
+              .limit(1);
+            const ent = (entities as any[])?.[0];
+            if (!ent) {
+              prompt = `No entity found matching "${arg}".`;
+              break;
+            }
+            const { data: entClaims } = await supabase
+              .schema('intel')
+              .from('claims')
+              .select('predicate, status, created_at, confidence_score, corroboration_score')
+              .eq('subject_entity_id', ent.id);
+            const claimList = (entClaims ?? []) as any[];
+            const predCounts = new Map<string, number>();
+            const predCategories = new Set<string>();
+            let staleCount = 0;
+            for (const c of claimList) {
+              const p = c.predicate ?? 'unknown';
+              predCounts.set(p, (predCounts.get(p) ?? 0) + 1);
+              predCategories.add(p.includes('.') ? p.split('.')[0] : 'other');
+            }
+            const topPreds = Array.from(predCounts.entries())
+              .sort(([, a], [, b]) => b - a)
+              .slice(0, 10)
+              .map(([k, v]) => `  - ${k.split('.').pop()?.replace(/_/g, ' ')}: ${v}`);
+            const published = claimList.filter((c) => c.status === 'published').length;
+            const corroborated = claimList.filter(
+              (c) => (c.corroboration_score ?? 0) >= 1
+            ).length;
+            const coverageScore = Math.round(
+              ((Math.min(1, claimList.length / 10) +
+                Math.min(1, predCategories.size / 5) +
+                (claimList.length > 0 ? corroborated / claimList.length : 0)) /
+                3) *
+                100
+            );
+            prompt = [
+              `Coverage report for **${ent.canonical_name}** (/coverage):`,
+              '',
+              `- Type: ${ent.entity_type ?? 'unknown'}`,
+              `- Domain: ${ent.domain ?? 'none'}`,
+              `- Coverage score: **${coverageScore}%**`,
+              `- Total claims: ${claimList.length}`,
+              `- Published: ${published}`,
+              `- Corroborated: ${corroborated}`,
+              `- Stale: ${staleCount}`,
+              `- Predicate families: ${predCategories.size}`,
+              '',
+              'Top predicates:',
+              topPreds.join('\n'),
+              '',
+              'Identify coverage gaps and suggest which predicate families are missing.',
+            ].join('\n');
+            break;
+          }
+          case 'compare': {
+            const vsMatch = arg.match(/^(.+?)\s+vs\.?\s+(.+)$/i);
+            if (!vsMatch) {
+              prompt = 'Usage: /compare Entity A vs Entity B';
+              break;
+            }
+            const [, nameA, nameB] = vsMatch;
+            const [{ data: entsA }, { data: entsB }] = await Promise.all([
+              supabase
+                .schema('intel')
+                .from('entities')
+                .select('id, canonical_name, entity_type, domain')
+                .ilike('canonical_name', `%${nameA.trim()}%`)
+                .limit(1),
+              supabase
+                .schema('intel')
+                .from('entities')
+                .select('id, canonical_name, entity_type, domain')
+                .ilike('canonical_name', `%${nameB.trim()}%`)
+                .limit(1),
+            ]);
+            const eA = (entsA as any[])?.[0];
+            const eB = (entsB as any[])?.[0];
+            if (!eA || !eB) {
+              prompt = `Could not find both entities. Found: ${eA?.canonical_name ?? 'none'}, ${eB?.canonical_name ?? 'none'}`;
+              break;
+            }
+            const [{ data: claimsA }, { data: claimsB }] = await Promise.all([
+              supabase
+                .schema('intel')
+                .from('claims')
+                .select('predicate, status, corroboration_score')
+                .eq('subject_entity_id', eA.id),
+              supabase
+                .schema('intel')
+                .from('claims')
+                .select('predicate, status, corroboration_score')
+                .eq('subject_entity_id', eB.id),
+            ]);
+            const predsA = new Set(((claimsA ?? []) as any[]).map((c) => c.predicate).filter(Boolean));
+            const predsB = new Set(((claimsB ?? []) as any[]).map((c) => c.predicate).filter(Boolean));
+            const shared = Array.from(predsA).filter((p) => predsB.has(p));
+            const uniqueA = Array.from(predsA).filter((p) => !predsB.has(p));
+            const uniqueB = Array.from(predsB).filter((p) => !predsA.has(p));
+            const fmt = (p: string) => p.split('.').pop()?.replace(/_/g, ' ') ?? p;
+            prompt = [
+              `Comparison: **${eA.canonical_name}** vs **${eB.canonical_name}** (/compare):`,
+              '',
+              `| | ${eA.canonical_name} | ${eB.canonical_name} |`,
+              '|---|---|---|',
+              `| Claims | ${(claimsA ?? []).length} | ${(claimsB ?? []).length} |`,
+              `| Published | ${((claimsA ?? []) as any[]).filter((c) => c.status === 'published').length} | ${((claimsB ?? []) as any[]).filter((c) => c.status === 'published').length} |`,
+              `| Predicates | ${predsA.size} | ${predsB.size} |`,
+              '',
+              `**Shared predicates** (${shared.length}): ${shared.slice(0, 8).map(fmt).join(', ') || 'none'}`,
+              `**Unique to ${eA.canonical_name}** (${uniqueA.length}): ${uniqueA.slice(0, 8).map(fmt).join(', ') || 'none'}`,
+              `**Unique to ${eB.canonical_name}** (${uniqueB.length}): ${uniqueB.slice(0, 8).map(fmt).join(', ') || 'none'}`,
+              '',
+              'Analyze the comparison and highlight notable differences in coverage.',
+            ].join('\n');
+            break;
+          }
           default:
-            prompt = `Unknown slash command: /${cmd}. Try /health, /sweep, /entity, or /queue.`;
+            prompt = `Unknown slash command: /${cmd}. Try /health, /sweep, /entity, /queue, /stale, /coverage, or /compare.`;
         }
         send(prompt);
       } catch (e: any) {
@@ -286,10 +479,47 @@ export default function CommandScreen() {
       { key: 'sweep', label: '/sweep', desc: 'Run governance sweep' },
       { key: 'entity', label: '/entity [name]', desc: 'Look up entity by name' },
       { key: 'queue', label: '/queue', desc: 'Show queue summary' },
+      { key: 'stale', label: '/stale', desc: 'Top 10 stalest claims report' },
+      { key: 'coverage', label: '/coverage [name]', desc: 'Entity coverage breakdown' },
+      { key: 'compare', label: '/compare A vs B', desc: 'Side-by-side entity comparison' },
     ];
     const filtered = cmds.filter((c) => c.key.startsWith(q.split(' ')[0] ?? ''));
     return filtered.length > 0 ? filtered : null;
   }, [input]);
+
+  // Predicate autocomplete — triggered when input contains a period-separated
+  // word pattern (e.g. "economics." or "performance.lap"). Queries the
+  // predicate_registry for matching keys and shows a compact dropdown.
+  const predicateQuery = React.useMemo(() => {
+    const match = input.match(/\b(\w+\.\w*)\s*$/);
+    return match ? match[1] : null;
+  }, [input]);
+
+  const [predicateResults, setPredicateResults] = useState<
+    Array<{ predicate_key: string; display_name: string }>
+  >([]);
+
+  useEffect(() => {
+    if (!predicateQuery || predicateQuery.length < 3) {
+      setPredicateResults([]);
+      return;
+    }
+    let cancelled = false;
+    supabase
+      .schema('intel')
+      .from('predicate_registry')
+      .select('predicate_key, display_name')
+      .ilike('predicate_key', `%${predicateQuery}%`)
+      .limit(8)
+      .then(({ data }) => {
+        if (!cancelled && data) {
+          setPredicateResults(
+            data as Array<{ predicate_key: string; display_name: string }>
+          );
+        }
+      });
+    return () => { cancelled = true; };
+  }, [predicateQuery]);
 
   const handleExport = useCallback(async () => {
     if (messages.length === 0) {
@@ -457,14 +687,8 @@ export default function CommandScreen() {
 
   return (
     <ScreenTransition>
-    <LinearGradient
-      colors={[gradient.background[0], gradient.background[1]]}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 0.5, y: 1 }}
-      style={styles.container}
-    >
-      {/* Soft teal glow behind the header */}
-      <GlowSpot size={360} opacity={0.08} top={insets.top - 80} left={-80} breathe />
+    <View style={styles.container}>
+      <BackgroundCanvas />
 
       <KeyboardAvoidingView
         style={styles.container}
@@ -505,13 +729,66 @@ export default function CommandScreen() {
                 color={searchOpen ? colors.teal : colors.silver}
               />
             </Pressable>
-            <Pressable
-              onPress={openHistory}
-              style={({ pressed }) => [styles.iconBtn, pressed && { opacity: 0.6 }]}
-              hitSlop={8}
-            >
-              <Ionicons name="time-outline" size={20} color={colors.silver} />
-            </Pressable>
+            <View style={styles.sessionGroup}>
+              <Pressable
+                onPress={openHistory}
+                style={({ pressed }) => [styles.iconBtn, pressed && { opacity: 0.6 }]}
+                hitSlop={8}
+              >
+                <Ionicons name="time-outline" size={20} color={colors.silver} />
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  Haptics.selectionAsync();
+                  const effectiveState: SaveState =
+                    !isOnline ? 'offline'
+                    : messages.length === 0 ? 'unsaved'
+                    : saveState;
+                  if (effectiveState === 'saved' && lastSavedAt) {
+                    const ago = Math.max(0, Math.floor((Date.now() - lastSavedAt.getTime()) / 60_000));
+                    showToast(
+                      ago < 1 ? 'Session saved just now' : `Session saved ${ago} min ago`,
+                      'success'
+                    );
+                  } else if (effectiveState === 'saving') {
+                    showToast('Saving…', 'info');
+                  } else if (effectiveState === 'offline') {
+                    showToast('Offline — will sync when reconnected', 'warn');
+                  } else {
+                    showToast('Session not yet saved', 'info');
+                  }
+                }}
+                hitSlop={8}
+                style={styles.sessionIndicator}
+                accessibilityRole="button"
+                accessibilityLabel="Session save status"
+              >
+                <View
+                  style={[
+                    styles.sessionDot,
+                    {
+                      backgroundColor:
+                        !isOnline
+                          ? colors.slate
+                          : saveState === 'saving'
+                          ? colors.statusPending
+                          : saveState === 'saved' && messages.length > 0
+                          ? colors.statusApprove
+                          : colors.slate,
+                    },
+                  ]}
+                />
+                <Text style={styles.sessionLabel}>
+                  {!isOnline
+                    ? 'Offline'
+                    : saveState === 'saving'
+                    ? 'Saving'
+                    : saveState === 'saved' && messages.length > 0
+                    ? 'Saved'
+                    : 'New'}
+                </Text>
+              </Pressable>
+            </View>
             <Pressable
               onPress={handleExport}
               style={({ pressed }) => [styles.iconBtn, pressed && { opacity: 0.6 }]}
@@ -535,6 +812,23 @@ export default function CommandScreen() {
               <Ionicons name="settings-outline" size={20} color={colors.silver} />
             </Pressable>
           </View>
+        </View>
+
+        {/* Context indicator — a subtle single-line reminder of what Claude
+            has access to. Updates live from PulseContext; swaps to an amber
+            "offline" hint when the device loses connectivity. */}
+        <View style={styles.contextBar}>
+          <Text
+            style={[
+              styles.contextText,
+              !isOnline && { color: '#D97706' },
+            ]}
+            numberOfLines={1}
+          >
+            {isOnline
+              ? `Graph: ${formatCount(pulse?.totalClaims)} claims · ${formatCount(pulse?.totalEntities)} entities · Queue: ${pulse?.queueDepth ?? 0}`
+              : 'Offline — cached context'}
+          </Text>
         </View>
 
         {/* Inline session search — when open, replaces the chat with a
@@ -781,6 +1075,19 @@ export default function CommandScreen() {
             while a message arrives. Tap to snap to bottom. */}
         <NewMessagesPill visible={!isPinned} onPress={() => scrollToBottom(true)} />
 
+        {/* Smart contextual suggestions — shown above the input when
+            the composer is empty and no slash/predicate autocomplete is
+            active. Visible at all times, not just on empty conversations. */}
+        {!input.trim() && !slashMatches && predicateResults.length === 0 && (
+          <SmartSuggestions
+            queueDepth={pulse?.queueDepth ?? 0}
+            onSelect={(text) => {
+              Haptics.selectionAsync();
+              send(text);
+            }}
+          />
+        )}
+
         {/* Slash command suggestions */}
         {slashMatches && (
           <View style={styles.slashMenu}>
@@ -801,6 +1108,32 @@ export default function CommandScreen() {
               >
                 <Text style={styles.slashLabel}>{s.label}</Text>
                 <Text style={styles.slashDesc}>{s.desc}</Text>
+              </Pressable>
+            ))}
+          </View>
+        )}
+
+        {/* Predicate autocomplete — shows when input contains a dotted
+            predicate pattern like "economics." or "performance.lap" */}
+        {predicateResults.length > 0 && !slashMatches && (
+          <View style={styles.slashMenu}>
+            {predicateResults.map((p) => (
+              <Pressable
+                key={p.predicate_key}
+                onPress={() => {
+                  // Replace the trailing dotted-word pattern with the full key.
+                  setInput((prev) =>
+                    prev.replace(/\b\w+\.\w*\s*$/, p.predicate_key + ' ')
+                  );
+                  setPredicateResults([]);
+                }}
+                style={({ pressed }) => [
+                  styles.slashRow,
+                  pressed && { backgroundColor: 'rgba(0,161,155,0.08)' },
+                ]}
+              >
+                <Text style={styles.slashLabel}>{p.predicate_key}</Text>
+                <Text style={styles.slashDesc}>{p.display_name}</Text>
               </Pressable>
             ))}
           </View>
@@ -867,7 +1200,7 @@ export default function CommandScreen() {
         onSelect={handleLoadSession}
         onDismiss={() => setHistoryVisible(false)}
       />
-    </LinearGradient>
+    </View>
     </ScreenTransition>
   );
 }
@@ -884,6 +1217,94 @@ const SUGGESTED_PROMPTS = [
 // SUGGESTED_PROMPTS + Suggestion scaffolding stays referenced and the TS
 // unused-local lint stays quiet.
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
+// Compact big-number formatter for the context indicator — "52,501" → "52.5K",
+// "4,428" → "4.4K", small numbers render as-is. Null/undefined → "0".
+// Time-of-day + graph-state contextual suggestion chips.
+const MORNING = [
+  'Morning briefing',
+  'What changed overnight?',
+  'Show stale sources',
+];
+const AFTERNOON = [
+  'Queue status',
+  'Run sweep',
+  'Top predicates today',
+];
+const EVENING = [
+  'Daily summary',
+  "Tomorrow's priorities",
+];
+
+function SmartSuggestions({
+  queueDepth,
+  onSelect,
+}: {
+  queueDepth: number;
+  onSelect: (text: string) => void;
+}) {
+  const hour = new Date().getHours();
+  const base = hour < 12 ? MORNING : hour < 18 ? AFTERNOON : EVENING;
+  const chips =
+    queueDepth > 20
+      ? ['Review queue', ...base.slice(0, 3)]
+      : base;
+
+  return (
+    <Animated.View entering={FadeIn.duration(200)} style={smartStyles.wrap}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={smartStyles.scroll}
+        keyboardShouldPersistTaps="handled"
+      >
+        {chips.map((text) => (
+          <Pressable
+            key={text}
+            onPress={() => onSelect(text)}
+            style={({ pressed }) => [
+              smartStyles.chip,
+              pressed && { opacity: 0.7, transform: [{ scale: 0.97 }] },
+            ]}
+          >
+            <Text style={smartStyles.chipText}>{text}</Text>
+          </Pressable>
+        ))}
+      </ScrollView>
+    </Animated.View>
+  );
+}
+
+const smartStyles = StyleSheet.create({
+  wrap: {
+    paddingBottom: spacing.sm,
+  },
+  scroll: {
+    paddingHorizontal: spacing.lg,
+    gap: spacing.sm,
+  },
+  chip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+  },
+  chipText: {
+    fontFamily: fonts.archivo.medium,
+    fontSize: 11,
+    color: colors.silver,
+    letterSpacing: 0.2,
+  },
+});
+
+function formatCount(n: number | null | undefined): string {
+  if (n == null) return '0';
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return n.toLocaleString();
+}
+
 function _LegacyCommandIntro({ onSuggest }: { onSuggest: (prompt: string) => void }) {
   return (
     <View style={styles.empty}>
@@ -1408,21 +1829,44 @@ function linkifyEntities(
   return { nodes, consumed: key - startKey };
 }
 
+// Typing indicator — three dots pulsing in sequence with 200ms stagger.
+// Each dot cycles between 0.2 and 1.0 opacity on a 900ms sine-wave loop.
+// Rendered inside an assistant-style bubble so it looks like the AI is
+// composing a message. Reanimated-driven for smooth 60fps.
 function TypingDots() {
-  const [tick, setTick] = useState(0);
+  const dot0 = useSharedValue(0.2);
+  const dot1 = useSharedValue(0.2);
+  const dot2 = useSharedValue(0.2);
+
   useEffect(() => {
-    const id = setInterval(() => setTick((t) => (t + 1) % 3), 400);
-    return () => clearInterval(id);
-  }, []);
+    const pulse = (sv: Animated.SharedValue<number>, delay: number) => {
+      setTimeout(() => {
+        sv.value = withRepeat(
+          withSequence(
+            withTiming(1, { duration: 450, easing: Easing.inOut(Easing.sin) }),
+            withTiming(0.2, { duration: 450, easing: Easing.inOut(Easing.sin) })
+          ),
+          -1
+        );
+      }, delay);
+    };
+    pulse(dot0, 0);
+    pulse(dot1, 200);
+    pulse(dot2, 400);
+  }, [dot0, dot1, dot2]);
+
+  const s0 = useAnimatedStyle(() => ({ opacity: dot0.value }));
+  const s1 = useAnimatedStyle(() => ({ opacity: dot1.value }));
+  const s2 = useAnimatedStyle(() => ({ opacity: dot2.value }));
+
   return (
-    <View style={styles.typingWrap}>
-      {[0, 1, 2].map((i) => (
-        <View
-          key={i}
-          style={[styles.typingDot, tick === i && styles.typingDotActive]}
-        />
-      ))}
-    </View>
+    <Animated.View entering={FadeIn.duration(200)} style={styles.typingBubble}>
+      <View style={styles.typingWrap}>
+        <Animated.View style={[styles.typingDot, s0]} />
+        <Animated.View style={[styles.typingDot, s1]} />
+        <Animated.View style={[styles.typingDot, s2]} />
+      </View>
+    </Animated.View>
   );
 }
 
@@ -1436,6 +1880,18 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: colors.glassBorder,
+  },
+  contextBar: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.04)',
+  },
+  contextText: {
+    fontFamily: fonts.archivo.regular,
+    fontSize: 11,
+    color: colors.silver,
+    letterSpacing: 0.1,
   },
   title: {
     fontFamily: fonts.archivo.bold,
@@ -1452,6 +1908,27 @@ const styles = StyleSheet.create({
   headerActions: {
     flexDirection: 'row',
     gap: spacing.sm,
+    alignItems: 'center',
+  },
+  sessionGroup: {
+    alignItems: 'center',
+    gap: 3,
+  },
+  sessionIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  sessionDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+  },
+  sessionLabel: {
+    fontFamily: fonts.mono.regular,
+    fontSize: 9,
+    color: colors.slate,
+    letterSpacing: 0.3,
   },
   iconBtn: {
     width: 36,
@@ -1772,19 +2249,26 @@ const styles = StyleSheet.create({
     color: colors.alabaster,
     lineHeight: 17,
   },
+  typingBubble: {
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(24, 24, 24, 0.65)',
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    marginLeft: spacing.lg,
+    marginBottom: spacing.sm,
+  },
   typingWrap: {
     flexDirection: 'row',
-    gap: 4,
-    paddingVertical: 6,
-    paddingHorizontal: 4,
+    gap: 5,
+    alignItems: 'center',
   },
   typingDot: {
     width: 7,
     height: 7,
     borderRadius: 4,
-    backgroundColor: colors.slate,
-  },
-  typingDotActive: {
     backgroundColor: colors.teal,
   },
   errorBubble: {

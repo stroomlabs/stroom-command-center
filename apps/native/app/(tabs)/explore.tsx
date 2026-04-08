@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,8 @@ import {
   Keyboard,
   ScrollView,
   RefreshControl,
+  Modal,
+  Platform,
 } from 'react-native';
 import Animated, {
   useSharedValue,
@@ -18,7 +20,10 @@ import Animated, {
   withTiming,
   Easing,
   cancelAnimation,
+  FadeIn,
+  FadeOut,
 } from 'react-native-reanimated';
+import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -28,6 +33,7 @@ import { useExploreSearch } from '../../src/hooks/useExploreSearch';
 import { useClaimsSearch } from '../../src/hooks/useClaimsSearch';
 import { useSourcesSearch } from '../../src/hooks/useSourcesSearch';
 import { EntityRow } from '../../src/components/EntityRow';
+import { SkeletonListPlaceholder } from '../../src/components/Skeleton';
 import { StatusBadge } from '../../src/components/StatusBadge';
 import { MultiCompareSheet } from '../../src/components/MultiCompareSheet';
 import { EmptyState } from '../../src/components/EmptyState';
@@ -40,8 +46,12 @@ import * as Clipboard from 'expo-clipboard';
 import { useBrandToast } from '../../src/components/BrandToast';
 import { useRecentlyViewed } from '../../src/hooks/useRecentlyViewed';
 import * as Haptics from 'expo-haptics';
+import supabase from '../../src/lib/supabase';
 import type { EntitySearchResult } from '@stroom/supabase';
 import type { Predicate } from '@stroom/types';
+import { resolveClaimDisplayValue } from '../../src/lib/resolveDisplayValue';
+import { HighlightedText } from '../../src/components/HighlightedText';
+import { BackgroundCanvas } from '../../src/components/BackgroundCanvas';
 import { colors, fonts, spacing, radius, gradient } from '../../src/constants/brand';
 
 export default function ExploreScreen() {
@@ -61,6 +71,7 @@ export default function ExploreScreen() {
 
   const [segment, setSegment] = useState<'entities' | 'claims' | 'sources'>('entities');
   const [query, setQuery] = useState('');
+  const [quickNavOpen, setQuickNavOpen] = useState(false);
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -80,6 +91,7 @@ export default function ExploreScreen() {
   const { recent: recentlyViewed } = useRecentlyViewed();
   const { show: showToast } = useBrandToast();
   const [menuEntity, setMenuEntity] = useState<EntitySearchResult | null>(null);
+  const [quickStatsEntity, setQuickStatsEntity] = useState<EntitySearchResult | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
   const handleRefresh = useCallback(async () => {
@@ -198,10 +210,11 @@ export default function ExploreScreen() {
       return (
         <EntityRow
           entity={item}
+          query={trimmed}
           onPress={() => handleOpenEntity(item.id)}
           onLongPress={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-            setMenuEntity(item);
+            setQuickStatsEntity(item);
           }}
         />
       );
@@ -249,12 +262,8 @@ export default function ExploreScreen() {
 
   return (
     <ScreenTransition>
-    <LinearGradient
-      colors={[gradient.background[0], gradient.background[1]]}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 0.5, y: 1 }}
-      style={styles.container}
-    >
+    <View style={styles.container}>
+      <BackgroundCanvas />
       <View style={[styles.header, { paddingTop: insets.top + spacing.lg }]}>
         <View style={styles.headerRow}>
           <Text style={styles.headerTitle}>Explore</Text>
@@ -391,8 +400,8 @@ export default function ExploreScreen() {
 
       {segment === 'entities' ? (
         loading && results.length === 0 ? (
-          <View style={styles.loadingWrap}>
-            <ActivityIndicator color={colors.teal} size="large" />
+          <View style={styles.list}>
+            <SkeletonListPlaceholder count={6} />
           </View>
         ) : error && results.length === 0 ? (
           <View style={styles.emptyWrap}>
@@ -469,6 +478,8 @@ export default function ExploreScreen() {
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="on-drag"
+            maxToRenderPerBatch={10}
+            windowSize={5}
             refreshControl={
               <RefreshControl
                 refreshing={refreshing}
@@ -534,6 +545,8 @@ export default function ExploreScreen() {
           showsVerticalScrollIndicator={false}
           keyboardDismissMode="on-drag"
           keyboardShouldPersistTaps="handled"
+          maxToRenderPerBatch={10}
+          windowSize={5}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -567,6 +580,7 @@ export default function ExploreScreen() {
           renderItem={({ item }) => (
             <ClaimSearchCard
               claim={item}
+              query={trimmed}
               onPressClaim={() =>
                 router.push({
                   pathname: '/claim/[id]',
@@ -592,6 +606,8 @@ export default function ExploreScreen() {
           showsVerticalScrollIndicator={false}
           keyboardDismissMode="on-drag"
           keyboardShouldPersistTaps="handled"
+          maxToRenderPerBatch={10}
+          windowSize={5}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -625,6 +641,7 @@ export default function ExploreScreen() {
           renderItem={({ item }) => (
             <SourceSearchCard
               source={item}
+              query={trimmed}
               onPress={() =>
                 router.push({
                   pathname: '/source/[id]',
@@ -683,6 +700,16 @@ export default function ExploreScreen() {
         onDismiss={() => setMenuEntity(null)}
       />
 
+      {/* Entity Quick Stats Popup — glassmorphic popover on long-press */}
+      <EntityQuickStatsPopup
+        entity={quickStatsEntity}
+        onDismiss={() => setQuickStatsEntity(null)}
+        onOpen={(id) => {
+          setQuickStatsEntity(null);
+          handleOpenEntity(id);
+        }}
+      />
+
       <MultiCompareSheet
         visible={compareOpen}
         entityIds={Array.from(selectedIds)}
@@ -694,7 +721,35 @@ export default function ExploreScreen() {
           router.push({ pathname: '/entity/[id]', params: { id } } as any);
         }}
       />
-    </LinearGradient>
+      {/* Entity Quick Nav FAB — "Cmd+K" for the app */}
+      {!quickNavOpen && (
+        <Pressable
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            setQuickNavOpen(true);
+          }}
+          style={({ pressed }) => [
+            fabStyles.fab,
+            { bottom: 16 + insets.bottom },
+            pressed && { opacity: 0.85, transform: [{ scale: 0.95 }] },
+          ]}
+          accessibilityRole="button"
+          accessibilityLabel="Quick entity search"
+        >
+          <Ionicons name="compass-outline" size={26} color={colors.obsidian} />
+        </Pressable>
+      )}
+
+      {quickNavOpen && (
+        <QuickNavOverlay
+          onSelect={(id) => {
+            setQuickNavOpen(false);
+            router.push({ pathname: '/entity/[id]', params: { id } } as any);
+          }}
+          onDismiss={() => setQuickNavOpen(false)}
+        />
+      )}
+    </View>
     </ScreenTransition>
   );
 }
@@ -793,12 +848,14 @@ function PredicatesView({
 // navigates to the entity), second line: predicate in silver mono,
 // third line: truncated value preview. Right side: StatusBadge. Tapping
 // anywhere outside the entity link opens the claim detail screen.
-function ClaimSearchCard({
+const ClaimSearchCard = React.memo(function ClaimSearchCard({
   claim,
+  query,
   onPressClaim,
   onPressEntity,
 }: {
   claim: import('../../src/hooks/useClaimsSearch').ClaimSearchResult;
+  query: string;
   onPressClaim: () => void;
   onPressEntity: () => void;
 }) {
@@ -808,15 +865,11 @@ function ClaimSearchCard({
     .split('.')
     .pop()!
     .replace(/_/g, ' ');
-  const valuePreview = (() => {
-    if (!claim.value_jsonb) return '';
-    try {
-      const raw = JSON.stringify(claim.value_jsonb);
-      return raw.length > 80 ? raw.slice(0, 80) + '…' : raw;
-    } catch {
-      return '';
-    }
-  })();
+  const valuePreview = resolveClaimDisplayValue(
+    claim.value_jsonb as Record<string, unknown> | null,
+    claim.object_entity?.canonical_name ?? null,
+    claim.predicate
+  );
   return (
     <Pressable
       onPress={onPressClaim}
@@ -833,32 +886,43 @@ function ClaimSearchCard({
           }}
           hitSlop={4}
         >
-          <Text style={styles.claimCardSubject} numberOfLines={1}>
-            {subject}
-          </Text>
+          <HighlightedText
+            text={subject}
+            query={query}
+            style={styles.claimCardSubject}
+            numberOfLines={1}
+          />
         </Pressable>
-        <Text style={styles.claimCardPredicate} numberOfLines={1}>
-          {predicate}
-        </Text>
+        <HighlightedText
+          text={predicate}
+          query={query}
+          style={styles.claimCardPredicate}
+          numberOfLines={1}
+        />
         {valuePreview ? (
-          <Text style={styles.claimCardValue} numberOfLines={2}>
-            {valuePreview}
-          </Text>
+          <HighlightedText
+            text={valuePreview}
+            query={query}
+            style={styles.claimCardValue}
+            numberOfLines={2}
+          />
         ) : null}
       </View>
       <StatusBadge status={claim.status} />
     </Pressable>
   );
-}
+});
 
 // Source result card — source_name bold, colored source_class badge,
 // small teal trust score, claim count on the right. Whole card navigates
 // to the source detail screen.
-function SourceSearchCard({
+const SourceSearchCard = React.memo(function SourceSearchCard({
   source,
+  query,
   onPress,
 }: {
   source: import('../../src/hooks/useSourcesSearch').SourceSearchResult;
+  query: string;
   onPress: () => void;
 }) {
   const palette = sourceClassPalette(source.source_class ?? '');
@@ -871,9 +935,12 @@ function SourceSearchCard({
       ]}
     >
       <View style={styles.sourceCardBody}>
-        <Text style={styles.sourceCardName} numberOfLines={1}>
-          {source.source_name}
-        </Text>
+        <HighlightedText
+          text={source.source_name}
+          query={query}
+          style={styles.sourceCardName}
+          numberOfLines={1}
+        />
         <View style={styles.sourceCardMetaRow}>
           {source.source_class ? (
             <View
@@ -881,6 +948,9 @@ function SourceSearchCard({
                 styles.sourceClassBadge,
                 { backgroundColor: palette.bg, borderColor: palette.border },
               ]}
+              accessible
+              accessibilityRole="text"
+              accessibilityLabel={`Source class: ${source.source_class.replace(/_/g, ' ')}`}
             >
               <Text style={[styles.sourceClassText, { color: palette.fg }]}>
                 {source.source_class.replace(/_/g, ' ').toUpperCase()}
@@ -897,7 +967,7 @@ function SourceSearchCard({
       </Text>
     </Pressable>
   );
-}
+});
 
 function sourceClassPalette(cls: string): {
   bg: string;
@@ -996,6 +1066,471 @@ function FilterChip({
     </Pressable>
   );
 }
+
+// Full-screen entity quick-nav overlay — the "Cmd+K" for mobile. Keyboard
+// opens immediately; results stream in as the user types via the existing
+// entity search hook. Tapping a result navigates and dismisses.
+function QuickNavOverlay({
+  onSelect,
+  onDismiss,
+}: {
+  onSelect: (entityId: string) => void;
+  onDismiss: () => void;
+}) {
+  const insets = useSafeAreaInsets();
+  const [q, setQ] = useState('');
+  const { results, loading } = useExploreSearch(q);
+
+  return (
+    <View style={qnavStyles.overlay}>
+      <LinearGradient
+        colors={['rgba(0,0,0,0.95)', 'rgba(10,13,15,0.98)']}
+        style={[qnavStyles.gradient, { paddingTop: insets.top + spacing.md }]}
+      >
+        {/* Header with search input + dismiss */}
+        <View style={qnavStyles.header}>
+          <View style={qnavStyles.inputWrap}>
+            <Ionicons name="compass-outline" size={18} color={colors.teal} />
+            <TextInput
+              value={q}
+              onChangeText={setQ}
+              placeholder="Jump to entity…"
+              placeholderTextColor={colors.slate}
+              style={qnavStyles.input}
+              autoFocus
+              returnKeyType="search"
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            {q.length > 0 && (
+              <Pressable onPress={() => setQ('')} hitSlop={8}>
+                <Ionicons name="close-circle" size={16} color={colors.slate} />
+              </Pressable>
+            )}
+          </View>
+          <Pressable
+            onPress={onDismiss}
+            hitSlop={8}
+            style={({ pressed }) => [pressed && { opacity: 0.6 }]}
+          >
+            <Text style={qnavStyles.cancelText}>Cancel</Text>
+          </Pressable>
+        </View>
+
+        {/* Results */}
+        <FlatList
+          data={results}
+          keyExtractor={(r) => r.id}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ paddingBottom: insets.bottom + 20 }}
+          renderItem={({ item }) => (
+            <Pressable
+              onPress={() => onSelect(item.id)}
+              style={({ pressed }) => [
+                qnavStyles.row,
+                pressed && { opacity: 0.75, backgroundColor: colors.surfaceCard },
+              ]}
+            >
+              <View style={{ flex: 1 }}>
+                <HighlightedText
+                  text={item.canonical_name || item.name || 'Unnamed'}
+                  query={q}
+                  style={qnavStyles.name}
+                  numberOfLines={1}
+                />
+                <View style={qnavStyles.metaRow}>
+                  {item.entity_type && (
+                    <View style={qnavStyles.badge}>
+                      <Text style={qnavStyles.badgeText}>
+                        {item.entity_type}
+                      </Text>
+                    </View>
+                  )}
+                  {item.domain && (
+                    <Text style={qnavStyles.domain} numberOfLines={1}>
+                      {item.domain}
+                    </Text>
+                  )}
+                </View>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={colors.slate} />
+            </Pressable>
+          )}
+          ListEmptyComponent={
+            loading ? (
+              <ActivityIndicator
+                color={colors.teal}
+                style={{ marginTop: spacing.xxl }}
+              />
+            ) : q.trim().length > 0 ? (
+              <Text style={qnavStyles.empty}>No entities found</Text>
+            ) : (
+              <Text style={qnavStyles.empty}>Type to search…</Text>
+            )
+          }
+        />
+      </LinearGradient>
+    </View>
+  );
+}
+
+// Entity Quick Stats Popup — glassmorphic popover shown on long-press of
+// an entity row. Fetches claim count + coverage score on mount, shows a
+// mini progress bar, name, type, last updated, and an Open button.
+function EntityQuickStatsPopup({
+  entity,
+  onDismiss,
+  onOpen,
+}: {
+  entity: EntitySearchResult | null;
+  onDismiss: () => void;
+  onOpen: (id: string) => void;
+}) {
+  const [stats, setStats] = useState<{
+    claimCount: number;
+    coverageScore: number;
+    lastUpdated: string | null;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!entity) {
+      setStats(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const { data: claims } = await supabase
+        .schema('intel')
+        .from('claims')
+        .select('id, predicate, corroboration_score', { count: 'exact', head: false })
+        .eq('subject_entity_id', entity.id);
+      const claimList = (claims ?? []) as any[];
+      const predCategories = new Set<string>();
+      let corroborated = 0;
+      for (const c of claimList) {
+        const p = String(c.predicate ?? '');
+        predCategories.add(p.includes('.') ? p.split('.')[0] : 'other');
+        if ((c.corroboration_score ?? 0) >= 1) corroborated++;
+      }
+      const score = Math.round(
+        ((Math.min(1, claimList.length / 10) +
+          Math.min(1, predCategories.size / 5) +
+          (claimList.length > 0 ? corroborated / claimList.length : 0)) /
+          3) *
+          100
+      );
+      // Fetch entity updated_at
+      const { data: ent } = await supabase
+        .schema('intel')
+        .from('entities')
+        .select('updated_at')
+        .eq('id', entity.id)
+        .single();
+      if (!cancelled) {
+        setStats({
+          claimCount: claimList.length,
+          coverageScore: score,
+          lastUpdated: (ent as any)?.updated_at ?? null,
+        });
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [entity]);
+
+  if (!entity) return null;
+
+  const name = entity.canonical_name || entity.name || 'Unnamed entity';
+  const type = entity.entity_type || entity.entity_class || 'entity';
+
+  return (
+    <Modal
+      visible
+      transparent
+      animationType="fade"
+      onRequestClose={onDismiss}
+    >
+      <Pressable style={qsStyles.backdrop} onPress={onDismiss}>
+        <Animated.View
+          entering={FadeIn.duration(150)}
+          style={qsStyles.popover}
+        >
+          {Platform.OS === 'ios' && (
+            <BlurView intensity={20} tint="dark" style={StyleSheet.absoluteFill} />
+          )}
+          <View style={qsStyles.topGlow} pointerEvents="none" />
+
+          <Text style={qsStyles.name} numberOfLines={1}>{name}</Text>
+          <View style={qsStyles.typeBadge}>
+            <Text style={qsStyles.typeText}>{type}</Text>
+          </View>
+
+          {/* Coverage progress bar */}
+          <View style={qsStyles.statRow}>
+            <Text style={qsStyles.statLabel}>Coverage</Text>
+            <View style={qsStyles.barTrack}>
+              <View
+                style={[
+                  qsStyles.barFill,
+                  { width: `${stats?.coverageScore ?? 0}%` },
+                ]}
+              />
+            </View>
+            <Text style={qsStyles.statValue}>
+              {stats ? `${stats.coverageScore}%` : '—'}
+            </Text>
+          </View>
+
+          <View style={qsStyles.statRow}>
+            <Text style={qsStyles.statLabel}>Claims</Text>
+            <Text style={qsStyles.statValue}>
+              {stats ? stats.claimCount.toLocaleString() : '—'}
+            </Text>
+          </View>
+
+          <View style={qsStyles.statRow}>
+            <Text style={qsStyles.statLabel}>Updated</Text>
+            <Text style={qsStyles.statValue}>
+              {stats?.lastUpdated
+                ? new Date(stats.lastUpdated).toLocaleDateString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    hour: 'numeric',
+                    minute: '2-digit',
+                  })
+                : '—'}
+            </Text>
+          </View>
+
+          <Pressable
+            onPress={() => {
+              Haptics.selectionAsync();
+              onOpen(entity.id);
+            }}
+            style={({ pressed }) => [
+              qsStyles.openBtn,
+              pressed && { opacity: 0.75, transform: [{ scale: 0.97 }] },
+            ]}
+          >
+            <Text style={qsStyles.openBtnText}>Open</Text>
+            <Ionicons name="arrow-forward" size={14} color={colors.obsidian} />
+          </Pressable>
+        </Animated.View>
+      </Pressable>
+    </Modal>
+  );
+}
+
+const qsStyles = StyleSheet.create({
+  backdrop: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    padding: spacing.xl,
+  },
+  popover: {
+    width: '100%',
+    maxWidth: 320,
+    backgroundColor: Platform.OS === 'ios'
+      ? 'rgba(24, 24, 24, 0.65)'
+      : 'rgba(24, 24, 24, 0.92)',
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.sheetBorder,
+    padding: spacing.lg,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.6,
+    shadowRadius: 20,
+    elevation: 12,
+  },
+  topGlow: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+  },
+  name: {
+    fontFamily: fonts.archivo.bold,
+    fontSize: 18,
+    color: colors.alabaster,
+    marginBottom: spacing.xs,
+  },
+  typeBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: colors.tealDim,
+    borderRadius: radius.sm,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    marginBottom: spacing.md,
+  },
+  typeText: {
+    fontFamily: fonts.mono.medium,
+    fontSize: 10,
+    color: colors.teal,
+    textTransform: 'lowercase',
+  },
+  statRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.glassBorder,
+    gap: spacing.sm,
+  },
+  statLabel: {
+    fontFamily: fonts.archivo.medium,
+    fontSize: 12,
+    color: colors.slate,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    minWidth: 64,
+  },
+  statValue: {
+    fontFamily: fonts.mono.semibold,
+    fontSize: 13,
+    color: colors.alabaster,
+    fontVariant: ['tabular-nums'],
+  },
+  barTrack: {
+    flex: 1,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    overflow: 'hidden',
+  },
+  barFill: {
+    height: '100%',
+    borderRadius: 3,
+    backgroundColor: colors.teal,
+  },
+  openBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: spacing.md,
+    paddingVertical: 12,
+    borderRadius: radius.md,
+    backgroundColor: colors.teal,
+  },
+  openBtnText: {
+    fontFamily: fonts.archivo.bold,
+    fontSize: 14,
+    color: colors.obsidian,
+  },
+});
+
+const qnavStyles = StyleSheet.create({
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 100,
+  },
+  gradient: {
+    flex: 1,
+    paddingHorizontal: spacing.lg,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    marginBottom: spacing.md,
+  },
+  inputWrap: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: colors.teal,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    height: 44,
+  },
+  input: {
+    flex: 1,
+    fontFamily: fonts.archivo.medium,
+    fontSize: 16,
+    color: colors.alabaster,
+    paddingVertical: 0,
+  },
+  cancelText: {
+    fontFamily: fonts.archivo.semibold,
+    fontSize: 14,
+    color: colors.teal,
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.glassBorder,
+  },
+  name: {
+    fontFamily: fonts.archivo.semibold,
+    fontSize: 15,
+    color: colors.alabaster,
+  },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: 4,
+  },
+  badge: {
+    backgroundColor: colors.tealDim,
+    borderRadius: radius.sm,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  badgeText: {
+    fontFamily: fonts.mono.medium,
+    fontSize: 10,
+    color: colors.teal,
+    textTransform: 'lowercase',
+  },
+  domain: {
+    fontFamily: fonts.mono.regular,
+    fontSize: 10,
+    color: colors.slate,
+    flex: 1,
+  },
+  empty: {
+    fontFamily: fonts.archivo.regular,
+    fontSize: 14,
+    color: colors.slate,
+    textAlign: 'center',
+    marginTop: spacing.xxl,
+  },
+});
+
+const fabStyles = StyleSheet.create({
+  fab: {
+    position: 'absolute',
+    right: 16,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: colors.teal,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: colors.teal,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+    elevation: 8,
+    zIndex: 50,
+  },
+});
 
 const styles = StyleSheet.create({
   container: { flex: 1 },

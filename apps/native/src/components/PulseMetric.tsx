@@ -7,6 +7,7 @@ import Animated, {
   withSequence,
   Easing,
 } from 'react-native-reanimated';
+import * as Haptics from 'expo-haptics';
 import { GlassCard } from './GlassCard';
 import { colors, fonts, spacing, radius } from '../constants/brand';
 
@@ -18,13 +19,10 @@ interface PulseMetricProps {
   suffix?: string;
   compact?: boolean;
   onPress?: () => void;
-  // When true, numeric values tween from the previous number to the new
-  // number over 500ms whenever `value` changes. Non-numeric values still
-  // render directly.
   animate?: boolean;
-  // Bump to trigger a one-shot teal border flash. Caller typically
-  // increments a counter on realtime inserts.
   flashKey?: number;
+  // Colored left-edge accent bar (3px) for visual identity in grids.
+  borderAccent?: string;
 }
 
 // Interpolates a numeric value from its previous render to the current one
@@ -72,6 +70,7 @@ export function PulseMetric({
   onPress,
   animate = false,
   flashKey = 0,
+  borderAccent,
 }: PulseMetricProps) {
   const isNumeric = typeof value === 'number';
   const numericValue = isNumeric ? value : parseFloat(String(value));
@@ -107,19 +106,36 @@ export function PulseMetric({
     opacity: borderProgress.value,
   }));
 
+  // Teal radial glow — pulses 0 → 0.12 → 0 over 400ms on tap.
+  const glowOpacity = useSharedValue(0);
+  const glowStyle = useAnimatedStyle(() => ({
+    opacity: glowOpacity.value,
+  }));
+
   const cardStyle = compact ? styles.compact : styles.card;
   const labelStyle = compact ? styles.labelCompact : styles.label;
   const valueStyle = compact ? styles.valueCompact : styles.value;
   const prefixStyle = compact ? styles.prefixCompact : styles.prefix;
   const suffixStyle = compact ? styles.suffixCompact : styles.suffix;
 
+  const a11yLabel = `${label}: ${prefix ?? ''}${displayValue}${suffix ? ' ' + suffix : ''}`;
+
   const inner = (
-    <View style={styles.cardWrap}>
+    <View
+      style={styles.cardWrap}
+      accessible={!onPress}
+      accessibilityRole={!onPress ? 'text' : undefined}
+      accessibilityLabel={!onPress ? a11yLabel : undefined}
+    >
       <GlassCard
         style={[
           onPress ? styles.innerFill : cardStyle,
+          !compact && styles.cardPadding,
           compact && styles.compactCard,
           isZero && styles.mutedCard,
+          borderAccent
+            ? { borderLeftWidth: 3, borderLeftColor: borderAccent }
+            : undefined,
         ]}
       >
         {compact ? (
@@ -142,14 +158,21 @@ export function PulseMetric({
           </View>
         ) : (
           <>
-            <Text style={labelStyle}>{label}</Text>
+            <Text style={labelStyle} numberOfLines={1}>{label}</Text>
             <View style={styles.valueRow}>
               {prefix && (
                 <Text style={[prefixStyle, { color: effectiveAccent }]}>{prefix}</Text>
               )}
-              <Text style={[valueStyle, { color: effectiveAccent }]}>{displayValue}</Text>
+              <Text
+                style={[valueStyle, { color: effectiveAccent }]}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.7}
+              >
+                {displayValue}
+              </Text>
               {suffix && (
-                <Text style={[suffixStyle, { color: colors.slate }]}>{suffix}</Text>
+                <Text style={[suffixStyle, { color: colors.slate }]} numberOfLines={1}>{suffix}</Text>
               )}
             </View>
           </>
@@ -159,16 +182,35 @@ export function PulseMetric({
         pointerEvents="none"
         style={[styles.flashOverlay, flashOverlayStyle]}
       />
+      {/* Teal radial glow — pulses on tap for tappable metrics */}
+      {onPress && (
+        <Animated.View pointerEvents="none" style={[styles.glowOverlay, glowStyle]} />
+      )}
     </View>
   );
 
   if (!onPress) return inner;
 
+  const handlePress = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    // Teal radial glow: 0 → 0.12 → 0 over 400ms
+    glowOpacity.value = withSequence(
+      withTiming(0.12, { duration: 200, easing: Easing.out(Easing.ease) }),
+      withTiming(0, { duration: 200, easing: Easing.in(Easing.ease) })
+    );
+    // Border flash
+    borderProgress.value = withSequence(
+      withTiming(1, { duration: 150, easing: Easing.out(Easing.ease) }),
+      withTiming(0, { duration: 600, easing: Easing.in(Easing.ease) })
+    );
+    onPress();
+  };
+
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={`${label}: ${prefix ?? ''}${displayValue}${suffix ? ' ' + suffix : ''}`}
-      onPress={onPress}
+      onPress={handlePress}
       style={({ pressed }) => [cardStyle, pressed && styles.pressed]}
     >
       {inner}
@@ -185,7 +227,9 @@ function formatNumber(n: number): string {
 const styles = StyleSheet.create({
   card: {
     flex: 1,
-    minWidth: '45%',
+  },
+  cardPadding: {
+    padding: 16,
   },
   compact: {
     flex: 1,
@@ -204,6 +248,15 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.8,
     shadowRadius: 12,
+  },
+  glowOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: radius.lg,
+    backgroundColor: colors.teal,
+    shadowColor: colors.teal,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 1,
+    shadowRadius: 24,
   },
   compactCard: {
     paddingVertical: 0,
@@ -233,8 +286,8 @@ const styles = StyleSheet.create({
     transform: [{ scale: 0.97 }],
   },
   label: {
-    fontFamily: fonts.archivo.medium,
-    fontSize: 12,
+    fontFamily: fonts.archivo.bold,
+    fontSize: 11,
     color: colors.slate,
     textTransform: 'uppercase',
     letterSpacing: 1,
@@ -262,8 +315,8 @@ const styles = StyleSheet.create({
     marginRight: 1,
   },
   value: {
-    fontFamily: fonts.mono.semibold,
-    fontSize: 28,
+    fontFamily: fonts.archivo.black,
+    fontSize: 32,
     fontVariant: ['tabular-nums'],
   },
   valueCompact: {
