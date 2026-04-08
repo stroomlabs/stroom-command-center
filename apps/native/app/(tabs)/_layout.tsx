@@ -53,24 +53,27 @@ const tabStyles = StyleSheet.create({
 export default function TabLayout() {
   const { data } = usePulseContext();
   const queueDepth = data?.queueDepth ?? 0;
-  const { hasCapability, isLoading: capsLoading, capabilities } =
-    useCapabilities();
+  const { role, hasCapability, isLoading: capsLoading } = useCapabilities();
 
-  // While the very first capability snapshot is still in flight (i.e. no
-  // cached snapshot at all), permit every tab so we don't visibly collapse
-  // the bar mid-load. Once a snapshot lands — even a stale one from
-  // AsyncStorage — we honor its answer. Owner role (Kevin) has every
-  // capability set, so this only matters for future restricted operators.
-  const haveSnapshot = !capsLoading || Object.keys(capabilities).length > 0;
-  const canSee = (capability: string) =>
-    !haveSnapshot ? true : hasCapability(capability);
-
+  // Fail-OPEN during capability load. Unlike CapabilityGate (which
+  // protects individual privileged UI surfaces and must fail closed to
+  // avoid flashing content), the tab bar is navigation chrome — hiding
+  // tabs before we have a confirmed-denied snapshot is worse than briefly
+  // showing a tab the operator can't actually use. A tab is hidden ONLY
+  // when we have a real role row, loading is done, AND hasCapability
+  // explicitly returns false.
+  //
   // Expo Router 4 hides a tab from the bar by setting `href: null` on the
   // screen options. The route stays registered (so deep links still work
   // for an owner reaching it via a direct path), but it disappears from
   // the visible bottom bar.
+  const shouldHide = (cap: string): boolean => {
+    if (capsLoading) return false; // still loading → show
+    if (!role) return false; // no snapshot yet → show
+    return !hasCapability(cap); // confirmed deny → hide
+  };
   const hideIfDenied = (capability: string) =>
-    canSee(capability) ? undefined : { href: null as any };
+    shouldHide(capability) ? { href: null as any } : undefined;
 
   return (
     <Tabs
