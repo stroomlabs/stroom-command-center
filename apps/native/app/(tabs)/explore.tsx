@@ -261,9 +261,9 @@ export default function ExploreScreen() {
   const trimmed = query.trim();
 
   return (
-    <ScreenTransition>
     <View style={styles.container}>
       <ScreenCanvas />
+      <ScreenTransition>
       <View style={[styles.header, { paddingTop: insets.top + spacing.lg }]}>
         <View style={styles.headerRow}>
           <Text style={styles.headerTitle}>Explore</Text>
@@ -749,8 +749,8 @@ export default function ExploreScreen() {
           onDismiss={() => setQuickNavOpen(false)}
         />
       )}
-    </View>
     </ScreenTransition>
+    </View>
   );
 }
 
@@ -1533,7 +1533,7 @@ const fabStyles = StyleSheet.create({
 });
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  container: { flex: 1, backgroundColor: 'transparent' },
   header: {
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.md,

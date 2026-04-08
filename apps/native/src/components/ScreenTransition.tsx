@@ -8,12 +8,14 @@ import Animated, {
   Easing,
 } from 'react-native-reanimated';
 
-// Wrap a tab screen's root in <ScreenTransition> to get the standard
-// "fade in from bottom" entering animation whenever the screen gains focus.
-// Matches the global tab-switch spec: opacity 0 → 1, translateY 15 → 0,
-// 200ms ease-out. Expo Router's Tabs doesn't expose a per-screen content
-// wrapper at the navigator level, so every tab delegates its entering
-// animation here — this component IS the layout-level animation.
+// Wraps a tab screen's foreground content (everything except ScreenCanvas)
+// in a Reanimated Animated.View that fades in over 180ms whenever the
+// screen gains focus. Pure opacity — no translateY, no scale — so the
+// content materializes on top of the static ScreenCanvas without any
+// vertical drift. Re-fires on every tab focus via useFocusEffect.
+//
+// Mount this INSIDE the root <View> as a sibling to <ScreenCanvas /> so
+// the canvas stays still while only the foreground crossfades.
 export function ScreenTransition({
   children,
   style,
@@ -22,21 +24,14 @@ export function ScreenTransition({
   style?: StyleProp<ViewStyle>;
 }) {
   const opacity = useSharedValue(0);
-  const translateY = useSharedValue(15);
 
   const play = React.useCallback(() => {
-    // Reset to start position, then animate in.
     opacity.value = 0;
-    translateY.value = 15;
     opacity.value = withTiming(1, {
-      duration: 200,
+      duration: 180,
       easing: Easing.out(Easing.ease),
     });
-    translateY.value = withTiming(0, {
-      duration: 200,
-      easing: Easing.out(Easing.ease),
-    });
-  }, [opacity, translateY]);
+  }, [opacity]);
 
   // Initial mount
   useEffect(() => {
@@ -53,7 +48,6 @@ export function ScreenTransition({
 
   const animatedStyle = useAnimatedStyle(() => ({
     opacity: opacity.value,
-    transform: [{ translateY: translateY.value }],
   }));
 
   return (

@@ -685,9 +685,9 @@ export default function CommandScreen() {
     messages[messages.length - 1].content === '';
 
   return (
-    <ScreenTransition>
     <View style={styles.container}>
       <ScreenCanvas />
+      <ScreenTransition>
 
       <KeyboardAvoidingView
         style={styles.container}
@@ -1202,8 +1202,8 @@ export default function CommandScreen() {
         onSelect={handleLoadSession}
         onDismiss={() => setHistoryVisible(false)}
       />
-    </View>
     </ScreenTransition>
+    </View>
   );
 }
 
@@ -1873,7 +1873,7 @@ function TypingDots() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  container: { flex: 1, backgroundColor: 'transparent' },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',

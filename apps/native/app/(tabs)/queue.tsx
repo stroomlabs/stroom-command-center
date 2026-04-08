@@ -616,9 +616,9 @@ export default function QueueScreen() {
   const keyExtractor = useCallback((item: QueueClaim) => item.id, []);
 
   return (
-    <ScreenTransition>
     <View style={styles.container}>
       <ScreenCanvas />
+      <ScreenTransition>
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + spacing.lg }]}>
         <Text style={styles.headerTitle}>Queue</Text>
@@ -1030,8 +1030,8 @@ export default function QueueScreen() {
         onUndo={undoPending}
         onDismiss={flushPending}
       />
-    </View>
     </ScreenTransition>
+    </View>
   );
 }
 
@@ -1356,6 +1356,7 @@ const recentStyles = StyleSheet.create({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: 'transparent',
   },
   header: {
     flexDirection: 'row',

@@ -393,9 +393,9 @@ export default function PulseScreen() {
   };
 
   return (
-    <ScreenTransition>
     <View style={styles.container}>
       <ScreenCanvas />
+      <ScreenTransition>
 
       {/* Pull-down stats peek panel — hidden above the scroll area */}
       <Animated.View style={[peekStyles.panel, peekPanelStyle]} pointerEvents="none">
@@ -736,8 +736,8 @@ export default function PulseScreen() {
           </>
         ) : null}
       </Animated.ScrollView>
-    </View>
     </ScreenTransition>
+    </View>
   );
 }
 
@@ -783,6 +783,7 @@ const peekStyles = StyleSheet.create({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: 'transparent',
   },
   scroll: {
     paddingHorizontal: spacing.lg,

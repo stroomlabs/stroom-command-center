@@ -542,9 +542,9 @@ export default function OpsScreen() {
   ];
 
   return (
-    <ScreenTransition>
     <View style={styles.container}>
       <ScreenCanvas />
+      <ScreenTransition>
 
       <View style={[styles.header, { paddingTop: insets.top + spacing.lg }]}>
         <View style={{ flex: 1 }}>
@@ -862,8 +862,8 @@ export default function OpsScreen() {
         actions={snapshotActions}
         onDismiss={() => setSnapshotSheetVisible(false)}
       />
-    </View>
     </ScreenTransition>
+    </View>
   );
 }
 
@@ -1259,7 +1259,7 @@ function VerticalBreakdownSection({
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  container: { flex: 1, backgroundColor: 'transparent' },
   header: {
     flexDirection: 'row',
     alignItems: 'flex-start',

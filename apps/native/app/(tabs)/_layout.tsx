@@ -1,22 +1,53 @@
 import React from 'react';
+import { View, StyleSheet, Platform } from 'react-native';
 import { Tabs } from 'expo-router';
+import { BottomTabBar, type BottomTabBarProps } from '@react-navigation/bottom-tabs';
+import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import { usePulseContext } from '../../src/lib/PulseContext';
 import { TabIcon } from '../../src/components/TabIcon';
 import { colors, fonts } from '../../src/constants/brand';
-
-// Tab switch animation: every tab screen wraps its root in <ScreenTransition>
-// (src/components/ScreenTransition.tsx), which runs a Reanimated fade +
-// translateY(15 → 0) over 200ms on every focus event. Expo Router's Tabs
-// navigator doesn't expose a per-screen content wrapper, so the animation
-// lives inside each screen rather than at the navigator level — this is the
-// layout-level entering animation for tabs.
 
 const tabPressListeners = {
   tabPress: () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   },
 };
+
+// Custom tab bar wrapper — renders a BlurView behind the default
+// BottomTabBar for real glassmorphism, with a 1px top glow line.
+function GlassTabBar(props: BottomTabBarProps) {
+  return (
+    <View
+      style={tabStyles.wrap}
+      accessibilityRole={'tabBar' as any}
+      accessibilityLabel="Main navigation"
+    >
+      {Platform.OS === 'ios' && (
+        <BlurView intensity={20} tint="dark" style={StyleSheet.absoluteFill} />
+      )}
+      <View style={tabStyles.topGlow} pointerEvents="none" />
+      <BottomTabBar {...props} />
+    </View>
+  );
+}
+
+const tabStyles = StyleSheet.create({
+  wrap: {
+    // The BottomTabBar positions itself; we just layer behind it.
+    backgroundColor: Platform.OS === 'ios' ? 'rgba(5, 5, 7, 0.75)' : '#050507',
+    overflow: 'hidden',
+  },
+  topGlow: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    zIndex: 1,
+  },
+});
 
 export default function TabLayout() {
   const { data } = usePulseContext();
@@ -25,18 +56,24 @@ export default function TabLayout() {
   return (
     <Tabs
       screenListeners={tabPressListeners}
+      tabBar={(props) => <GlassTabBar {...props} />}
       screenOptions={{
         headerShown: false,
+        // Override React Navigation's default white scene background so the
+        // ScreenCanvas stays visible during tab transitions — no white flash.
+        // In React Navigation v7, sceneStyle in screenOptions replaces the
+        // older top-level sceneContainerStyle prop.
+        sceneStyle: { backgroundColor: 'transparent' },
         tabBarStyle: {
-          backgroundColor: colors.surfaceElevated,
-          borderTopColor: colors.glassBorder,
-          borderTopWidth: 1,
-          height: 88,
+          backgroundColor: 'transparent',
+          borderTopWidth: 0,
+          height: 85,
           paddingBottom: 30,
           paddingTop: 8,
+          elevation: 0,
         },
         tabBarActiveTintColor: colors.teal,
-        tabBarInactiveTintColor: colors.slate,
+        tabBarInactiveTintColor: 'rgba(255, 255, 255, 0.4)',
         tabBarLabelStyle: {
           fontFamily: fonts.archivo.medium,
           fontSize: 11,
@@ -48,6 +85,7 @@ export default function TabLayout() {
         name="index"
         options={{
           title: 'Pulse',
+          tabBarAccessibilityLabel: 'Pulse tab',
           tabBarIcon: ({ color, size, focused }) => (
             <TabIcon name="pulse" size={size} color={color} focused={focused} />
           ),
@@ -57,6 +95,8 @@ export default function TabLayout() {
         name="queue"
         options={{
           title: 'Queue',
+          tabBarAccessibilityLabel:
+            queueDepth > 0 ? `Queue tab, ${queueDepth} items` : 'Queue tab',
           tabBarIcon: ({ color, size, focused }) => (
             <TabIcon
               name="layers-outline"
@@ -81,6 +121,7 @@ export default function TabLayout() {
         name="explore"
         options={{
           title: 'Explore',
+          tabBarAccessibilityLabel: 'Explore tab',
           tabBarIcon: ({ color, size, focused }) => (
             <TabIcon
               name="search-outline"
@@ -95,6 +136,7 @@ export default function TabLayout() {
         name="command"
         options={{
           title: 'Command',
+          tabBarAccessibilityLabel: 'Command tab',
           tabBarIcon: ({ color, size, focused }) => (
             <TabIcon
               name="sparkles"
@@ -109,6 +151,7 @@ export default function TabLayout() {
         name="ops"
         options={{
           title: 'Ops',
+          tabBarAccessibilityLabel: 'Ops tab',
           tabBarIcon: ({ color, size, focused }) => (
             <TabIcon
               name="construct-outline"
