@@ -361,10 +361,21 @@ export default function PulseScreen() {
   // PulseMetric border flash + count animation. usePulseData already
   // refreshes on the broadcast channel, which updates data.totalClaims;
   // this subscription only drives the visual pulse.
+  //
+  // The channel name needs a per-mount unique suffix because Supabase
+  // Realtime's channel registry is keyed by name. Under React Strict
+  // Mode (dev), the component mounts → cleans up → remounts; the
+  // cleanup's removeChannel is async, so the second mount can hit a
+  // channel that's still in the "subscribed" state in the registry,
+  // triggering "cannot add callbacks after subscribe()". A unique
+  // suffix per mount sidesteps the collision.
   const [claimFlashKey, setClaimFlashKey] = React.useState(0);
+  const claimChannelNameRef = React.useRef(
+    `pulse:claims-inserts:${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  );
   React.useEffect(() => {
     const channel = supabase
-      .channel('pulse:claims-inserts')
+      .channel(claimChannelNameRef.current)
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'intel', table: 'claims' },
