@@ -138,6 +138,7 @@ export default function RootLayout() {
           <Stack.Screen name="digest" />
           <Stack.Screen name="coverage" />
           <Stack.Screen name="pulse" />
+          <Stack.Screen name="projects/[slug]" />
           <Stack.Screen name="policies" />
           <Stack.Screen name="analytics" />
           <Stack.Screen name="notifications" />
