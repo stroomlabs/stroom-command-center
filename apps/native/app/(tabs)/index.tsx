@@ -17,16 +17,27 @@ import Animated, {
   FadeIn,
   useSharedValue,
   useAnimatedStyle,
+  useAnimatedScrollHandler,
+  interpolate,
+  Extrapolation,
   withRepeat,
   withTiming,
   withSequence,
   Easing,
 } from 'react-native-reanimated';
 import { usePulseContext } from '../../src/lib/PulseContext';
+import { useGraphHealth } from '../../src/hooks/useGraphHealth';
+import { useWatchlist, type WatchedEntity } from '../../src/hooks/useWatchlist';
+import { useClaimSparkline } from '../../src/hooks/useClaimSparkline';
+import { Sparkline } from '../../src/components/Sparkline';
+import { BackgroundCanvas } from '../../src/components/BackgroundCanvas';
+import { useOfflineSync } from '../../src/lib/OfflineSyncContext';
 import { usePulseDeltas } from '../../src/hooks/usePulseDeltas';
 import { usePushNotifications } from '../../src/hooks/usePushNotifications';
 import supabase from '../../src/lib/supabase';
 import { runAutoGovernance } from '@stroom/supabase';
+import * as Clipboard from 'expo-clipboard';
+import { useBrandToast } from '../../src/components/BrandToast';
 import { PulseMetric } from '../../src/components/PulseMetric';
 import { GlassCard } from '../../src/components/GlassCard';
 import { SkeletonMetricCard } from '../../src/components/Skeleton';
@@ -34,6 +45,213 @@ import { GlowSpot } from '../../src/components/GlowSpot';
 import { ScreenTransition } from '../../src/components/ScreenTransition';
 import { RetryCard } from '../../src/components/RetryCard';
 import { colors, fonts, spacing, radius, gradient } from '../../src/constants/brand';
+
+function QuickActionPill({
+  icon,
+  label,
+  onPress,
+  disabled,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  onPress: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      style={({ pressed }) => [
+        quickActionStyles.pill,
+        (pressed || disabled) && {
+          opacity: disabled ? 0.5 : 0.75,
+          transform: [{ scale: 0.97 }],
+        },
+      ]}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+    >
+      <Ionicons name={icon} size={14} color={colors.teal} />
+      <Text style={quickActionStyles.label}>{label}</Text>
+    </Pressable>
+  );
+}
+
+const quickActionStyles = StyleSheet.create({
+  pill: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: colors.teal,
+    backgroundColor: 'rgba(0, 161, 155, 0.08)',
+  },
+  label: {
+    fontFamily: fonts.archivo.bold,
+    fontSize: 12,
+    color: colors.teal,
+    letterSpacing: 0.3,
+  },
+});
+
+function WatchlistCard({
+  entity,
+  claimCount,
+  onPress,
+}: {
+  entity: WatchedEntity;
+  claimCount: number;
+  onPress: () => void;
+}) {
+  const sparkData = useClaimSparkline(entity.id);
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        watchStyles.card,
+        pressed && { opacity: 0.8, transform: [{ scale: 0.97 }] },
+      ]}
+      accessibilityRole="button"
+      accessibilityLabel={`${entity.canonical_name}, ${claimCount} claims`}
+    >
+      <View style={watchStyles.cardTopRow}>
+        <Text style={watchStyles.name} numberOfLines={1}>
+          {entity.canonical_name}
+        </Text>
+        {sparkData.length > 1 && (
+          <Sparkline data={sparkData} width={48} height={20} />
+        )}
+      </View>
+      <View style={watchStyles.meta}>
+        {entity.domain && (
+          <View style={watchStyles.domainBadge}>
+            <Text style={watchStyles.domainText}>{entity.domain}</Text>
+          </View>
+        )}
+        <Text style={watchStyles.count}>
+          {claimCount.toLocaleString()}
+        </Text>
+      </View>
+    </Pressable>
+  );
+}
+
+function WatchlistSection() {
+  const router = useRouter();
+  const { list } = useWatchlist();
+  const [counts, setCounts] = React.useState<Map<string, number>>(new Map());
+
+  React.useEffect(() => {
+    if (list.length === 0) return;
+    let cancelled = false;
+    Promise.all(
+      list.map(async (e) => {
+        const { count } = await supabase
+          .schema('intel')
+          .from('claims')
+          .select('id', { count: 'exact', head: true })
+          .eq('subject_entity_id', e.id);
+        return [e.id, count ?? 0] as [string, number];
+      })
+    ).then((entries) => {
+      if (!cancelled) setCounts(new Map(entries));
+    });
+    return () => { cancelled = true; };
+  }, [list]);
+
+  if (list.length === 0) return null;
+
+  return (
+    <View style={watchStyles.wrap}>
+      <Text style={watchStyles.header}>WATCHING</Text>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={watchStyles.scroll}
+      >
+        {list.map((e) => (
+          <WatchlistCard
+            key={e.id}
+            entity={e}
+            claimCount={counts.get(e.id) ?? 0}
+            onPress={() =>
+              router.push({
+                pathname: '/entity/[id]',
+                params: { id: e.id },
+              } as any)
+            }
+          />
+        ))}
+      </ScrollView>
+    </View>
+  );
+}
+
+const watchStyles = StyleSheet.create({
+  wrap: {
+    marginTop: spacing.sm,
+  },
+  header: {
+    fontFamily: fonts.archivo.medium,
+    fontSize: 10,
+    color: colors.slate,
+    letterSpacing: 1.2,
+    marginBottom: spacing.sm,
+  },
+  scroll: {
+    gap: spacing.sm,
+  },
+  card: {
+    backgroundColor: colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm + 2,
+    minWidth: 120,
+    maxWidth: 180,
+  },
+  cardTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 4,
+  },
+  name: {
+    fontFamily: fonts.archivo.semibold,
+    fontSize: 13,
+    color: colors.alabaster,
+    marginBottom: 4,
+  },
+  meta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  domainBadge: {
+    backgroundColor: colors.tealDim,
+    borderRadius: radius.sm,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+  },
+  domainText: {
+    fontFamily: fonts.mono.medium,
+    fontSize: 9,
+    color: colors.teal,
+  },
+  count: {
+    fontFamily: fonts.mono.semibold,
+    fontSize: 11,
+    color: colors.silver,
+    fontVariant: ['tabular-nums'],
+  },
+});
 
 function formatLastUpdated(at: Date, _tick: number): string {
   const diffMs = Date.now() - at.getTime();
@@ -53,6 +271,35 @@ export default function PulseScreen() {
   const navigation = useNavigation();
   const scrollRef = React.useRef<ScrollView>(null);
   const { data, loading, error, refresh, lastUpdatedAt } = usePulseContext();
+  const { health } = useGraphHealth();
+
+  // Pull-down stats peek — reveals a hidden panel above the content when
+  // the user overscrolls past 80px. The panel slides down proportionally
+  // and snaps back on release.
+  const overscrollY = useSharedValue(0);
+  const peekScrollHandler = useAnimatedScrollHandler({
+    onScroll: (e) => {
+      // Negative contentOffset.y means overscroll on iOS
+      overscrollY.value = Math.max(0, -e.contentOffset.y);
+    },
+  });
+  const peekPanelStyle = useAnimatedStyle(() => {
+    const ty = interpolate(
+      overscrollY.value,
+      [0, 80, 160],
+      [-60, 0, 10],
+      Extrapolation.CLAMP
+    );
+    const opacity = interpolate(
+      overscrollY.value,
+      [0, 60, 80],
+      [0, 0, 1],
+      Extrapolation.CLAMP
+    );
+    return { transform: [{ translateY: ty }], opacity };
+  });
+  const { pendingCount: pendingSyncCount, syncNow } = useOfflineSync();
+  const { show: showToast } = useBrandToast();
   const { deltas } = usePulseDeltas();
   const [sweeping, setSweeping] = React.useState(false);
   const [lastSweepResult, setLastSweepResult] = React.useState<{
@@ -149,18 +396,50 @@ export default function PulseScreen() {
 
   return (
     <ScreenTransition>
-    <LinearGradient
-      colors={[gradient.background[0], gradient.background[1]]}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 0.5, y: 1 }}
-      style={styles.container}
-    >
+    <View style={styles.container}>
+      <BackgroundCanvas />
       {/* Atmospheric glow spots — behind metrics + status breakdown */}
-      <GlowSpot size={520} opacity={0.08} top={insets.top + 40} left={-120} breathe />
-      <GlowSpot size={360} opacity={0.06} top={insets.top + 480} right={-100} breathe />
+      {/* Layered breathing glows — two spots at different cycle durations
+          (4s and 5s) so they never sync, creating organic visual depth. */}
+      <GlowSpot size={520} opacity={0.016} top={insets.top + 40} left={-120} breathe cycleDuration={4000} />
+      <GlowSpot size={420} opacity={0.012} top={insets.top + 180} left={40} breathe cycleDuration={5000} />
+      <GlowSpot size={360} opacity={0.012} top={insets.top + 480} right={-100} breathe cycleDuration={4000} />
+      <GlowSpot size={300} opacity={0.01} top={insets.top + 560} right={60} breathe cycleDuration={5000} />
 
-      <ScrollView
-        ref={scrollRef}
+      {/* Pull-down stats peek panel — hidden above the scroll area */}
+      <Animated.View style={[peekStyles.panel, peekPanelStyle]} pointerEvents="none">
+        <View style={peekStyles.row}>
+          <View style={peekStyles.pill}>
+            <Text style={peekStyles.pillLabel}>CORRECTION</Text>
+            <Text style={peekStyles.pillValue}>
+              {((data?.correctionRate ?? 0) * 100).toFixed(1)}%
+            </Text>
+          </View>
+          <View style={peekStyles.pill}>
+            <Text style={peekStyles.pillLabel}>AVG TRUST</Text>
+            <Text style={peekStyles.pillValue}>
+              {health ? Number(health.avg_trust_score ?? 0).toFixed(1) : '—'}
+            </Text>
+          </View>
+          <View style={peekStyles.pill}>
+            <Text style={peekStyles.pillLabel}>PREDICATES</Text>
+            <Text style={peekStyles.pillValue}>
+              {(data?.totalSources ?? 0).toLocaleString()}
+            </Text>
+          </View>
+          <View style={peekStyles.pill}>
+            <Text style={peekStyles.pillLabel}>CLAIMS/DAY</Text>
+            <Text style={peekStyles.pillValue}>
+              {data?.claimsToday ?? 0}
+            </Text>
+          </View>
+        </View>
+      </Animated.View>
+
+      <Animated.ScrollView
+        ref={scrollRef as any}
+        onScroll={peekScrollHandler}
+        scrollEventThrottle={16}
         contentContainerStyle={[
           styles.scroll,
           { paddingTop: insets.top + spacing.lg },
@@ -209,6 +488,27 @@ export default function PulseScreen() {
 
         <Text style={styles.headerSub}>StroomHelix Intelligence Graph</Text>
 
+        {pendingSyncCount > 0 && (
+          <Pressable
+            onPress={syncNow}
+            accessibilityRole="button"
+            accessibilityLabel={`${pendingSyncCount} pending action${pendingSyncCount === 1 ? '' : 's'} waiting to sync. Tap to retry.`}
+            style={({ pressed }) => [
+              styles.pendingSyncBanner,
+              pressed && { opacity: 0.8, transform: [{ scale: 0.99 }] },
+            ]}
+          >
+            <Ionicons
+              name="cloud-upload-outline"
+              size={14}
+              color={colors.statusPending}
+            />
+            <Text style={styles.pendingSyncText}>
+              {pendingSyncCount} pending action{pendingSyncCount === 1 ? '' : 's'} — tap to sync
+            </Text>
+          </Pressable>
+        )}
+
         {loading && !data ? (
           <>
             <View style={styles.grid}>
@@ -242,21 +542,29 @@ export default function PulseScreen() {
                 value={data.totalClaims}
                 animate
                 flashKey={claimFlashKey}
+                borderAccent={colors.teal}
                 onPress={() => router.push('/(tabs)/explore' as any)}
               />
-              <PulseMetric label="Entities" value={data.totalEntities} />
+              <PulseMetric
+                label="Entities"
+                value={data.totalEntities}
+                borderAccent="#6366F1"
+                onPress={() => router.push('/(tabs)/explore' as any)}
+              />
             </View>
 
             <View style={styles.grid}>
               <PulseMetric
                 label="Sources"
                 value={data.totalSources}
+                borderAccent="#22C55E"
                 onPress={() => router.push('/sources' as any)}
               />
               <PulseMetric
                 label="Queue"
                 value={data.queueDepth}
                 accent={data.queueDepth > 0 ? colors.statusPending : colors.teal}
+                borderAccent={data.queueDepth > 0 ? '#FBBF24' : colors.slate}
                 onPress={() => router.push('/(tabs)/queue' as any)}
               />
             </View>
@@ -331,6 +639,63 @@ export default function PulseScreen() {
               </Animated.Text>
             )}
 
+            {/* Quick Actions — one-tap pills for the three most common
+                operator moves. "New Sweep" shares the same RPC as the
+                full sweep button above; the other two are navigation
+                and an inline clipboard export. */}
+            <View style={styles.quickActionsRow}>
+              <QuickActionPill
+                icon="search-outline"
+                label="Explore"
+                onPress={() => {
+                  Haptics.selectionAsync();
+                  router.push('/(tabs)/explore' as any);
+                }}
+              />
+              <QuickActionPill
+                icon="sparkles-outline"
+                label="New Sweep"
+                onPress={handleSweep}
+                disabled={sweeping}
+              />
+              <QuickActionPill
+                icon="share-outline"
+                label="Export"
+                onPress={async () => {
+                  Haptics.selectionAsync();
+                  try {
+                    const lines = [
+                      'STROOM COMMAND CENTER — GRAPH SUMMARY',
+                      `Generated: ${new Date().toLocaleString()}`,
+                      '',
+                      '── Graph totals ──',
+                      `Claims:    ${(data.totalClaims ?? 0).toLocaleString()}`,
+                      `Entities:  ${(data.totalEntities ?? 0).toLocaleString()}`,
+                      `Sources:   ${(data.totalSources ?? 0).toLocaleString()}`,
+                      '',
+                      '── Governance ──',
+                      `Queue depth:     ${data.queueDepth ?? 0}`,
+                      `Correction rate: ${((data.correctionRate ?? 0) * 100).toFixed(1)}%`,
+                      `Research active: ${data.researchActive ?? 0}`,
+                      `Claims today:    ${data.claimsToday ?? 0}`,
+                    ];
+                    await Clipboard.setStringAsync(lines.join('\n'));
+                    Haptics.notificationAsync(
+                      Haptics.NotificationFeedbackType.Success
+                    );
+                    showToast('Copied to clipboard', 'success');
+                  } catch (e: any) {
+                    showToast(e?.message ?? 'Export failed', 'error');
+                  }
+                }}
+              />
+            </View>
+
+            {/* Watched entities — personal dashboard of entities the
+                operator cares about, populated from the entity detail
+                Watch toggle. */}
+            <WatchlistSection />
+
             {/* Status breakdown */}
             {data.statusBreakdown && Object.keys(data.statusBreakdown).length > 0 && (
               <GlassCard style={styles.breakdownCard}>
@@ -379,11 +744,50 @@ export default function PulseScreen() {
             )}
           </>
         ) : null}
-      </ScrollView>
-    </LinearGradient>
+      </Animated.ScrollView>
+    </View>
     </ScreenTransition>
   );
 }
+
+const peekStyles = StyleSheet.create({
+  panel: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 10,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    backgroundColor: '#050507',
+  },
+  row: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  pill: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 6,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+  },
+  pillLabel: {
+    fontFamily: fonts.archivo.medium,
+    fontSize: 8,
+    color: colors.slate,
+    letterSpacing: 0.8,
+    marginBottom: 2,
+  },
+  pillValue: {
+    fontFamily: fonts.mono.semibold,
+    fontSize: 13,
+    color: colors.silver,
+    fontVariant: ['tabular-nums'],
+  },
+});
 
 const styles = StyleSheet.create({
   container: {
@@ -461,10 +865,30 @@ const styles = StyleSheet.create({
     color: colors.slate,
     marginBottom: spacing.xl,
   },
+  pendingSyncBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
+    marginTop: -spacing.md,
+    marginBottom: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: 'rgba(245, 158, 11, 0.35)',
+    backgroundColor: 'rgba(245, 158, 11, 0.10)',
+  },
+  pendingSyncText: {
+    fontFamily: fonts.archivo.semibold,
+    fontSize: 12,
+    color: colors.statusPending,
+    letterSpacing: 0.1,
+    flex: 1,
+  },
   grid: {
     flexDirection: 'row',
-    gap: spacing.md,
-    marginBottom: spacing.md,
+    gap: 12,
+    marginBottom: 12,
   },
   loadingWrap: {
     paddingTop: 80,
@@ -495,7 +919,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     paddingVertical: 12,
     borderRadius: radius.md,
-    backgroundColor: 'transparent',
+    backgroundColor: 'rgba(0, 161, 155, 0.08)',
     borderWidth: 1,
     borderColor: colors.teal,
     marginTop: spacing.sm,
@@ -513,6 +937,11 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 6,
     marginBottom: spacing.xs,
+  },
+  quickActionsRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
   },
   breakdownCard: {
     marginTop: spacing.sm,

@@ -60,7 +60,7 @@ export function BiometricGate({ children, ready }: BiometricGateProps) {
 
   return (
     <View style={styles.container}>
-      <GlowSpot size={520} opacity={0.08} style={styles.halo} breathe />
+      <GlowSpot size={520} opacity={0.016} style={styles.halo} breathe />
       <View style={styles.center}>
         <View style={styles.iconCircle}>
           <Ionicons

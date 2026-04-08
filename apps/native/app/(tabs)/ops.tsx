@@ -24,12 +24,16 @@ import { ScreenTransition } from '../../src/components/ScreenTransition';
 import { useBrandAlert } from '../../src/components/BrandAlert';
 import { EmptyState } from '../../src/components/EmptyState';
 import { RetryCard } from '../../src/components/RetryCard';
+import { Skeleton } from '../../src/components/Skeleton';
 import {
   ActionSheet,
   type ActionSheetAction,
 } from '../../src/components/ActionSheet';
 import * as Clipboard from 'expo-clipboard';
+import { Share } from 'react-native';
 import { useBrandToast } from '../../src/components/BrandToast';
+import { BackgroundCanvas } from '../../src/components/BackgroundCanvas';
+import { CollapsibleSection } from '../../src/components/CollapsibleSection';
 import { colors, fonts, spacing, radius, gradient } from '../../src/constants/brand';
 
 interface OpsCardSpec {
@@ -60,6 +64,24 @@ export default function OpsScreen() {
   const { refresh: refreshQueue } = useQueueClaims();
   const { sources } = useSourcesList();
   const unhealthy = useMemo(() => pickUnhealthySources(sources).slice(0, 6), [sources]);
+
+  // Source freshness alerts — high-trust auto-approve sources that haven't
+  // fetched in 7+ days are the biggest risk vector. Surface them above
+  // everything else so the operator sees them immediately.
+  const staleAutoApprove = useMemo(() => {
+    const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    return sources.filter((s) => {
+      if (!s.auto_approve) return false;
+      const lastFetch = s.last_fetch_at ? new Date(s.last_fetch_at).getTime() : 0;
+      return lastFetch > 0 && lastFetch < sevenDaysAgo;
+    });
+  }, [sources]);
+
+  // Graph snapshot — comprehensive markdown report.
+  const [snapshotText, setSnapshotText] = React.useState<string | null>(null);
+  const [snapshotSheetVisible, setSnapshotSheetVisible] = React.useState(false);
+  const [snapshotLoading, setSnapshotLoading] = React.useState(false);
+
   const { alert } = useBrandAlert();
   const { show: showToast } = useBrandToast();
   const [menuSource, setMenuSource] = React.useState<{
@@ -158,9 +180,24 @@ export default function OpsScreen() {
           .rpc('get_vertical_breakdown');
         if (cancelled) return;
         if (error) throw error;
-        const rows = Array.isArray(data)
-          ? (data as any[])
-          : ((data as any)?.claims_by_domain ?? []);
+        let rows: any[] = [];
+        if (Array.isArray(data)) {
+          rows = data;
+        } else if (data && typeof data === 'object') {
+          const inner =
+            (data as any).claims_by_domain ??
+            (data as any).verticals ??
+            (data as any).domains ??
+            (data as any).breakdown;
+          if (Array.isArray(inner)) {
+            rows = inner;
+          } else {
+            rows = Object.entries(data).map(([k, v]) => ({
+              domain: k,
+              claim_count: typeof v === 'number' ? v : (v as any)?.claim_count ?? 0,
+            }));
+          }
+        }
         setVerticals(rows);
         setVerticalsError(null);
       } catch (e: any) {
@@ -179,6 +216,7 @@ export default function OpsScreen() {
     let cancelled = false;
     (async () => {
       const { data } = await supabase
+        .schema('intel')
         .from('audit_log')
         .select('created_at, metadata')
         .eq('action_type', 'auto_approve')
@@ -213,6 +251,7 @@ export default function OpsScreen() {
       const start = new Date();
       start.setHours(0, 0, 0, 0);
       const { count } = await supabase
+        .schema('intel')
         .from('audit_log')
         .select('id', { count: 'exact', head: true })
         .eq('action_type', 'auto_approve')
@@ -308,6 +347,148 @@ export default function OpsScreen() {
       ? `${pulse.totalSources.toLocaleString()} tracked`
       : '—';
 
+  const generateSnapshot = React.useCallback(async () => {
+    if (snapshotLoading) return;
+    setSnapshotLoading(true);
+    try {
+      const [topEntRes, topSrcRes, domainRes, predCountRes] =
+        await Promise.all([
+          supabase
+            .schema('intel')
+            .from('entities')
+            .select('canonical_name, entity_type, domain')
+            .order('created_at', { ascending: false })
+            .limit(10),
+          supabase
+            .schema('intel')
+            .from('sources')
+            .select('source_name, trust_score')
+            .order('trust_score', { ascending: false })
+            .limit(10),
+          supabase.schema('intel').rpc('get_vertical_breakdown'),
+          supabase
+            .schema('intel')
+            .from('predicate_registry')
+            .select('predicate_key', { count: 'exact', head: true }),
+        ]);
+
+      const topEntities = ((topEntRes.data ?? []) as any[])
+        .map(
+          (e, i) =>
+            `${i + 1}. **${e.canonical_name}** (${e.entity_type ?? 'entity'}, ${e.domain ?? 'no domain'})`
+        )
+        .join('\n');
+      const topSources = ((topSrcRes.data ?? []) as any[])
+        .map(
+          (s, i) =>
+            `${i + 1}. ${s.source_name} — trust ${Number(s.trust_score).toFixed(1)}`
+        )
+        .join('\n');
+      // get_vertical_breakdown may return an array, an object with a
+      // verticals/domains key, or null. Normalize to an array before sorting.
+      let domainArr: any[] = [];
+      const rawDomain = domainRes.data;
+      if (Array.isArray(rawDomain)) {
+        domainArr = rawDomain;
+      } else if (rawDomain && typeof rawDomain === 'object') {
+        // Try common wrapper keys the RPC might return
+        const inner =
+          (rawDomain as any).verticals ??
+          (rawDomain as any).domains ??
+          (rawDomain as any).breakdown;
+        if (Array.isArray(inner)) {
+          domainArr = inner;
+        } else {
+          // Object with domain keys → convert { cruise: 120, … } to array
+          domainArr = Object.entries(rawDomain).map(([k, v]) => ({
+            domain: k,
+            claim_count: typeof v === 'number' ? v : (v as any)?.claim_count ?? 0,
+          }));
+        }
+      }
+      const domains = domainArr
+        .sort((a: any, b: any) => (b.claim_count ?? 0) - (a.claim_count ?? 0))
+        .map((d: any) => `- ${d.domain ?? d.vertical ?? 'unknown'}: ${d.claim_count ?? 0}`)
+        .join('\n');
+      const sweepLines = (sweepHistory ?? [])
+        .slice(0, 5)
+        .map(
+          (s) =>
+            `- ${new Date(s.ran_at).toLocaleString()} — ${s.approved} approved, ${s.flagged} flagged`
+        )
+        .join('\n');
+
+      const md = [
+        '# Stroom Command Center — Graph Snapshot',
+        '',
+        `**Generated:** ${new Date().toLocaleString()}`,
+        '',
+        '## Graph Totals',
+        `- Claims: ${(pulse?.totalClaims ?? 0).toLocaleString()}`,
+        `- Entities: ${(pulse?.totalEntities ?? 0).toLocaleString()}`,
+        `- Sources: ${(pulse?.totalSources ?? 0).toLocaleString()}`,
+        `- Predicates: ${predCountRes.count ?? '?'}`,
+        '',
+        '## Governance',
+        `- Queue depth: ${pulse?.queueDepth ?? 0}`,
+        `- Correction rate: ${((pulse?.correctionRate ?? 0) * 100).toFixed(1)}%`,
+        `- Research active: ${pulse?.researchActive ?? 0}`,
+        `- Claims today: ${pulse?.claimsToday ?? 0}`,
+        '',
+        '## Top 10 Entities',
+        topEntities || '(none)',
+        '',
+        '## Top 10 Sources by Trust',
+        topSources || '(none)',
+        '',
+        '## Domain Breakdown',
+        domains || '(none)',
+        '',
+        '## Recent Sweeps',
+        sweepLines || '(none)',
+        '',
+        '---',
+        '*Generated by Stroom Command Center*',
+      ].join('\n');
+      setSnapshotText(md);
+      setSnapshotSheetVisible(true);
+    } catch (e: any) {
+      showToast(e?.message ?? 'Snapshot failed', 'error');
+    } finally {
+      setSnapshotLoading(false);
+    }
+  }, [pulse, sweepHistory, snapshotLoading, showToast]);
+
+  const snapshotActions: ActionSheetAction[] = React.useMemo(
+    () => [
+      {
+        label: 'Copy to Clipboard',
+        icon: 'clipboard-outline',
+        onPress: async () => {
+          if (snapshotText) {
+            await Clipboard.setStringAsync(snapshotText);
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            showToast('Copied to clipboard', 'success');
+          }
+        },
+      },
+      {
+        label: 'Share',
+        icon: 'share-outline',
+        onPress: async () => {
+          if (snapshotText) {
+            try {
+              await Share.share({ message: snapshotText });
+            } catch {
+              // User cancelled — no-op.
+            }
+          }
+        },
+      },
+    ],
+    [snapshotText, showToast]
+  );
+
   const cards: OpsCardSpec[] = [
     {
       key: 'graph-health',
@@ -363,13 +544,8 @@ export default function OpsScreen() {
 
   return (
     <ScreenTransition>
-    <LinearGradient
-      colors={[gradient.background[0], gradient.background[1]]}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 0.5, y: 1 }}
-      style={styles.container}
-    >
-      <GlowSpot size={480} opacity={0.06} top={insets.top + 20} left={-140} />
+    <View style={styles.container}>
+      <BackgroundCanvas />
 
       <View style={[styles.header, { paddingTop: insets.top + spacing.lg }]}>
         <View style={{ flex: 1 }}>
@@ -382,13 +558,32 @@ export default function OpsScreen() {
             </Text>
           )}
         </View>
-        <Pressable
-          onPress={() => router.push('/more' as any)}
-          style={({ pressed }) => [styles.gearBtn, pressed && { opacity: 0.6 }]}
-          hitSlop={8}
-        >
-          <Ionicons name="settings-outline" size={20} color={colors.silver} />
-        </Pressable>
+        <View style={styles.headerBtns}>
+          <Pressable
+            onPress={generateSnapshot}
+            disabled={snapshotLoading}
+            style={({ pressed }) => [
+              styles.snapshotBtn,
+              (pressed || snapshotLoading) && { opacity: 0.6 },
+            ]}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel="Generate graph snapshot"
+          >
+            {snapshotLoading ? (
+              <ActivityIndicator size={14} color={colors.teal} />
+            ) : (
+              <Ionicons name="camera-outline" size={18} color={colors.teal} />
+            )}
+          </Pressable>
+          <Pressable
+            onPress={() => router.push('/more' as any)}
+            style={({ pressed }) => [styles.gearBtn, pressed && { opacity: 0.6 }]}
+            hitSlop={8}
+          >
+            <Ionicons name="settings-outline" size={20} color={colors.silver} />
+          </Pressable>
+        </View>
       </View>
 
       <ScrollView
@@ -483,6 +678,56 @@ export default function OpsScreen() {
           </Text>
         </View>
 
+        {/* Source Freshness Alerts — auto-approve sources that haven't
+            fetched in 7+ days. Highest-risk items surface first. */}
+        {staleAutoApprove.length > 0 && (
+          <View style={styles.sourceAlertsCard}>
+            <View style={styles.sourceAlertsHeader}>
+              <Ionicons name="warning-outline" size={14} color={colors.statusPending} />
+              <Text style={styles.sourceAlertsTitle}>
+                Source Alerts · {staleAutoApprove.length}
+              </Text>
+            </View>
+            {staleAutoApprove.slice(0, 5).map((s) => {
+              const daysSince = Math.floor(
+                (Date.now() - new Date(s.last_fetch_at!).getTime()) / 86_400_000
+              );
+              return (
+                <Pressable
+                  key={s.id}
+                  onPress={() =>
+                    router.push({
+                      pathname: '/source/[id]',
+                      params: { id: s.id },
+                    } as any)
+                  }
+                  style={({ pressed }) => [
+                    styles.sourceAlertRow,
+                    pressed && { opacity: 0.75 },
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${s.source_name}, last fetched ${daysSince} days ago`}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.sourceAlertName} numberOfLines={1}>
+                      {s.source_name}
+                    </Text>
+                    <Text style={styles.sourceAlertMeta}>
+                      Last fetched {daysSince}d ago · trust{' '}
+                      {Number(s.trust_score).toFixed(1)}
+                    </Text>
+                  </View>
+                  <Ionicons
+                    name="chevron-forward"
+                    size={14}
+                    color={colors.slate}
+                  />
+                </Pressable>
+              );
+            })}
+          </View>
+        )}
+
         {cards.map((card) => (
           <OpsCard
             key={card.key}
@@ -492,27 +737,33 @@ export default function OpsScreen() {
         ))}
 
         {/* Ingestion Activity */}
-        <IngestionActivity
-          data={ingestion}
-          error={ingestionError}
-          onRetry={() => setIngestionBump((b) => b + 1)}
-          tooltip={tooltip}
-          onTooltipChange={setTooltip}
-        />
+        <CollapsibleSection sectionKey="ingestion" title="Ingestion Activity">
+          <IngestionActivity
+            data={ingestion}
+            error={ingestionError}
+            onRetry={() => setIngestionBump((b) => b + 1)}
+            tooltip={tooltip}
+            onTooltipChange={setTooltip}
+          />
+        </CollapsibleSection>
 
         {/* Sweep History */}
-        <SweepHistorySection
-          data={sweepHistory}
-          error={sweepHistoryError}
-          onRetry={() => setSweepHistoryBump((b) => b + 1)}
-        />
+        <CollapsibleSection sectionKey="sweepHistory" title="Sweep History">
+          <SweepHistorySection
+            data={sweepHistory}
+            error={sweepHistoryError}
+            onRetry={() => setSweepHistoryBump((b) => b + 1)}
+          />
+        </CollapsibleSection>
 
         {/* Vertical Breakdown */}
-        <VerticalBreakdownSection
-          data={verticals}
-          error={verticalsError}
-          onRetry={() => setVerticalsBump((b) => b + 1)}
-        />
+        <CollapsibleSection sectionKey="verticals" title="Coverage by Vertical">
+          <VerticalBreakdownSection
+            data={verticals}
+            error={verticalsError}
+            onRetry={() => setVerticalsBump((b) => b + 1)}
+          />
+        </CollapsibleSection>
 
         {/* Source health monitoring */}
         {unhealthy.length > 0 && (
@@ -604,7 +855,15 @@ export default function OpsScreen() {
         }
         onDismiss={() => setMenuSource(null)}
       />
-    </LinearGradient>
+
+      <ActionSheet
+        visible={snapshotSheetVisible}
+        title="Graph Snapshot"
+        subtitle="Choose how to save the report"
+        actions={snapshotActions}
+        onDismiss={() => setSnapshotSheetVisible(false)}
+      />
+    </View>
     </ScreenTransition>
   );
 }
@@ -653,7 +912,7 @@ function SummaryCell({
   );
 }
 
-function OpsCard({
+const OpsCard = React.memo(function OpsCard({
   spec,
   onPress,
 }: {
@@ -693,7 +952,7 @@ function OpsCard({
       <Ionicons name="chevron-forward" size={16} color={colors.slate} />
     </Pressable>
   );
-}
+});
 
 const DAY_ABBREV = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -741,10 +1000,11 @@ function IngestionActivity({
             <Text style={styles.analyticsChipText}>14d</Text>
           </View>
         </View>
-        <ActivityIndicator
-          color={colors.teal}
-          style={{ marginVertical: spacing.lg }}
-        />
+        <View style={{ gap: spacing.sm, marginTop: spacing.sm }}>
+          <Skeleton height={12} width={'40%'} />
+          <Skeleton height={60} width={'100%'} />
+          <Skeleton height={12} width={'55%'} />
+        </View>
       </View>
     );
   }
@@ -776,7 +1036,15 @@ function IngestionActivity({
               </Text>
             </View>
           )}
-          <View style={[styles.chartRow, { height: CHART_HEIGHT + 20 }]}>
+          <View
+            style={[styles.chartRow, { height: CHART_HEIGHT + 20 }]}
+            accessible
+            accessibilityRole="image"
+            accessibilityLabel={`Ingestion chart: ${data.length} day trend, ${data.reduce(
+              (sum, b) => sum + (b.claims_added ?? 0),
+              0
+            )} total claims`}
+          >
             {data.map((b, i) => {
               const pct = max > 0 ? (b.claims_added ?? 0) / max : 0;
               const dayLabel = (() => {
@@ -790,7 +1058,7 @@ function IngestionActivity({
               const active = tooltip?.day === dayLabel;
               return (
                 <Pressable
-                  key={b.day + i}
+                  key={`ingest-${b.day ?? 'unknown'}-${i}`}
                   onPress={() =>
                     onTooltipChange(
                       active
@@ -860,10 +1128,11 @@ function SweepHistorySection({
     return (
       <View style={styles.analyticsCard}>
         <Text style={styles.analyticsHeader}>Sweep History</Text>
-        <ActivityIndicator
-          color={colors.teal}
-          style={{ marginVertical: spacing.lg }}
-        />
+        <View style={{ gap: spacing.sm, marginTop: spacing.sm }}>
+          <Skeleton height={12} width={'40%'} />
+          <Skeleton height={60} width={'100%'} />
+          <Skeleton height={12} width={'55%'} />
+        </View>
       </View>
     );
   }
@@ -881,7 +1150,7 @@ function SweepHistorySection({
       ) : (
         <View style={{ gap: spacing.sm, marginTop: spacing.sm }}>
           {data.map((s, i) => (
-            <View key={s.ran_at + i} style={styles.sweepHistoryRow}>
+            <View key={`sweep-${s.ran_at ?? 'unknown'}-${i}`} style={styles.sweepHistoryRow}>
               <Text style={styles.sweepHistoryTime}>
                 {formatRelative(s.ran_at)}
               </Text>
@@ -931,10 +1200,11 @@ function VerticalBreakdownSection({
     return (
       <View style={styles.analyticsCard}>
         <Text style={styles.analyticsHeader}>Coverage by Vertical</Text>
-        <ActivityIndicator
-          color={colors.teal}
-          style={{ marginVertical: spacing.lg }}
-        />
+        <View style={{ gap: spacing.sm, marginTop: spacing.sm }}>
+          <Skeleton height={12} width={'40%'} />
+          <Skeleton height={60} width={'100%'} />
+          <Skeleton height={12} width={'55%'} />
+        </View>
       </View>
     );
   }
@@ -962,10 +1232,10 @@ function VerticalBreakdownSection({
         />
       ) : (
         <View style={{ gap: spacing.sm, marginTop: spacing.sm }}>
-          {rows.map((r) => {
+          {rows.map((r, i) => {
             const pct = max > 0 ? (r.claim_count ?? 0) / max : 0;
             return (
-              <View key={r.domain} style={styles.verticalRow}>
+              <View key={`vertical-${r.domain ?? 'unknown'}-${i}`} style={styles.verticalRow}>
                 <Text style={styles.verticalLabel} numberOfLines={1}>
                   {r.domain}
                 </Text>
@@ -1017,6 +1287,20 @@ const styles = StyleSheet.create({
     color: colors.slate,
     marginTop: 2,
   },
+  headerBtns: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  snapshotBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 1,
+    borderColor: colors.teal,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   gearBtn: {
     width: 40,
     height: 40,
@@ -1032,6 +1316,46 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.xxl,
     gap: spacing.sm,
+  },
+  sourceAlertsCard: {
+    backgroundColor: colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: 'rgba(245, 158, 11, 0.35)',
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  sourceAlertsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: spacing.sm,
+  },
+  sourceAlertsTitle: {
+    fontFamily: fonts.archivo.semibold,
+    fontSize: 11,
+    color: colors.statusPending,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+  sourceAlertRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    borderTopColor: colors.glassBorder,
+  },
+  sourceAlertName: {
+    fontFamily: fonts.archivo.semibold,
+    fontSize: 13,
+    color: colors.alabaster,
+  },
+  sourceAlertMeta: {
+    fontFamily: fonts.mono.regular,
+    fontSize: 10,
+    color: colors.statusPending,
+    marginTop: 2,
   },
   summaryGrid: {
     flexDirection: 'row',

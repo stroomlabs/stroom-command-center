@@ -79,14 +79,14 @@ export function OnboardingFlow({ visible, onComplete }: OnboardingFlowProps) {
       >
         <GlowSpot
           size={560}
-          opacity={0.08}
+          opacity={0.016}
           top={insets.top + 60}
           left={-120}
           breathe
         />
         <GlowSpot
           size={360}
-          opacity={0.06}
+          opacity={0.012}
           bottom={insets.bottom + 80}
           right={-80}
           breathe

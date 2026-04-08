@@ -28,6 +28,10 @@ import supabase from '../../src/lib/supabase';
 import { useNavigation, useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
 import { ClaimCard } from '../../src/components/ClaimCard';
+import { ClaimPreviewSheet } from '../../src/components/ClaimPreviewSheet';
+import { useExistingClaimMap } from '../../src/hooks/useExistingClaimMap';
+import { EntityQuickStats } from '../../src/components/EntityQuickStats';
+import { useKeyboardShortcuts } from '../../src/hooks/useKeyboardShortcuts';
 import { RejectSheet } from '../../src/components/RejectSheet';
 import { SkeletonClaimCard } from '../../src/components/Skeleton';
 import { ScreenTransition } from '../../src/components/ScreenTransition';
@@ -40,6 +44,7 @@ import {
 } from '../../src/components/ActionSheet';
 import type { RejectionReason, ClaimStatus } from '@stroom/types';
 import type { QueueClaim } from '@stroom/supabase';
+import { BackgroundCanvas } from '../../src/components/BackgroundCanvas';
 import { colors, fonts, spacing, radius, gradient } from '../../src/constants/brand';
 
 type StatusFilter = 'all' | 'draft' | 'pending_review';
@@ -78,6 +83,7 @@ export default function QueueScreen() {
     undoPending,
     flushPending,
   } = useQueueClaims();
+  const existingClaimMap = useExistingClaimMap(claims);
 
   React.useEffect(() => {
     const unsub = (navigation as any).addListener?.('tabPress', () => {
@@ -93,6 +99,8 @@ export default function QueueScreen() {
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState<SortKey>('smart');
   const [sortSheetVisible, setSortSheetVisible] = useState(false);
+  const [focusedIndex, setFocusedIndex] = useState(-1);
+  const [showKbLegend, setShowKbLegend] = useState(false);
   const [importance, setImportance] = useState<Map<string, number>>(new Map());
 
   // Fetch total claim count per subject entity for the current queue —
@@ -115,6 +123,7 @@ export default function QueueScreen() {
         subjectEntityIds.map(async (id) => {
           try {
             const { count } = await supabase
+              .schema('intel')
               .from('claims')
               .select('id', { count: 'exact', head: true })
               .eq('subject_entity_id', id);
@@ -272,13 +281,95 @@ export default function QueueScreen() {
 
   const handleReject = useCallback(
     (reason: RejectionReason, notes?: string) => {
+      // Batch path — batchRejectIds is set when a group's Reject All opens
+      // the same RejectSheet modal. Apply the chosen reason to every claim.
+      if (batchRejectIds && batchRejectIds.length > 0) {
+        for (const id of batchRejectIds) {
+          recordProcessed(id, 'rejected');
+          deferReject(id, reason, notes);
+        }
+        setBatchRejectIds(null);
+        setRejectTarget(null);
+        return;
+      }
       if (rejectTarget) {
+        recordProcessed(rejectTarget, 'rejected');
         deferReject(rejectTarget, reason, notes);
         setRejectTarget(null);
       }
     },
-    [rejectTarget, deferReject]
+    [rejectTarget, deferReject, recordProcessed, batchRejectIds]
   );
+
+  // Approve All for a grouped header — processes claims sequentially so we
+  // can update the progress counter between each commit.
+  const handleGroupApproveAll = useCallback(
+    async (groupKey: string, claimIds: string[]) => {
+      setBatchProgress({ groupKey, kind: 'approve', done: 0, total: claimIds.length });
+      for (let i = 0; i < claimIds.length; i++) {
+        recordProcessed(claimIds[i], 'approved');
+        deferApprove(claimIds[i]);
+        setBatchProgress({ groupKey, kind: 'approve', done: i + 1, total: claimIds.length });
+        // Tiny yield so the progress counter re-renders between commits.
+        if (i < claimIds.length - 1) {
+          await new Promise<void>((r) => setTimeout(r, 50));
+        }
+      }
+      setBatchProgress(null);
+    },
+    [deferApprove, recordProcessed]
+  );
+
+  // Grouped items — inject GroupHeader rows into the flat list so the
+  // operator can batch-act on claims from the same entity + source.
+  type ListItem =
+    | { kind: 'header'; groupKey: string; entityName: string; sourceName: string; claimIds: string[]; count: number }
+    | { kind: 'claim'; claim: QueueClaim };
+
+  const groupedItems: ListItem[] = React.useMemo(() => {
+    // Build groups keyed by entity+source.
+    const groups = new Map<string, { entityName: string; sourceName: string; ids: string[] }>();
+    const groupKeyOf = (c: QueueClaim) =>
+      `${c.subject_entity_id ?? ''}|${c.asserted_source_id ?? c.source?.id ?? ''}`;
+    for (const c of filteredClaims) {
+      const key = groupKeyOf(c);
+      let g = groups.get(key);
+      if (!g) {
+        g = {
+          entityName: c.subject_entity?.canonical_name ?? 'Unknown entity',
+          sourceName: c.source?.source_name ?? 'Unknown source',
+          ids: [],
+        };
+        groups.set(key, g);
+      }
+      g.ids.push(c.id);
+    }
+    // Only promote groups with 3+ claims to visible headers.
+    const bigGroups = new Set<string>();
+    for (const [key, g] of groups) {
+      if (g.ids.length >= 3) bigGroups.add(key);
+    }
+    // Walk sorted claims and emit header before each big-group's first claim.
+    const emitted = new Set<string>();
+    const items: ListItem[] = [];
+    for (const c of filteredClaims) {
+      const key = groupKeyOf(c);
+      if (bigGroups.has(key) && !emitted.has(key)) {
+        emitted.add(key);
+        const g = groups.get(key)!;
+        items.push({
+          kind: 'header',
+          groupKey: key,
+          entityName: g.entityName,
+          sourceName: g.sourceName,
+          claimIds: g.ids,
+          count: g.ids.length,
+        });
+      }
+      items.push({ kind: 'claim', claim: c });
+    }
+    return items;
+  }, [filteredClaims]);
 
   const enterSelectMode = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -308,23 +399,158 @@ export default function QueueScreen() {
   }, [selectedIds, batchApprove, exitSelectMode]);
 
   const [menuClaim, setMenuClaim] = useState<QueueClaim | null>(null);
+  const [quickStatsEntity, setQuickStatsEntity] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
+  const [previewClaim, setPreviewClaim] = useState<QueueClaim | null>(null);
+
+  // Batch action state for entity+source groups. When a group's Approve All
+  // or Reject All button fires we keep a progress counter so the button can
+  // render "Approving 4/7..." while the sequential commits run.
+  const [batchProgress, setBatchProgress] = useState<{
+    groupKey: string;
+    kind: 'approve' | 'reject';
+    done: number;
+    total: number;
+  } | null>(null);
+
+  // When a group's Reject All is pressed we need a rejection reason before
+  // firing. Store the group's claim ids and open the existing RejectSheet;
+  // handleReject below checks this state first so the same sheet supports
+  // single and batch rejection flows.
+  const [batchRejectIds, setBatchRejectIds] = useState<string[] | null>(null);
+
+  // Keyboard shortcuts — iPad / hardware-keyboard support. Only the claim
+  // items in groupedItems are focusable (headers are skipped).
+  const claimItemsOnly = React.useMemo(
+    () => groupedItems.filter((r) => r.kind === 'claim'),
+    [groupedItems]
+  );
+  useKeyboardShortcuts(
+    React.useMemo(
+      () => ({
+        j: () =>
+          setFocusedIndex((i) =>
+            Math.min(i + 1, claimItemsOnly.length - 1)
+          ),
+        k: () => setFocusedIndex((i) => Math.max(i - 1, 0)),
+        a: () => {
+          const row = claimItemsOnly[focusedIndex];
+          if (row?.kind === 'claim') {
+            recordProcessed(row.claim.id, 'approved');
+            deferApprove(row.claim.id);
+          }
+        },
+        r: () => {
+          const row = claimItemsOnly[focusedIndex];
+          if (row?.kind === 'claim') setRejectTarget(row.claim.id);
+        },
+        enter: () => {
+          const row = claimItemsOnly[focusedIndex];
+          if (row?.kind === 'claim') {
+            router.push({
+              pathname: '/claim/[id]',
+              params: { id: row.claim.id },
+            } as any);
+          }
+        },
+        escape: () => {
+          if (rejectTarget) setRejectTarget(null);
+          else if (previewClaim) setPreviewClaim(null);
+          else if (menuClaim) setMenuClaim(null);
+          else setFocusedIndex(-1);
+        },
+      }),
+      [
+        claimItemsOnly,
+        focusedIndex,
+        deferApprove,
+        recordProcessed,
+        rejectTarget,
+        previewClaim,
+        menuClaim,
+        router,
+      ]
+    )
+  );
+
+  // Recently processed — a session-only audit trail of the last ~10 claims
+  // the operator approved or rejected. Not persisted; cleared when they
+  // leave the Queue tab. Gives them a quick "what did I just do?" check
+  // without switching to the full Ops audit log.
+  type RecentlyProcessed = {
+    id: string;
+    subject: string;
+    predicate: string;
+    status: 'approved' | 'rejected';
+    at: number;
+  };
+  const [recentlyProcessed, setRecentlyProcessed] = useState<
+    RecentlyProcessed[]
+  >([]);
+  const [recentExpanded, setRecentExpanded] = useState(false);
+
+  // Index claims by id so we can look up metadata when the decision fires
+  // (the claim may already have been optimistically removed from the list).
+  const claimsById = React.useMemo(() => {
+    const m = new Map<string, QueueClaim>();
+    for (const c of claims) m.set(c.id, c);
+    return m;
+  }, [claims]);
+
+  const recordProcessed = useCallback(
+    (claimId: string, status: 'approved' | 'rejected') => {
+      const c = claimsById.get(claimId);
+      if (!c) return;
+      const entry: RecentlyProcessed = {
+        id: claimId,
+        subject: c.subject_entity?.canonical_name ?? 'Unknown entity',
+        predicate: (c.predicate ?? 'unknown').split('.').pop() ?? 'unknown',
+        status,
+        at: Date.now(),
+      };
+      setRecentlyProcessed((prev) => [entry, ...prev].slice(0, 10));
+    },
+    [claimsById]
+  );
+
+  // Clear the list when the Queue tab loses focus (operator navigates to
+  // another tab). useFocusEffect fires on focus; we return a cleanup that
+  // runs on blur.
+  React.useEffect(() => {
+    const unsub = (navigation as any).addListener?.('blur', () => {
+      setRecentlyProcessed([]);
+      setRecentExpanded(false);
+    });
+    return unsub;
+  }, [navigation]);
 
   const renderItem = useCallback(
     ({ item }: { item: QueueClaim }) => (
       <ClaimCard
         claim={item}
-        onApprove={() => deferApprove(item.id)}
+        query={search}
+        updatesExisting={existingClaimMap.has(item.id)}
+        onApprove={() => {
+          recordProcessed(item.id, 'approved');
+          deferApprove(item.id);
+        }}
         onReject={() => setRejectTarget(item.id)}
         onLongPress={() => {
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
           setMenuClaim(item);
+        }}
+        onDoublePress={() => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          setPreviewClaim(item);
         }}
         selectMode={selectMode}
         selected={selectedIds.has(item.id)}
         onToggleSelect={() => toggleSelect(item.id)}
       />
     ),
-    [deferApprove, selectMode, selectedIds, toggleSelect]
+    [deferApprove, selectMode, selectedIds, toggleSelect, search, recordProcessed]
   );
 
   const claimMenuActions: ActionSheetAction[] = React.useMemo(() => {
@@ -366,6 +592,18 @@ export default function QueueScreen() {
         },
       },
       {
+        label: 'Entity Quick Stats',
+        icon: 'analytics-outline',
+        onPress: () => {
+          if (menuClaim.subject_entity_id) {
+            setQuickStatsEntity({
+              id: menuClaim.subject_entity_id,
+              name: menuClaim.subject_entity?.canonical_name ?? 'Entity',
+            });
+          }
+        },
+      },
+      {
         label: 'Copy Claim Text',
         icon: 'copy-outline',
         onPress: async () => {
@@ -380,12 +618,8 @@ export default function QueueScreen() {
 
   return (
     <ScreenTransition>
-    <LinearGradient
-      colors={[gradient.background[0], gradient.background[1]]}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 0.5, y: 1 }}
-      style={styles.container}
-    >
+    <View style={styles.container}>
+      <BackgroundCanvas />
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + spacing.lg }]}>
         <Text style={styles.headerTitle}>Queue</Text>
@@ -412,7 +646,34 @@ export default function QueueScreen() {
           </Pressable>
         </Animated.View>
       </View>
-      <Text style={styles.headerSub}>Claims pending governance review</Text>
+      <View style={kbStyles.subRow}>
+        <Text style={styles.headerSub}>Claims pending governance review</Text>
+        <Pressable
+          onPress={() => {
+            Haptics.selectionAsync();
+            setShowKbLegend((v) => !v);
+          }}
+          style={({ pressed }) => [
+            kbStyles.hintBadge,
+            pressed && { opacity: 0.6 },
+          ]}
+          accessibilityRole="button"
+          accessibilityLabel="Toggle keyboard shortcuts legend"
+        >
+          <Text style={kbStyles.hintText}>⌨</Text>
+        </Pressable>
+      </View>
+      {showKbLegend && (
+        <View style={kbStyles.legend}>
+          <Text style={kbStyles.legendRow}>
+            <Text style={kbStyles.legendKey}>J/K</Text> Move focus
+            <Text style={kbStyles.legendKey}>  A</Text> Approve
+            <Text style={kbStyles.legendKey}>  R</Text> Reject
+            <Text style={kbStyles.legendKey}>  ↵</Text> Open
+            <Text style={kbStyles.legendKey}>  Esc</Text> Dismiss
+          </Text>
+        </View>
+      )}
 
       {/* Search bar + sort */}
       <View style={styles.searchRow}>
@@ -529,6 +790,7 @@ export default function QueueScreen() {
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
+          style={styles.filterScroll}
           contentContainerStyle={styles.filterRow}
         >
           <Pressable
@@ -624,9 +886,38 @@ export default function QueueScreen() {
       ) : (
         <FlatList
           ref={flatListRef}
-          data={filteredClaims}
-          renderItem={renderItem}
-          keyExtractor={keyExtractor}
+          data={groupedItems}
+          renderItem={({ item: row }) => {
+            if (row.kind === 'header') {
+              const prog = batchProgress?.groupKey === row.groupKey ? batchProgress : null;
+              return (
+                <GroupHeader
+                  entityName={row.entityName}
+                  sourceName={row.sourceName}
+                  count={row.count}
+                  progress={prog}
+                  onApproveAll={() =>
+                    handleGroupApproveAll(row.groupKey, row.claimIds)
+                  }
+                  onRejectAll={() => {
+                    setBatchRejectIds(row.claimIds);
+                    setRejectTarget('__batch__');
+                  }}
+                />
+              );
+            }
+            const claimIdx = claimItemsOnly.indexOf(row);
+            return (
+              <View style={claimIdx === focusedIndex ? kbStyles.focusedWrap : undefined}>
+                {renderItem({ item: row.claim })}
+              </View>
+            );
+          }}
+          keyExtractor={(row) =>
+            row.kind === 'header'
+              ? `group-${row.groupKey}`
+              : row.claim.id
+          }
           contentContainerStyle={styles.list}
           refreshControl={
             <RefreshControl
@@ -637,6 +928,18 @@ export default function QueueScreen() {
           }
           showsVerticalScrollIndicator={false}
           keyboardDismissMode="on-drag"
+          maxToRenderPerBatch={10}
+          windowSize={5}
+          ListFooterComponent={
+            <RecentlyProcessedSection
+              entries={recentlyProcessed}
+              expanded={recentExpanded}
+              onToggle={() => {
+                Haptics.selectionAsync();
+                setRecentExpanded((v) => !v);
+              }}
+            />
+          }
         />
       )}
 
@@ -644,6 +947,21 @@ export default function QueueScreen() {
         visible={rejectTarget !== null}
         onDismiss={() => setRejectTarget(null)}
         onReject={handleReject}
+      />
+
+      <ClaimPreviewSheet
+        claim={previewClaim}
+        visible={previewClaim !== null}
+        onDismiss={() => setPreviewClaim(null)}
+        onApprove={() => {
+          if (previewClaim) {
+            recordProcessed(previewClaim.id, 'approved');
+            deferApprove(previewClaim.id);
+          }
+        }}
+        onReject={() => {
+          if (previewClaim) setRejectTarget(previewClaim.id);
+        }}
       />
 
       <ActionSheet
@@ -662,6 +980,12 @@ export default function QueueScreen() {
         subtitle={menuClaim?.predicate ?? undefined}
         actions={claimMenuActions}
         onDismiss={() => setMenuClaim(null)}
+      />
+
+      <EntityQuickStats
+        entityId={quickStatsEntity?.id ?? null}
+        entityName={quickStatsEntity?.name}
+        onDismiss={() => setQuickStatsEntity(null)}
       />
 
       {selectMode && (
@@ -688,6 +1012,8 @@ export default function QueueScreen() {
               selectedIds.size === 0 && styles.batchApproveDisabled,
               pressed && selectedIds.size > 0 && { opacity: 0.85 },
             ]}
+            accessibilityRole="button"
+            accessibilityLabel={`Batch approve ${selectedIds.size} selected claim${selectedIds.size === 1 ? '' : 's'}`}
           >
             <Ionicons name="checkmark-done" size={18} color={colors.obsidian} />
             <Text style={styles.batchApproveText}>
@@ -705,10 +1031,328 @@ export default function QueueScreen() {
         onUndo={undoPending}
         onDismiss={flushPending}
       />
-    </LinearGradient>
+    </View>
     </ScreenTransition>
   );
 }
+
+// Inline group header rendered above a cluster of 3+ claims that share the
+// same subject entity + source. Lets the operator batch-act on the entire
+// group without long-pressing into select mode.
+function GroupHeader({
+  entityName,
+  sourceName,
+  count,
+  progress,
+  onApproveAll,
+  onRejectAll,
+}: {
+  entityName: string;
+  sourceName: string;
+  count: number;
+  progress: { kind: string; done: number; total: number } | null;
+  onApproveAll: () => void;
+  onRejectAll: () => void;
+}) {
+  const isRunning = progress !== null;
+  const label = progress
+    ? `${progress.kind === 'approve' ? 'Approving' : 'Rejecting'} ${progress.done}/${progress.total}…`
+    : `${entityName} · ${count} claims from ${sourceName}`;
+  return (
+    <View style={groupStyles.wrap}>
+      <Text style={groupStyles.label} numberOfLines={1}>
+        {label}
+      </Text>
+      <View style={groupStyles.actions}>
+        <Pressable
+          onPress={onApproveAll}
+          disabled={isRunning}
+          style={({ pressed }) => [
+            groupStyles.btn,
+            groupStyles.approveBtn,
+            (pressed || isRunning) && { opacity: 0.6 },
+          ]}
+          accessibilityRole="button"
+          accessibilityLabel={`Approve all ${count} claims`}
+        >
+          {isRunning && progress?.kind === 'approve' ? (
+            <ActivityIndicator size={12} color={colors.statusApprove} />
+          ) : (
+            <Ionicons name="checkmark" size={12} color={colors.statusApprove} />
+          )}
+        </Pressable>
+        <Pressable
+          onPress={onRejectAll}
+          disabled={isRunning}
+          style={({ pressed }) => [
+            groupStyles.btn,
+            groupStyles.rejectBtn,
+            (pressed || isRunning) && { opacity: 0.6 },
+          ]}
+          accessibilityRole="button"
+          accessibilityLabel={`Reject all ${count} claims`}
+        >
+          <Ionicons name="close" size={12} color={colors.statusReject} />
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+const groupStyles = StyleSheet.create({
+  wrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    marginBottom: spacing.xs,
+    backgroundColor: colors.surfaceCard,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    borderRadius: radius.md,
+  },
+  label: {
+    fontFamily: fonts.archivo.semibold,
+    fontSize: 11,
+    color: colors.silver,
+    flex: 1,
+    marginRight: spacing.sm,
+  },
+  actions: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  btn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  approveBtn: {
+    borderColor: 'rgba(34, 197, 94, 0.4)',
+    backgroundColor: 'rgba(34, 197, 94, 0.08)',
+  },
+  rejectBtn: {
+    borderColor: 'rgba(239, 68, 68, 0.4)',
+    backgroundColor: 'rgba(239, 68, 68, 0.08)',
+  },
+});
+
+const kbStyles = StyleSheet.create({
+  subRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: spacing.lg,
+  },
+  hintBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: radius.sm,
+    backgroundColor: colors.surfaceCard,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+  },
+  hintText: {
+    fontSize: 12,
+  },
+  legend: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.surfaceCard,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.glassBorder,
+  },
+  legendRow: {
+    fontFamily: fonts.mono.regular,
+    fontSize: 10,
+    color: colors.silver,
+    lineHeight: 16,
+  },
+  legendKey: {
+    fontFamily: fonts.mono.semibold,
+    color: colors.teal,
+  },
+  focusedWrap: {
+    borderWidth: 2,
+    borderColor: colors.teal,
+    borderRadius: radius.lg,
+  },
+});
+
+// Session-only audit trail for the Queue tab. Renders as the FlatList
+// footer so it sits below the main draft claims list. Collapsed by default
+// to keep the queue flow distraction-free; the operator taps "Show recent"
+// to see what they just processed.
+function RecentlyProcessedSection({
+  entries,
+  expanded,
+  onToggle,
+}: {
+  entries: Array<{
+    id: string;
+    subject: string;
+    predicate: string;
+    status: 'approved' | 'rejected';
+    at: number;
+  }>;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  if (entries.length === 0) return null;
+  return (
+    <View style={recentStyles.wrap}>
+      <Pressable
+        onPress={onToggle}
+        style={({ pressed }) => [
+          recentStyles.toggle,
+          pressed && { opacity: 0.7 },
+        ]}
+        accessibilityRole="button"
+        accessibilityLabel={
+          expanded ? 'Hide recently processed' : 'Show recently processed'
+        }
+      >
+        <Ionicons
+          name={expanded ? 'chevron-down' : 'chevron-forward'}
+          size={14}
+          color={colors.slate}
+        />
+        <Text style={recentStyles.toggleText}>
+          {expanded ? 'Hide' : 'Show recent'} · {entries.length} processed
+        </Text>
+      </Pressable>
+      {expanded && (
+        <View style={recentStyles.list}>
+          {entries.map((e) => {
+            const isApprove = e.status === 'approved';
+            return (
+              <View key={`recent-${e.id}`} style={recentStyles.row}>
+                <View
+                  style={[
+                    recentStyles.statusPill,
+                    {
+                      borderColor: isApprove
+                        ? colors.statusApprove
+                        : colors.statusReject,
+                      backgroundColor: isApprove
+                        ? 'rgba(34, 197, 94, 0.1)'
+                        : 'rgba(239, 68, 68, 0.1)',
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      recentStyles.statusText,
+                      {
+                        color: isApprove
+                          ? colors.statusApprove
+                          : colors.statusReject,
+                      },
+                    ]}
+                  >
+                    {isApprove ? 'APPROVED' : 'REJECTED'}
+                  </Text>
+                </View>
+                <View style={recentStyles.body}>
+                  <Text style={recentStyles.subject} numberOfLines={1}>
+                    {e.subject}
+                  </Text>
+                  <Text style={recentStyles.predicate} numberOfLines={1}>
+                    {e.predicate.replace(/_/g, ' ')}
+                  </Text>
+                </View>
+                <Text style={recentStyles.time}>{formatAgo(e.at)}</Text>
+              </View>
+            );
+          })}
+        </View>
+      )}
+    </View>
+  );
+}
+
+function formatAgo(ts: number): string {
+  const sec = Math.max(0, Math.floor((Date.now() - ts) / 1000));
+  if (sec < 10) return 'now';
+  if (sec < 60) return `${sec}s`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}m`;
+  const hr = Math.floor(min / 60);
+  return `${hr}h`;
+}
+
+const recentStyles = StyleSheet.create({
+  wrap: {
+    marginTop: spacing.lg,
+    paddingTop: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.glassBorder,
+  },
+  toggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 6,
+    alignSelf: 'flex-start',
+  },
+  toggleText: {
+    fontFamily: fonts.archivo.medium,
+    fontSize: 11,
+    color: colors.slate,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+  list: {
+    marginTop: spacing.sm,
+    gap: 6,
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: 8,
+    paddingHorizontal: spacing.sm,
+    backgroundColor: colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    borderRadius: radius.md,
+  },
+  statusPill: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+  },
+  statusText: {
+    fontFamily: fonts.archivo.bold,
+    fontSize: 8,
+    letterSpacing: 0.6,
+  },
+  body: {
+    flex: 1,
+  },
+  subject: {
+    fontFamily: fonts.archivo.semibold,
+    fontSize: 12,
+    color: colors.alabaster,
+  },
+  predicate: {
+    fontFamily: fonts.mono.regular,
+    fontSize: 10,
+    color: colors.slate,
+    marginTop: 1,
+  },
+  time: {
+    fontFamily: fonts.mono.regular,
+    fontSize: 10,
+    color: colors.slate,
+    fontVariant: ['tabular-nums'],
+  },
+});
 
 const styles = StyleSheet.create({
   container: {
@@ -903,14 +1547,18 @@ const styles = StyleSheet.create({
   },
   filterScroll: {
     flexGrow: 0,
-    height: 44,
+    minHeight: 52,
     marginBottom: 12,
+    overflow: 'visible',
   },
   filterRow: {
     paddingLeft: 16,
-    paddingRight: 20,
-    gap: spacing.sm,
+    paddingRight: 32,
+    paddingTop: 8,
+    paddingBottom: 4,
+    gap: 8,
     alignItems: 'center',
+    overflow: 'visible',
   },
   filterPill: {
     flexDirection: 'row',

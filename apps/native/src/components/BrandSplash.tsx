@@ -61,8 +61,8 @@ export function BrandSplash({ onDone, ready }: BrandSplashProps) {
       pointerEvents={ready ? 'none' : 'auto'}
       style={[StyleSheet.absoluteFill, styles.container, animatedStyle]}
     >
-      <GlowSpot size={560} opacity={0.1} style={styles.haloOuter} breathe />
-      <GlowSpot size={320} opacity={0.12} style={styles.haloInner} breathe />
+      <GlowSpot size={560} opacity={0.02} style={styles.haloOuter} breathe />
+      <GlowSpot size={320} opacity={0.024} style={styles.haloInner} breathe />
       <View style={styles.center}>
         <Text style={styles.logoMark}>S</Text>
         <Text style={styles.wordmark}>STROOM</Text>

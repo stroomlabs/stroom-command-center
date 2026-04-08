@@ -20,15 +20,19 @@ import Animated, {
   runOnJS,
   interpolate,
   Extrapolation,
+  FadeInDown,
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import type { QueueClaim } from '@stroom/supabase';
 import { GlassCard } from './GlassCard';
 import { StatusBadge } from './StatusBadge';
+import { HighlightedText } from './HighlightedText';
+import { resolveClaimDisplayValue } from '../lib/resolveDisplayValue';
 import { colors, fonts, spacing, radius } from '../constants/brand';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const SWIPE_THRESHOLD = 120;
+const VELOCITY_THRESHOLD = 500;
 const EXIT_DURATION = 250;
 
 // Enable smooth list reflow on Android when a ClaimCard is removed.
@@ -44,9 +48,12 @@ interface ClaimCardProps {
   onApprove: () => void;
   onReject: () => void;
   onLongPress?: () => void;
+  onDoublePress?: () => void;
   selectMode?: boolean;
   selected?: boolean;
   onToggleSelect?: () => void;
+  query?: string;
+  updatesExisting?: boolean;
 }
 
 function ClaimCardImpl({
@@ -54,9 +61,12 @@ function ClaimCardImpl({
   onApprove,
   onReject,
   onLongPress,
+  onDoublePress,
   selectMode = false,
   selected = false,
   onToggleSelect,
+  query,
+  updatesExisting = false,
 }: ClaimCardProps) {
   const router = useRouter();
   const subjectName = claim.subject_entity?.canonical_name ?? 'Unknown entity';
@@ -67,21 +77,54 @@ function ClaimCardImpl({
   const predicate = claim.predicate ?? 'unknown';
 
   // Resolve display value — extract meaningful text from JSONB
-  const displayValue = resolveDisplayValue(claim.value_jsonb, objectName);
+  const displayValue = resolveClaimDisplayValue(claim.value_jsonb, objectName, claim.predicate);
   const corroborations = claim.corroboration_score ?? 0;
   const age = getRelativeTime(claim.created_at);
+  const ageDays = (Date.now() - new Date(claim.created_at).getTime()) / 86_400_000;
+  const ageColor =
+    ageDays < 1
+      ? colors.statusApprove
+      : ageDays < 3
+      ? colors.teal
+      : ageDays < 7
+      ? colors.statusPending
+      : colors.statusReject;
+  // Progress bar fills proportionally over 7 days (clamped to 100%).
+  const agePct = Math.min(100, (ageDays / 7) * 100);
 
   // Triage rail color — routine (teal) / review (amber) / high-risk (red)
-  const riskColor =
-    trustScore < 6 || confidenceScore < 6 || corroborations === 0
-      ? colors.statusReject
-      : trustScore >= 8 && confidenceScore >= 8
-      ? colors.teal
-      : colors.statusPending;
+  const isHighRisk =
+    trustScore < 6 || confidenceScore < 6 || corroborations === 0;
+  const isNormal = trustScore >= 8 && confidenceScore >= 8;
+  const riskColor = isHighRisk
+    ? colors.statusReject
+    : isNormal
+    ? colors.teal
+    : colors.statusPending;
+  const riskLabel = isHighRisk
+    ? 'High risk claim'
+    : isNormal
+    ? 'Normal'
+    : 'Medium risk';
 
   // Clean predicate for display: "person.crew_chief_profile" → "Crew Chief Profile"
   const predicateLabel = formatPredicate(predicate);
   const predicateRaw = predicate;
+
+  // Double-tap detection — when onDoublePress is provided, a single tap is
+  // delayed by 300ms so we can still distinguish a second tap arriving
+  // within that window. This is the standard cost of double-tap gestures;
+  // without onDoublePress, single taps navigate immediately.
+  const lastTapAtRef = React.useRef(0);
+  const singleTapTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  );
+  React.useEffect(
+    () => () => {
+      if (singleTapTimerRef.current) clearTimeout(singleTapTimerRef.current);
+    },
+    []
+  );
 
   // Swipe-right-to-approve gesture
   const translateX = useSharedValue(0);
@@ -139,8 +182,11 @@ function ClaimCardImpl({
       }
     })
     .onEnd((e) => {
-      if (e.translationX >= SWIPE_THRESHOLD) {
-        // Fling off-screen and approve
+      // Complete the swipe if past threshold OR fast flick
+      if (
+        e.translationX >= SWIPE_THRESHOLD ||
+        (e.translationX > 30 && e.velocityX > VELOCITY_THRESHOLD)
+      ) {
         translateX.value = withTiming(SCREEN_WIDTH, { duration: 220 }, () => {
           runOnJS(onApprove)();
         });
@@ -159,26 +205,42 @@ function ClaimCardImpl({
   }));
 
   const revealAnimatedStyle = useAnimatedStyle(() => {
-    const opacity = interpolate(
+    const progress = interpolate(
       translateX.value,
-      [0, SWIPE_THRESHOLD * 0.4, SWIPE_THRESHOLD],
+      [0, SWIPE_THRESHOLD],
+      [0, 1],
+      Extrapolation.CLAMP
+    );
+    const opacity = interpolate(
+      progress,
+      [0, 0.4, 1],
       [0, 0.6, 1],
       Extrapolation.CLAMP
     );
-    const iconScale = interpolate(
-      translateX.value,
-      [0, SWIPE_THRESHOLD],
-      [0.6, 1.1],
-      Extrapolation.CLAMP
-    );
+    const iconScale = interpolate(progress, [0, 1], [0.5, 1.0], Extrapolation.CLAMP);
+    const rotate = interpolate(progress, [0, 1], [-15, 0], Extrapolation.CLAMP);
     return {
       opacity,
-      transform: [{ scale: iconScale }],
+      transform: [{ scale: iconScale }, { rotate: `${rotate}deg` }],
+    };
+  });
+
+  // Green/red background tint that intensifies with swipe progress
+  const cardTintStyle = useAnimatedStyle(() => {
+    const progress = interpolate(
+      translateX.value,
+      [0, SWIPE_THRESHOLD],
+      [0, 1],
+      Extrapolation.CLAMP
+    );
+    const greenAlpha = interpolate(progress, [0, 1], [0, 0.08], Extrapolation.CLAMP);
+    return {
+      backgroundColor: `rgba(34, 197, 94, ${greenAlpha})`,
     };
   });
 
   return (
-    <View style={styles.swipeWrap}>
+    <Animated.View entering={FadeInDown.duration(300)} style={styles.swipeWrap}>
       {/* Green reveal layer (behind the card) */}
       {!selectMode && (
         <View style={styles.revealLayer} pointerEvents="none">
@@ -191,6 +253,11 @@ function ClaimCardImpl({
 
       <GestureDetector gesture={panGesture}>
         <Animated.View style={cardAnimatedStyle}>
+          {/* Swipe tint overlay — green intensifies as the user drags right */}
+          <Animated.View
+            pointerEvents="none"
+            style={[StyleSheet.absoluteFill, { borderRadius: radius.lg, zIndex: 10 }, cardTintStyle]}
+          />
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={
@@ -198,16 +265,58 @@ function ClaimCardImpl({
                 ? `${selected ? 'Deselect' : 'Select'} claim about ${subjectName}, ${predicateLabel}`
                 : `Claim about ${subjectName}, ${predicateLabel}. Open for details.`
             }
+            accessibilityHint={
+              selectMode
+                ? undefined
+                : 'Swipe right to approve, left to reject. Or use accessibility actions.'
+            }
+            accessibilityActions={
+              selectMode
+                ? undefined
+                : [
+                    { name: 'approve', label: 'Approve claim' },
+                    { name: 'reject', label: 'Reject claim' },
+                  ]
+            }
+            onAccessibilityAction={(e) => {
+              if (selectMode) return;
+              if (e.nativeEvent.actionName === 'approve') {
+                handleApprove();
+              } else if (e.nativeEvent.actionName === 'reject') {
+                handleReject();
+              }
+            }}
             accessibilityState={selectMode ? { selected } : undefined}
             onPress={() => {
               if (selectMode) {
                 onToggleSelect?.();
-              } else {
+                return;
+              }
+              const navigate = () => {
                 router.push({
                   pathname: '/claim/[id]',
                   params: { id: claim.id },
                 } as any);
+              };
+              if (!onDoublePress) {
+                navigate();
+                return;
               }
+              const now = Date.now();
+              const elapsed = now - lastTapAtRef.current;
+              if (elapsed < 300 && singleTapTimerRef.current) {
+                clearTimeout(singleTapTimerRef.current);
+                singleTapTimerRef.current = null;
+                lastTapAtRef.current = 0;
+                onDoublePress();
+                return;
+              }
+              lastTapAtRef.current = now;
+              singleTapTimerRef.current = setTimeout(() => {
+                singleTapTimerRef.current = null;
+                lastTapAtRef.current = 0;
+                navigate();
+              }, 300);
             }}
             onLongPress={selectMode ? undefined : onLongPress}
             delayLongPress={350}
@@ -225,12 +334,34 @@ function ClaimCardImpl({
               borderLeftWidth: 3,
               borderLeftColor: riskColor,
             }}
+            accessibilityLabel={`${riskLabel}: ${subjectName} ${predicateLabel}`}
           >
       {/* Header row */}
       <View style={styles.headerRow}>
         <StatusBadge status={claim.status} />
+        {updatesExisting && (
+          <View
+            style={styles.updatesBadge}
+            accessible
+            accessibilityRole="text"
+            accessibilityLabel="Updates existing claim"
+          >
+            <Ionicons name="git-compare-outline" size={9} color={colors.statusPending} />
+            <Text style={styles.updatesBadgeText}>Updates existing</Text>
+          </View>
+        )}
         <View style={styles.headerRight}>
-          <Text style={styles.age}>{age}</Text>
+          <View style={styles.ageWrap}>
+            <Text style={[styles.age, { color: ageColor }]}>{age}</Text>
+            <View style={styles.ageTrack}>
+              <View
+                style={[
+                  styles.ageFill,
+                  { width: `${Math.max(4, agePct)}%`, backgroundColor: ageColor },
+                ]}
+              />
+            </View>
+          </View>
           {!selectMode && (
             <View style={styles.quickActions}>
               <Pressable
@@ -269,13 +400,20 @@ function ClaimCardImpl({
       </View>
 
       {/* Subject */}
-      <Text style={styles.subject} numberOfLines={1}>
-        {subjectName}
-      </Text>
+      <HighlightedText
+        text={subjectName}
+        query={query}
+        style={styles.subject}
+        numberOfLines={1}
+      />
 
       {/* Predicate → Value */}
       <View style={styles.predicateRow}>
-        <Text style={styles.predicateLabel}>{predicateLabel}</Text>
+        <HighlightedText
+          text={predicateLabel}
+          query={query}
+          style={styles.predicateLabel}
+        />
       </View>
 
       {/* Value display */}
@@ -284,6 +422,29 @@ function ClaimCardImpl({
           {displayValue}
         </Text>
       </View>
+
+      {/* Inline context strip — corroboration, confidence, age */}
+      <View style={styles.contextStrip}>
+        <Text style={styles.contextItem}>
+          {corroborations > 0
+            ? `✓ ${corroborations} source${corroborations === 1 ? '' : 's'}`
+            : '⚠ single source'}
+        </Text>
+        <Text style={styles.contextDot}>·</Text>
+        <Text style={styles.contextItem}>
+          conf {confidenceScore.toFixed(1)}
+        </Text>
+        <Text style={styles.contextDot}>·</Text>
+        <Text style={[styles.contextItem, { color: ageColor }]}>
+          {age}
+        </Text>
+      </View>
+      {/* Predicate category */}
+      <Text style={styles.contextCategory} numberOfLines={1}>
+        {predicate.includes('.')
+          ? predicate.split('.').slice(0, -1).join(' · ')
+          : predicate.replace(/_/g, ' ')}
+      </Text>
 
       {/* Source row */}
       <View style={styles.sourceRow}>
@@ -351,51 +512,8 @@ function ClaimCardImpl({
           </Pressable>
         </Animated.View>
       </GestureDetector>
-    </View>
+    </Animated.View>
   );
-}
-
-// ── Value resolution ──
-
-function resolveDisplayValue(
-  jsonb: Record<string, unknown> | null,
-  objectName: string | null | undefined
-): string {
-  if (objectName) return objectName;
-  if (!jsonb) return '—';
-
-  // Simple scalar value
-  if ('value' in jsonb && typeof jsonb.value !== 'object') {
-    return String(jsonb.value);
-  }
-
-  // Named entity-like objects
-  if ('name' in jsonb) return String(jsonb.name);
-
-  // Data array — summarize
-  if ('data' in jsonb && Array.isArray(jsonb.data)) {
-    const arr = jsonb.data as any[];
-    if (arr.length === 0) return '(empty)';
-    const first = arr[0];
-    const name = first?.name || first?.driver || first?.team || Object.values(first)[0];
-    if (arr.length === 1) return String(name);
-    return `${name} + ${arr.length - 1} more`;
-  }
-
-  // Type/tier pattern (common in research claims)
-  if ('type' in jsonb) {
-    const parts: string[] = [];
-    if (jsonb.tier) parts.push(`T${jsonb.tier}`);
-    parts.push(formatSnakeCase(String(jsonb.type)));
-    return parts.join(' · ');
-  }
-
-  // Range/estimate pattern
-  if ('range' in jsonb) return String(jsonb.range);
-
-  // Fallback: show first 2-3 key:value pairs
-  const entries = Object.entries(jsonb).slice(0, 3);
-  return entries.map(([k, v]) => `${formatSnakeCase(k)}: ${truncate(String(v), 30)}`).join('\n');
 }
 
 function formatPredicate(pred: string): string {
@@ -404,14 +522,6 @@ function formatPredicate(pred: string): string {
   return last
     .replace(/_/g, ' ')
     .replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
-function formatSnakeCase(s: string): string {
-  return s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
-function truncate(s: string, max: number): string {
-  return s.length > max ? s.slice(0, max) + '…' : s;
 }
 
 function getRelativeTime(iso: string): string {
@@ -498,11 +608,26 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: spacing.md,
   },
+  ageWrap: {
+    alignItems: 'flex-end',
+    gap: 2,
+  },
   age: {
     fontFamily: fonts.mono.regular,
     fontSize: 11,
     color: colors.slate,
     fontVariant: ['tabular-nums'],
+  },
+  ageTrack: {
+    width: 40,
+    height: 2,
+    borderRadius: 1,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    overflow: 'hidden',
+  },
+  ageFill: {
+    height: '100%',
+    borderRadius: 1,
   },
   subject: {
     fontFamily: fonts.archivo.bold,
@@ -530,6 +655,32 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.silver,
     lineHeight: 18,
+  },
+  contextStrip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginBottom: 2,
+  },
+  contextItem: {
+    fontFamily: fonts.mono.regular,
+    fontSize: 11,
+    color: colors.silver,
+    opacity: 0.6,
+    fontVariant: ['tabular-nums'],
+  },
+  contextDot: {
+    fontFamily: fonts.mono.regular,
+    fontSize: 11,
+    color: colors.slate,
+    opacity: 0.4,
+  },
+  contextCategory: {
+    fontFamily: fonts.mono.regular,
+    fontSize: 11,
+    color: colors.silver,
+    opacity: 0.6,
+    marginBottom: spacing.sm,
   },
   sourceRow: {
     flexDirection: 'row',
@@ -574,6 +725,23 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.silver,
     fontVariant: ['tabular-nums'],
+  },
+  updatesBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.statusPending,
+    backgroundColor: 'rgba(245, 158, 11, 0.1)',
+  },
+  updatesBadgeText: {
+    fontFamily: fonts.archivo.bold,
+    fontSize: 8,
+    color: colors.statusPending,
+    letterSpacing: 0.5,
   },
   headerRight: {
     flexDirection: 'row',

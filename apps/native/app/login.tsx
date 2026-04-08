@@ -44,8 +44,8 @@ export default function LoginScreen() {
       style={styles.container}
     >
       {/* Breathing teal halo behind the logo mark */}
-      <GlowSpot size={560} opacity={0.1} style={styles.haloOuter} breathe />
-      <GlowSpot size={320} opacity={0.12} style={styles.haloInner} breathe />
+      <GlowSpot size={560} opacity={0.02} style={styles.haloOuter} breathe />
+      <GlowSpot size={320} opacity={0.024} style={styles.haloInner} breathe />
 
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
