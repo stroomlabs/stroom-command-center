@@ -6,6 +6,7 @@ import { BlurView } from 'expo-blur';
 import { haptics } from '../../src/lib/haptics';
 import { usePulseContext } from '../../src/lib/PulseContext';
 import { TabIcon } from '../../src/components/TabIcon';
+import { useCapabilities } from '../../src/hooks/useCapabilities';
 import { colors, fonts } from '../../src/constants/brand';
 
 const tabPressListeners = {
@@ -52,6 +53,24 @@ const tabStyles = StyleSheet.create({
 export default function TabLayout() {
   const { data } = usePulseContext();
   const queueDepth = data?.queueDepth ?? 0;
+  const { hasCapability, isLoading: capsLoading, capabilities } =
+    useCapabilities();
+
+  // While the very first capability snapshot is still in flight (i.e. no
+  // cached snapshot at all), permit every tab so we don't visibly collapse
+  // the bar mid-load. Once a snapshot lands — even a stale one from
+  // AsyncStorage — we honor its answer. Owner role (Kevin) has every
+  // capability set, so this only matters for future restricted operators.
+  const haveSnapshot = !capsLoading || Object.keys(capabilities).length > 0;
+  const canSee = (capability: string) =>
+    !haveSnapshot ? true : hasCapability(capability);
+
+  // Expo Router 4 hides a tab from the bar by setting `href: null` on the
+  // screen options. The route stays registered (so deep links still work
+  // for an owner reaching it via a direct path), but it disappears from
+  // the visible bottom bar.
+  const hideIfDenied = (capability: string) =>
+    canSee(capability) ? undefined : { href: null as any };
 
   return (
     <Tabs
@@ -115,6 +134,7 @@ export default function TabLayout() {
             height: 18,
             lineHeight: 14,
           },
+          ...hideIfDenied('claims.review'),
         }}
       />
       <Tabs.Screen
@@ -130,6 +150,7 @@ export default function TabLayout() {
               focused={focused}
             />
           ),
+          ...hideIfDenied('entities.read'),
         }}
       />
       <Tabs.Screen
@@ -145,6 +166,7 @@ export default function TabLayout() {
               focused={focused}
             />
           ),
+          ...hideIfDenied('command.use'),
         }}
       />
       <Tabs.Screen
@@ -160,6 +182,7 @@ export default function TabLayout() {
               focused={focused}
             />
           ),
+          ...hideIfDenied('projects.read'),
         }}
       />
       <Tabs.Screen
@@ -175,6 +198,7 @@ export default function TabLayout() {
               focused={focused}
             />
           ),
+          ...hideIfDenied('admin.settings'),
         }}
       />
     </Tabs>

@@ -33,6 +33,8 @@ import { useBrandToast } from '../../src/components/BrandToast';
 import { ScreenCanvas } from '../../src/components/ScreenCanvas';
 import { ScreenWatermark } from '../../src/components/ScreenWatermark';
 import { CollapsibleSection } from '../../src/components/CollapsibleSection';
+import { CapabilityGate } from '../../src/components/CapabilityGate';
+import { useCapabilities } from '../../src/hooks/useCapabilities';
 import { colors, fonts, spacing, radius, gradient } from '../../src/constants/brand';
 
 interface OpsCardSpec {
@@ -60,6 +62,15 @@ export default function OpsScreen() {
   }, [navigation]);
   const { data: pulse, refresh: refreshPulse } = usePulseContext();
   const { health, error: healthError, refresh: refreshHealth } = useGraphHealth();
+  const {
+    role: currentRole,
+    email: currentEmail,
+    capabilities: currentCaps,
+  } = useCapabilities();
+  const grantedCapCount = React.useMemo(
+    () => Object.values(currentCaps).filter((v) => v === true).length,
+    [currentCaps]
+  );
   const { refresh: refreshQueue } = useQueueClaims();
   const { sources } = useSourcesList();
   const unhealthy = useMemo(() => pickUnhealthySources(sources).slice(0, 6), [sources]);
@@ -728,6 +739,68 @@ export default function OpsScreen() {
           </View>
         )}
 
+        {/* DR-036 — current operator role + admin "Operators" entry. The
+            role card is visible to everyone (an operator should always be
+            able to see what their own role is). The Operators entry is
+            wrapped in a CapabilityGate so non-admin operators don't see
+            it at all. */}
+        <Pressable
+          onPress={() => router.push('/my-role' as any)}
+          accessibilityRole="button"
+          accessibilityLabel={
+            currentRole
+              ? `Role: ${currentRole.display_name}. Tap for details.`
+              : 'Role: loading. Tap for details.'
+          }
+          style={({ pressed }) => [
+            styles.roleCard,
+            pressed && { opacity: 0.85 },
+          ]}
+        >
+          <View style={styles.roleIconWrap}>
+            <Ionicons
+              name="shield-checkmark-outline"
+              size={20}
+              color={colors.teal}
+            />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.roleLabel}>ROLE</Text>
+            <Text style={styles.roleValue} numberOfLines={1}>
+              {currentRole?.display_name ?? 'Loading…'}
+            </Text>
+            <Text style={styles.roleSubtitle} numberOfLines={1}>
+              {currentEmail ?? 'No email'} · {grantedCapCount}{' '}
+              {grantedCapCount === 1 ? 'capability' : 'capabilities'}
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={16} color={colors.slate} />
+        </Pressable>
+
+        <CapabilityGate capability="users.read">
+          <Pressable
+            onPress={() => router.push('/users' as any)}
+            accessibilityRole="button"
+            accessibilityLabel="Operators. Tap to view team roster."
+            style={({ pressed }) => [
+              styles.roleCard,
+              pressed && { opacity: 0.85 },
+            ]}
+          >
+            <View style={styles.roleIconWrap}>
+              <Ionicons name="people-outline" size={20} color={colors.teal} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.roleLabel}>ADMIN</Text>
+              <Text style={styles.roleValue}>Operators</Text>
+              <Text style={styles.roleSubtitle}>
+                Roster, roles, last activity
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={colors.slate} />
+          </Pressable>
+        </CapabilityGate>
+
         {cards.map((card) => (
           <OpsCard
             key={card.key}
@@ -1345,6 +1418,48 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderTopWidth: 1,
     borderTopColor: colors.glassBorder,
+  },
+  // DR-036 role badge — glass tier 2 card. Matches OpsCard padding so it
+  // flows with the dashboard cards above the cards.map() block.
+  roleCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    backgroundColor: colors.surfaceCard,
+    marginBottom: spacing.sm,
+  },
+  roleIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0, 161, 155, 0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(0, 161, 155, 0.30)',
+  },
+  roleLabel: {
+    fontFamily: fonts.mono.medium,
+    fontSize: 9,
+    color: colors.slate,
+    letterSpacing: 1.2,
+    marginBottom: 2,
+  },
+  roleValue: {
+    fontFamily: fonts.archivo.bold,
+    fontSize: 16,
+    color: colors.alabaster,
+    letterSpacing: -0.2,
+  },
+  roleSubtitle: {
+    fontFamily: fonts.archivo.regular,
+    fontSize: 11,
+    color: colors.slate,
+    marginTop: 2,
   },
   sourceAlertName: {
     fontFamily: fonts.archivo.semibold,
