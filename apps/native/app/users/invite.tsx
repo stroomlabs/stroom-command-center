@@ -90,7 +90,9 @@ export default function InviteOperatorScreen() {
           .order('display_name', { ascending: true });
         if (error) throw error;
         const filtered: RoleOption[] = ((data ?? []) as any[])
-          .filter((r) => String(r.name) !== 'owner')
+          .filter(
+            (r) => String(r.name) !== 'owner' && String(r.name) !== 'guest'
+          )
           .map((r) => ({
             id: String(r.id),
             name: String(r.name ?? ''),

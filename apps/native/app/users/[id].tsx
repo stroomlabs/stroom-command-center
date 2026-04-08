@@ -45,7 +45,7 @@ interface ProfileRow {
   last_active_at: string | null;
   invited_at: string | null;
   invited_by: string | null;
-  deactivated_at: string | null;
+  is_disabled: boolean;
 }
 
 interface RoleRow {
@@ -130,7 +130,7 @@ export default function UserDetailScreen() {
           null,
         invited_at: (p.invited_at as string | null) ?? null,
         invited_by: (p.invited_by as string | null) ?? null,
-        deactivated_at: (p.deactivated_at as string | null) ?? null,
+        is_disabled: (p.is_disabled as boolean | null) === true,
       };
       setProfile(normalized);
 
@@ -280,7 +280,7 @@ export default function UserDetailScreen() {
 
   const handleToggleActive = () => {
     if (!profile) return;
-    const isDeactivated = !!profile.deactivated_at;
+    const isDeactivated = profile.is_disabled;
     const targetName = profile.display_name ?? profile.email ?? 'this operator';
     alert(
       isDeactivated ? 'Reactivate operator?' : 'Deactivate operator?',
@@ -319,7 +319,7 @@ export default function UserDetailScreen() {
   };
 
   const isPending = !!profile?.invited_at && !profile?.last_active_at;
-  const isDeactivated = !!profile?.deactivated_at;
+  const isDeactivated = profile?.is_disabled === true;
 
   const cardOpacity = isDeactivated ? 0.5 : 1;
 
