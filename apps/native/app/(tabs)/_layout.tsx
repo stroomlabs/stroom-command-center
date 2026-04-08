@@ -148,13 +148,13 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="ops"
+        name="projects"
         options={{
-          title: 'Ops',
-          tabBarAccessibilityLabel: 'Ops tab',
+          title: 'Projects',
+          tabBarAccessibilityLabel: 'Projects tab',
           tabBarIcon: ({ color, size, focused }) => (
             <TabIcon
-              name="construct-outline"
+              name={focused ? 'briefcase' : 'briefcase-outline'}
               size={size}
               color={color}
               focused={focused}
@@ -163,13 +163,13 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="projects"
+        name="ops"
         options={{
-          title: 'Projects',
-          tabBarAccessibilityLabel: 'Projects tab',
+          title: 'Ops',
+          tabBarAccessibilityLabel: 'Ops tab',
           tabBarIcon: ({ color, size, focused }) => (
             <TabIcon
-              name={focused ? 'briefcase' : 'briefcase-outline'}
+              name="construct-outline"
               size={size}
               color={color}
               focused={focused}

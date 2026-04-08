@@ -1,6 +1,8 @@
 {
   "cli": {
-    "version": ">= 14.0.0"
+    "version": ">= 14.0.0",
+    "appVersionSource": "remote",
+    "promptToConfigurePushNotifications": false
   },
   "build": {
     "development": {
@@ -24,8 +26,8 @@
     "production": {
       "ios": {
         "appleId": "kevin@stroomlabs.com",
-        "ascAppId": "REPLACE_WITH_APP_STORE_CONNECT_APP_ID",
-        "appleTeamId": "REPLACE_WITH_TEAM_ID"
+        "ascAppId": "6761855616",
+        "appleTeamId": "5A37M3PTUJ"
       }
     }
   }

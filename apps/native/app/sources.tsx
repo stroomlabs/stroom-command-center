@@ -16,6 +16,7 @@ import { haptics } from '../src/lib/haptics';
 import type { Source } from '@stroom/types';
 import { useSourcesList } from '../src/hooks/useSourcesList';
 import { ScreenCanvas } from '../src/components/ScreenCanvas';
+import { sourceAutoApprovesNow } from '../src/lib/sourcePolicy';
 import { colors, fonts, spacing, radius, gradient } from '../src/constants/brand';
 
 // ── Sort + filter models ──
@@ -267,11 +268,19 @@ export default function SourcesListScreen() {
   );
 }
 
-// Left border triage: teal for auto-approve, amber for blocked canary,
-// subtle gray otherwise. Mirrors the pattern Queue claim cards use so the
-// list reads at a glance.
+// Left border triage: teal for any source that auto-approves now (explicit
+// flag OR the hybrid official_primary + trust≥9 rule), amber for blocked
+// canary, subtle gray otherwise. Mirrors the pattern Queue claim cards use
+// so the list reads at a glance.
 function triageBorderColor(source: Source): string {
-  if (source.auto_approve === true) return colors.teal;
+  if (
+    sourceAutoApprovesNow({
+      auto_approve: source.auto_approve === true,
+      source_class: source.source_class ?? '',
+      trust_score: source.trust_score,
+    })
+  )
+    return colors.teal;
   if (source.canary_status === 'blocked') return colors.statusPending;
   return 'rgba(255,255,255,0.08)';
 }
@@ -295,6 +304,11 @@ const SourceRow = React.memo(function SourceRow({
   const pct = Math.max(0, Math.min(10, score)) * 10;
   const borderColor = triageBorderColor(source);
   const isBlocked = source.canary_status === 'blocked';
+  const autoApproves = sourceAutoApprovesNow({
+    auto_approve: source.auto_approve === true,
+    source_class: source.source_class ?? '',
+    trust_score: source.trust_score,
+  });
 
   return (
     <Pressable
@@ -305,7 +319,7 @@ const SourceRow = React.memo(function SourceRow({
         pressed && { opacity: 0.75, transform: [{ scale: 0.97 }] },
       ]}
       accessibilityRole="button"
-      accessibilityLabel={`${source.source_name}, trust ${score.toFixed(1)} out of 10, ${claimCount} claim${claimCount === 1 ? '' : 's'}${source.auto_approve ? ', auto-approve' : ''}${isBlocked ? ', blocked' : ''}`}
+      accessibilityLabel={`${source.source_name}, trust ${score.toFixed(1)} out of 10, ${claimCount} claim${claimCount === 1 ? '' : 's'}${autoApproves ? ', auto-approve' : ''}${isBlocked ? ', blocked' : ''}`}
     >
       <View style={styles.rowHeader}>
         <Text style={styles.rowName} numberOfLines={1}>
@@ -331,7 +345,7 @@ const SourceRow = React.memo(function SourceRow({
             </Text>
           </>
         )}
-        {source.auto_approve && (
+        {autoApproves && (
           <>
             <Text style={styles.rowMetaDot}>·</Text>
             <Text style={[styles.rowMetaText, { color: colors.teal }]}>

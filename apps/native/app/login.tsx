@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { ScreenCanvas } from '../src/components/ScreenCanvas';
 import supabase from '../src/lib/supabase';
+import { useBrandToast } from '../src/components/BrandToast';
 import { colors, fonts, spacing, radius, gradient } from '../src/constants/brand';
 
 export default function LoginScreen() {
@@ -20,6 +21,7 @@ export default function LoginScreen() {
   const [error, setError] = useState<string | null>(null);
   const [emailFocused, setEmailFocused] = useState(false);
   const [passwordFocused, setPasswordFocused] = useState(false);
+  const { show: showToast } = useBrandToast();
 
   const canSubmit = email.trim().length > 0 && password.trim().length > 0;
 
@@ -35,6 +37,22 @@ export default function LoginScreen() {
     if (error) setError(error.message);
   };
 
+  const handleForgotPassword = async () => {
+    const trimmed = email.trim();
+    if (!trimmed) {
+      showToast('Enter your email first', 'warn');
+      return;
+    }
+    // Always show the same toast on success or failure so we don't leak
+    // whether an account exists for a given address.
+    try {
+      await supabase.auth.resetPasswordForEmail(trimmed);
+    } catch {
+      // swallow — toast below is shown either way
+    }
+    showToast('Reset link sent if account exists', 'info');
+  };
+
   return (
     <View style={styles.container}>
       <ScreenCanvas />
@@ -44,10 +62,8 @@ export default function LoginScreen() {
         style={styles.inner}
       >
         <View style={styles.logoArea}>
-          <Text style={styles.parentLockup}>STROOM LABS</Text>
           <Text style={styles.logoMark}>S</Text>
-          <Text style={styles.title}>Command Center</Text>
-          <Text style={styles.subtitle}>Intelligence Operations</Text>
+          <Text style={styles.title}>STROOM COMMAND</Text>
         </View>
 
         <View style={styles.form}>
@@ -105,6 +121,19 @@ export default function LoginScreen() {
               <Text style={styles.btnText}>Sign In</Text>
             )}
           </Pressable>
+
+          <Pressable
+            onPress={handleForgotPassword}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel="Forgot password"
+            style={({ pressed }) => [
+              styles.forgotWrap,
+              pressed && { opacity: 0.6 },
+            ]}
+          >
+            <Text style={styles.forgotText}>Forgot password?</Text>
+          </Pressable>
         </View>
 
         <Text style={styles.footer}>Stroom Labs · Operator Access Only</Text>
@@ -134,14 +163,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 56,
   },
-  parentLockup: {
-    fontFamily: fonts.archivo.medium,
-    fontSize: 11,
-    color: colors.silver,
-    letterSpacing: 2,
-    marginBottom: spacing.md,
-    textTransform: 'uppercase',
-  },
   logoMark: {
     fontFamily: fonts.archivo.black,
     fontSize: 72,
@@ -154,17 +175,10 @@ const styles = StyleSheet.create({
     lineHeight: 80,
   },
   title: {
-    fontFamily: fonts.archivo.bold,
-    fontSize: 22,
-    color: colors.teal,
-    letterSpacing: -0.4,
-  },
-  subtitle: {
-    fontFamily: fonts.archivo.regular,
-    fontSize: 13,
+    fontFamily: fonts.archivo.black,
+    fontSize: 18,
     color: colors.silver,
-    marginTop: 6,
-    letterSpacing: 0.3,
+    letterSpacing: -0.5,
   },
   form: {
     gap: spacing.md,
@@ -221,6 +235,17 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: colors.obsidian,
     letterSpacing: 0.3,
+  },
+  forgotWrap: {
+    alignSelf: 'center',
+    marginTop: spacing.sm,
+    paddingVertical: 6,
+    paddingHorizontal: spacing.sm,
+  },
+  forgotText: {
+    fontFamily: fonts.archivo.regular,
+    fontSize: 12,
+    color: colors.slate,
   },
   footer: {
     fontFamily: fonts.mono.regular,

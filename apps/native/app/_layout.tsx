@@ -120,6 +120,7 @@ export default function RootLayout() {
             contentStyle: { backgroundColor: colors.black },
             animation: 'slide_from_right',
             animationDuration: 250,
+            fullScreenGestureEnabled: true,
           }}
         >
           <Stack.Screen name="(tabs)" />
