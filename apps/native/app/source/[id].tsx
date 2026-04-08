@@ -14,7 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Slider from '@react-native-community/slider';
-import * as Haptics from 'expo-haptics';
+import { haptics } from '../../src/lib/haptics';
 import {
   updateSource,
   batchUpdateSiblingSources,
@@ -62,11 +62,11 @@ export default function SourceDetailScreen() {
       setSaving(true);
       try {
         await updateSource(supabase, source.id, { trust_score: value });
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        haptics.success();
         showToast(`Trust score updated to ${value.toFixed(1)}`, 'success');
         await refresh();
       } catch (e: any) {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        haptics.error();
         showToast(e?.message ?? 'Update failed', 'error');
       } finally {
         setSaving(false);
@@ -78,18 +78,18 @@ export default function SourceDetailScreen() {
   const toggleAutoApprove = useCallback(
     async (next: boolean) => {
       if (!source) return;
-      Haptics.selectionAsync();
+      haptics.tap.light();
       setSaving(true);
       try {
         await updateSource(supabase, source.id, { auto_approve: next });
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        haptics.success();
         showToast(
           next ? 'Auto-approve enabled' : 'Auto-approve disabled',
           'success'
         );
         await refresh();
       } catch (e: any) {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        haptics.error();
         showToast(e?.message ?? 'Update failed', 'error');
       } finally {
         setSaving(false);
@@ -107,14 +107,14 @@ export default function SourceDetailScreen() {
       setSaving(true);
       try {
         await updateSource(supabase, source.id, { canary_status: next });
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        haptics.success();
         showToast(
           next === 'blocked' ? 'Source blocked' : 'Source unblocked',
           next === 'blocked' ? 'warn' : 'success'
         );
         await refresh();
       } catch (e: any) {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        haptics.error();
         showToast(e?.message ?? 'Update failed', 'error');
       } finally {
         setSaving(false);
@@ -140,11 +140,11 @@ export default function SourceDetailScreen() {
       setSaving(true);
       try {
         const n = await batchUpdateSiblingSources(supabase, ids, patch);
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        haptics.success();
         showToast(`${label} · updated ${n} source${n === 1 ? '' : 's'}`, 'success');
         await Promise.all([refresh(), refreshSiblings()]);
       } catch (e: any) {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        haptics.error();
         showToast(e?.message ?? 'Batch update failed', 'error');
       } finally {
         setSaving(false);
@@ -400,7 +400,7 @@ export default function SourceDetailScreen() {
                   ))}
                   <Pressable
                     onPress={() => {
-                      Haptics.selectionAsync();
+                      haptics.tap.light();
                       setApplySheetVisible(true);
                     }}
                     disabled={saving}

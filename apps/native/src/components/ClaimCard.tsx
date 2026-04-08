@@ -22,7 +22,7 @@ import Animated, {
   Extrapolation,
   FadeInDown,
 } from 'react-native-reanimated';
-import * as Haptics from 'expo-haptics';
+import { haptics } from '../lib/haptics';
 import type { QueueClaim } from '@stroom/supabase';
 import { GlassCard } from './GlassCard';
 import { StatusBadge } from './StatusBadge';
@@ -54,6 +54,11 @@ interface ClaimCardProps {
   onToggleSelect?: () => void;
   query?: string;
   updatesExisting?: boolean;
+  // When true, the underlying governance_decision row has
+  // decision_status = 'auto_approved'. Renders a small teal "Why?" chip
+  // inline with the context strip; tapping fires onWhyAutoApproved.
+  isAutoApproved?: boolean;
+  onWhyAutoApproved?: () => void;
 }
 
 function ClaimCardImpl({
@@ -67,6 +72,8 @@ function ClaimCardImpl({
   onToggleSelect,
   query,
   updatesExisting = false,
+  isAutoApproved = false,
+  onWhyAutoApproved,
 }: ClaimCardProps) {
   const router = useRouter();
   const subjectName = claim.subject_entity?.canonical_name ?? 'Unknown entity';
@@ -135,7 +142,7 @@ function ClaimCardImpl({
   const exitOpacity = useSharedValue(1);
 
   const onThresholdHaptic = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    haptics.tap.medium();
   };
 
   // Called on the JS thread after the fade-out finishes. Configures a one-shot
@@ -438,6 +445,27 @@ function ClaimCardImpl({
         <Text style={[styles.contextItem, { color: ageColor }]}>
           {age}
         </Text>
+        {isAutoApproved && onWhyAutoApproved && (
+          <>
+            <Text style={styles.contextDot}>·</Text>
+            <Pressable
+              onPress={(e) => {
+                e.stopPropagation?.();
+                onWhyAutoApproved();
+              }}
+              hitSlop={6}
+              style={({ pressed }) => [
+                styles.whyChip,
+                pressed && { opacity: 0.7 },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel="Why was this auto-approved?"
+            >
+              <Ionicons name="sparkles" size={9} color={colors.teal} />
+              <Text style={styles.whyChipText}>Why?</Text>
+            </Pressable>
+          </>
+        )}
       </View>
       {/* Predicate category */}
       <Text style={styles.contextCategory} numberOfLines={1}>
@@ -674,6 +702,23 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: colors.slate,
     opacity: 0.4,
+  },
+  whyChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 161, 155, 0.35)',
+    backgroundColor: colors.tealDim,
+  },
+  whyChipText: {
+    fontFamily: fonts.archivo.bold,
+    fontSize: 10,
+    color: colors.teal,
+    letterSpacing: 0.2,
   },
   contextCategory: {
     fontFamily: fonts.mono.regular,

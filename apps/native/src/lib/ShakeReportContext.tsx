@@ -6,7 +6,7 @@ import React, {
   useState,
 } from 'react';
 import { Accelerometer } from 'expo-sensors';
-import * as Haptics from 'expo-haptics';
+import { haptics } from './haptics';
 import { useSegments } from 'expo-router';
 import { ShakeReportModal } from '../components/ShakeReportModal';
 
@@ -122,9 +122,7 @@ export function ShakeReportProvider({ children }: { children: React.ReactNode })
           if (buf.length >= REQUIRED_EVENTS) {
             peaksRef.current = [];
             lastOpenAtRef.current = now;
-            Haptics.notificationAsync(
-              Haptics.NotificationFeedbackType.Warning
-            );
+            haptics.warning();
             setVisible(true);
           }
         });

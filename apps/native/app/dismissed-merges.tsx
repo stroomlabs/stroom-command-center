@@ -11,7 +11,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
+import { haptics } from '../src/lib/haptics';
 import Animated, { FadeOutRight } from 'react-native-reanimated';
 import { ScreenCanvas } from '../src/components/ScreenCanvas';
 import { EmptyState } from '../src/components/EmptyState';
@@ -84,7 +84,7 @@ export default function DismissedMergesScreen() {
 
   const handleReopen = useCallback(
     async (dismissalId: string) => {
-      Haptics.selectionAsync();
+      haptics.tap.light();
       // Optimistically remove
       setRows((prev) => prev.filter((r) => r.id !== dismissalId));
       try {
@@ -94,7 +94,7 @@ export default function DismissedMergesScreen() {
         if (rpcError) throw rpcError;
         showToast('Dismissal reopened', 'success');
       } catch (e: any) {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        haptics.error();
         showToast(e?.message ?? 'Reopen failed', 'error');
         // Refetch on failure so the row reappears.
         await fetchRows();

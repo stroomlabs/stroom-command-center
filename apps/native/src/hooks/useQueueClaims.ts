@@ -11,7 +11,7 @@ import type { QueueClaim } from '@stroom/supabase';
 import type { RejectionReason } from '@stroom/types';
 import supabase from '../lib/supabase';
 import { useOfflineSync } from '../lib/OfflineSyncContext';
-import * as Haptics from 'expo-haptics';
+import { haptics } from '../lib/haptics';
 
 const FOREGROUND_REFRESH_DEBOUNCE_MS = 30_000;
 const UNDO_WINDOW_MS = 5_000;
@@ -98,7 +98,7 @@ export function useQueueClaims() {
       // Optimistic remove
       setActing((prev) => new Set(prev).add(claimId));
       setClaims((prev) => prev.filter((c) => c.id !== claimId));
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      haptics.impact.rigid();
 
       try {
         const queued = await enqueueIfOffline({
@@ -128,7 +128,7 @@ export function useQueueClaims() {
     async (claimId: string, reason: RejectionReason, notes?: string) => {
       setActing((prev) => new Set(prev).add(claimId));
       setClaims((prev) => prev.filter((c) => c.id !== claimId));
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      haptics.impact.soft();
 
       try {
         const queued = await enqueueIfOffline({
@@ -253,7 +253,7 @@ export function useQueueClaims() {
       if (idx < 0) return;
       const claim = snapshot[idx];
       const subject = claim.subject_entity?.canonical_name ?? 'Claim';
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      haptics.impact.rigid();
       schedulePending({
         kind: 'approve',
         claim,
@@ -271,7 +271,7 @@ export function useQueueClaims() {
       if (idx < 0) return;
       const claim = snapshot[idx];
       const subject = claim.subject_entity?.canonical_name ?? 'Claim';
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      haptics.impact.soft();
       schedulePending({
         kind: 'reject',
         claim,
@@ -301,7 +301,7 @@ export function useQueueClaims() {
       next.splice(target, 0, entry.claim);
       return next;
     });
-    Haptics.selectionAsync();
+    haptics.tap.light();
   }, [clearPendingTimer]);
 
   // Make sure any pending mutation fires if the screen unmounts — we
@@ -329,7 +329,7 @@ export function useQueueClaims() {
         return next;
       });
       setClaims((prev) => prev.filter((c) => !idSet.has(c.id)));
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      haptics.impact.rigid();
 
       try {
         // If offline, enqueue each approve individually so the drain flow

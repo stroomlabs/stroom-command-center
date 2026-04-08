@@ -14,7 +14,7 @@ import { useRouter } from 'expo-router';
 import Constants from 'expo-constants';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Clipboard from 'expo-clipboard';
-import * as Haptics from 'expo-haptics';
+import { haptics, setReduceHaptics, getReduceHaptics } from '../src/lib/haptics';
 import { useAuth } from '../src/lib/auth';
 import { useGovernanceStats } from '../src/hooks/useGovernanceStats';
 import { useTeam } from '../src/hooks/useTeam';
@@ -46,20 +46,23 @@ export default function MoreScreen() {
     setEnabled: setBiometricEnabled,
   } = useBiometricLock();
   const [generating, setGenerating] = useState(false);
+  const [reduceHaptics, setReduceHapticsState] = useState<boolean>(
+    getReduceHaptics()
+  );
 
   const handleGenerateInvite = useCallback(async () => {
     setGenerating(true);
     try {
       const code = await generateInvite();
       await Clipboard.setStringAsync(code);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      haptics.success();
       alert(
         'Invite code generated',
         `Code \`${code}\` copied to clipboard. Share it with a teammate — they'll use it at sign-in to get operator access.`
       );
       refreshTeam();
     } catch (e: any) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      haptics.error();
       showToast(e?.message ?? 'Generate failed', 'error');
     } finally {
       setGenerating(false);
@@ -112,7 +115,7 @@ export default function MoreScreen() {
               if (targets.length > 0) {
                 await AsyncStorage.multiRemove(targets);
               }
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              haptics.success();
               showToast(`Cleared ${targets.length} keys`, 'success');
             } catch (e: any) {
               showToast(e?.message ?? 'Clear failed', 'error');
@@ -140,13 +143,13 @@ export default function MoreScreen() {
         sessions: data ?? [],
       };
       await Clipboard.setStringAsync(JSON.stringify(payload, null, 2));
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      haptics.success();
       showToast(
         `Exported ${data?.length ?? 0} sessions to clipboard`,
         'success'
       );
     } catch (e: any) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      haptics.error();
       showToast(e?.message ?? 'Export failed', 'error');
     } finally {
       setExporting(false);
@@ -214,10 +217,10 @@ export default function MoreScreen() {
           : '(unavailable)',
       ];
       await Clipboard.setStringAsync(lines.join('\n'));
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      haptics.success();
       showToast('Copied to clipboard', 'success');
     } catch (e: any) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      haptics.error();
       showToast(e?.message ?? 'Export failed', 'error');
     } finally {
       setExportingSummary(false);
@@ -243,14 +246,10 @@ export default function MoreScreen() {
                 .delete()
                 .not('id', 'is', null);
               if (error) throw error;
-              Haptics.notificationAsync(
-                Haptics.NotificationFeedbackType.Success
-              );
+              haptics.success();
               showToast('All sessions cleared', 'success');
             } catch (e: any) {
-              Haptics.notificationAsync(
-                Haptics.NotificationFeedbackType.Error
-              );
+              haptics.error();
               showToast(e?.message ?? 'Clear failed', 'error');
             }
           },
@@ -278,9 +277,7 @@ export default function MoreScreen() {
               if (targets.length > 0) {
                 await AsyncStorage.multiRemove(targets);
               }
-              Haptics.notificationAsync(
-                Haptics.NotificationFeedbackType.Success
-              );
+              haptics.success();
               showToast(`Reset ${targets.length} preferences`, 'success');
             } catch (e: any) {
               showToast(e?.message ?? 'Reset failed', 'error');
@@ -518,7 +515,7 @@ export default function MoreScreen() {
             <Switch
               value={biometricEnabled}
               onValueChange={(v) => {
-                Haptics.selectionAsync();
+                haptics.tap.light();
                 void setBiometricEnabled(v);
               }}
               trackColor={{ false: colors.surfaceCard, true: colors.teal }}
@@ -529,6 +526,44 @@ export default function MoreScreen() {
             />
           </View>
         )}
+
+        {/* Reduce haptics toggle — when on, every call through the
+            grammar layer becomes a no-op. Persisted in AsyncStorage. */}
+        <View style={styles.biometricRow}>
+          <Ionicons
+            name="pulse-outline"
+            size={18}
+            color={colors.silver}
+          />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.biometricLabel}>Reduce Haptics</Text>
+            <Text style={styles.biometricMeta}>
+              Silence all tap / impact / notification feedback
+            </Text>
+          </View>
+          <Switch
+            value={reduceHaptics}
+            onValueChange={(v) => {
+              // Fire BEFORE updating the setting — otherwise flipping ON
+              // would skip the confirmation tap. Flipping OFF fires after
+              // so the first tap post-off is the confirmation.
+              if (!v) {
+                void setReduceHaptics(v);
+                setReduceHapticsState(v);
+                haptics.tap.light();
+              } else {
+                haptics.tap.light();
+                void setReduceHaptics(v);
+                setReduceHapticsState(v);
+              }
+            }}
+            trackColor={{ false: colors.surfaceCard, true: colors.teal }}
+            thumbColor={colors.alabaster}
+            ios_backgroundColor={colors.surfaceCard}
+            accessibilityRole="switch"
+            accessibilityLabel={`Reduce haptics: ${reduceHaptics ? 'on' : 'off'}`}
+          />
+        </View>
 
         {/* Menu items */}
         <View style={styles.menu}>

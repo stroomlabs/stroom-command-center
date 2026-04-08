@@ -41,7 +41,7 @@ import Animated, {
   FadeOutRight,
 } from 'react-native-reanimated';
 import { ActionSheet, type ActionSheetAction } from '../../src/components/ActionSheet';
-import * as Haptics from 'expo-haptics';
+import { haptics } from '../../src/lib/haptics';
 import type { ClaimStatus } from '@stroom/types';
 import { ScreenCanvas } from '../../src/components/ScreenCanvas';
 import { colors, fonts, spacing, radius, gradient } from '../../src/constants/brand';
@@ -100,7 +100,7 @@ export default function EntityDetailScreen() {
       reason: 'not_duplicate' | 'similar_name_different_entity' | 'decide_later'
     ) => {
       if (!entity) return;
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      haptics.warning();
       // Optimistically remove from local state — Reanimated's exiting layout
       // animation handles the FadeOutRight transition on unmount.
       dismissLocal(duplicate.id);
@@ -119,7 +119,7 @@ export default function EntityDetailScreen() {
           'success'
         );
       } catch (e: any) {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        haptics.error();
         showToast(e?.message ?? 'Dismiss failed', 'error');
         // Refetch so the row reappears if the RPC failed.
         await refresh();
@@ -184,18 +184,14 @@ export default function EntityDetailScreen() {
                     targetEntityId: entity.id,
                     duplicateEntityId: duplicate.id,
                   });
-                  Haptics.notificationAsync(
-                    Haptics.NotificationFeedbackType.Success
-                  );
+                  haptics.success();
                   showToast(
                     `Merged ${moved} claim${moved === 1 ? '' : 's'} from ${dupName}`,
                     'success'
                   );
                   await refresh();
                 } catch (e: any) {
-                  Haptics.notificationAsync(
-                    Haptics.NotificationFeedbackType.Error
-                  );
+                  haptics.error();
                   showToast(e?.message ?? 'Merge failed', 'error');
                 } finally {
                   setMergingId(null);
@@ -423,7 +419,7 @@ export default function EntityDetailScreen() {
           <View style={styles.headerActions}>
             <Pressable
               onPress={() => {
-                Haptics.selectionAsync();
+                haptics.tap.light();
                 toggleWatch({
                   id: entity.id,
                   canonical_name: entity.canonical_name ?? entity.name ?? 'Unnamed',
@@ -447,7 +443,7 @@ export default function EntityDetailScreen() {
             </Pressable>
             <Pressable
               onPress={() => {
-                Haptics.selectionAsync();
+                haptics.tap.light();
                 setCompareSearchOpen(true);
               }}
               hitSlop={10}
@@ -462,7 +458,7 @@ export default function EntityDetailScreen() {
             </Pressable>
             <Pressable
               onPress={() => {
-                Haptics.selectionAsync();
+                haptics.tap.light();
                 setEditOpen(true);
               }}
               hitSlop={10}
@@ -665,7 +661,7 @@ export default function EntityDetailScreen() {
                 selected={predicateFilter}
                 sparklineData={sparklineData}
                 onSelect={(key) => {
-                  Haptics.selectionAsync();
+                  haptics.tap.light();
                   setPredicateFilter((prev) => (prev === key ? null : key));
                 }}
               />
@@ -735,7 +731,7 @@ export default function EntityDetailScreen() {
                         </Pressable>
                         <Pressable
                           onPress={() => {
-                            Haptics.selectionAsync();
+                            haptics.tap.light();
                             setDismissTarget({
                               id: s.id,
                               canonical_name: s.canonical_name,
@@ -839,7 +835,7 @@ export default function EntityDetailScreen() {
                 <View style={styles.timelineSortRow}>
                   <Pressable
                     onPress={() => {
-                      Haptics.selectionAsync();
+                      haptics.tap.light();
                       setTimelineAsc(false);
                     }}
                     style={[
@@ -858,7 +854,7 @@ export default function EntityDetailScreen() {
                   </Pressable>
                   <Pressable
                     onPress={() => {
-                      Haptics.selectionAsync();
+                      haptics.tap.light();
                       setTimelineAsc(true);
                     }}
                     style={[

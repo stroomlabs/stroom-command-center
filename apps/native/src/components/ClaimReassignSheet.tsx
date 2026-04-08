@@ -14,7 +14,7 @@ import {
 import Animated from 'react-native-reanimated';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
+import { haptics } from '../lib/haptics';
 import { useModalTransition } from '../hooks/useModalTransition';
 import { useExploreSearch } from '../hooks/useExploreSearch';
 import { useBrandToast } from './BrandToast';
@@ -72,14 +72,14 @@ export function ClaimReassignSheet({
         new_subject_entity_id: selected.id,
       });
       if (error) throw error;
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      haptics.success();
       const name =
         selected.canonical_name ?? selected.name ?? 'selected entity';
       showToast(`Claim reassigned to ${name}`, 'success');
       onReassigned(name);
       onDismiss();
     } catch (e: any) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      haptics.error();
       showToast(e?.message ?? 'Reassign failed', 'error');
     } finally {
       setSaving(false);
@@ -156,7 +156,7 @@ export function ClaimReassignSheet({
                       <Pressable
                         key={r.id}
                         onPress={() => {
-                          Haptics.selectionAsync();
+                          haptics.tap.light();
                           setSelected(r);
                         }}
                         style={({ pressed }) => [

@@ -7,7 +7,7 @@ import Animated, {
   withSequence,
   Easing,
 } from 'react-native-reanimated';
-import * as Haptics from 'expo-haptics';
+import { haptics } from '../lib/haptics';
 import { GlassCard } from './GlassCard';
 import { colors, fonts, spacing, radius } from '../constants/brand';
 
@@ -192,7 +192,7 @@ export function PulseMetric({
   if (!onPress) return inner;
 
   const handlePress = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    haptics.tap.light();
     // Teal radial glow: 0 → 0.12 → 0 over 400ms
     glowOpacity.value = withSequence(
       withTiming(0.12, { duration: 200, easing: Easing.out(Easing.ease) }),

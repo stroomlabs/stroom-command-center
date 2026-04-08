@@ -12,7 +12,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
+import { haptics } from '../../src/lib/haptics';
 import * as Clipboard from 'expo-clipboard';
 import {
   approveClaim,
@@ -162,11 +162,11 @@ export default function ClaimDetailScreen() {
           }
         );
         if (rpcError) throw rpcError;
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        haptics.success();
         showToast(`Confidence updated to ${next.toFixed(1)}`, 'success');
         await refreshClaim();
       } catch (e: any) {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        haptics.error();
         showToast(e?.message ?? 'Update failed', 'error');
         // Roll the draft back to the server value so the thumb snaps
         // back where the truth is.
@@ -209,7 +209,7 @@ export default function ClaimDetailScreen() {
 
   const saveEdit = useCallback(async () => {
     if (!claim || !editDraft) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    haptics.tap.medium();
     setEditSaving(true);
     try {
       const originalJsonb = (claim.value_jsonb ?? {}) as Record<string, unknown>;
@@ -233,11 +233,11 @@ export default function ClaimDetailScreen() {
       }
 
       await updateClaim(supabase, claim.id, { value_jsonb: nextJsonb });
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      haptics.success();
       showToast('Value updated', 'success');
       setEditDraft(null);
     } catch (e: any) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      haptics.error();
       showToast(e?.message ?? 'Save failed', 'error');
     } finally {
       setEditSaving(false);
@@ -350,7 +350,7 @@ export default function ClaimDetailScreen() {
 
   const handleApprove = useCallback(async () => {
     if (!claim || acting) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    haptics.tap.medium();
     setActing(true);
     try {
       const queued = await enqueueIfOffline({
@@ -361,20 +361,20 @@ export default function ClaimDetailScreen() {
       if (!queued) {
         await approveClaim(supabase, claim.id);
       }
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      haptics.success();
       setOverrideStatus('approved');
       animateBadgeSwap();
       if (!queued) showToast('Claim approved', 'success');
       setTimeout(() => router.back(), 500);
     } catch (e: any) {
       setActing(false);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      haptics.error();
       showToast(e?.message ?? 'Approve failed', 'error');
     }
   }, [claim, acting, router, showToast, enqueueIfOffline]);
 
   const openRejectSheet = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    haptics.tap.medium();
     setRejectVisible(true);
   }, []);
 
@@ -394,14 +394,14 @@ export default function ClaimDetailScreen() {
         if (!queued) {
           await rejectClaim(supabase, claim.id, reason, notes);
         }
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+        haptics.warning();
         setOverrideStatus('rejected');
         animateBadgeSwap();
         if (!queued) showToast('Claim rejected', 'warn');
         setTimeout(() => router.back(), 500);
       } catch (e: any) {
         setActing(false);
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        haptics.error();
         showToast(e?.message ?? 'Reject failed', 'error');
       }
     },
@@ -411,7 +411,7 @@ export default function ClaimDetailScreen() {
   const handleCopyId = useCallback(async () => {
     if (!claim) return;
     await Clipboard.setStringAsync(claim.id);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    haptics.success();
   }, [claim]);
 
   const handleSupersede = useCallback(() => {
@@ -425,7 +425,7 @@ export default function ClaimDetailScreen() {
           text: 'Supersede',
           style: 'destructive',
           onPress: async () => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            haptics.tap.medium();
             setActing(true);
             try {
               const { error } = await supabase.schema('intel').rpc(
@@ -436,13 +436,11 @@ export default function ClaimDetailScreen() {
                 }
               );
               if (error) throw error;
-              Haptics.notificationAsync(
-                Haptics.NotificationFeedbackType.Success
-              );
+              haptics.success();
               showToast('Claim superseded', 'success');
               setTimeout(() => router.back(), 400);
             } catch (e: any) {
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+              haptics.error();
               showToast(e?.message ?? 'Supersede failed', 'error');
               setActing(false);
             }
@@ -454,7 +452,7 @@ export default function ClaimDetailScreen() {
 
   const handleEdit = useCallback(() => {
     if (!claim) return;
-    Haptics.selectionAsync();
+    haptics.tap.light();
     router.push({
       pathname: '/claim/edit/[id]',
       params: { id: claim.id },
@@ -1042,7 +1040,7 @@ export default function ClaimDetailScreen() {
 
         <Pressable
           onPress={() => {
-            Haptics.selectionAsync();
+            haptics.tap.light();
             setReassignVisible(true);
           }}
           disabled={acting}

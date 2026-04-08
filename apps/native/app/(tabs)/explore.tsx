@@ -45,7 +45,7 @@ import {
 import * as Clipboard from 'expo-clipboard';
 import { useBrandToast } from '../../src/components/BrandToast';
 import { useRecentlyViewed } from '../../src/hooks/useRecentlyViewed';
-import * as Haptics from 'expo-haptics';
+import { haptics } from '../../src/lib/haptics';
 import supabase from '../../src/lib/supabase';
 import type { EntitySearchResult } from '@stroom/supabase';
 import type { Predicate } from '@stroom/types';
@@ -95,7 +95,7 @@ export default function ExploreScreen() {
   const [refreshing, setRefreshing] = useState(false);
 
   const handleRefresh = useCallback(async () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    haptics.tap.light();
     setRefreshing(true);
     await refreshSearch();
     // Give the search debounce a tick to resolve before dropping the spinner.
@@ -103,7 +103,7 @@ export default function ExploreScreen() {
   }, [refreshSearch]);
 
   const toggleSelectMode = useCallback(() => {
-    Haptics.selectionAsync();
+    haptics.tap.light();
     setSelectMode((m) => {
       if (m) setSelectedIds(new Set());
       return !m;
@@ -111,7 +111,7 @@ export default function ExploreScreen() {
   }, []);
 
   const toggleSelect = useCallback((id: string) => {
-    Haptics.selectionAsync();
+    haptics.tap.light();
     setSelectedIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
@@ -136,7 +136,7 @@ export default function ExploreScreen() {
       '',
       'For each entity, return: a 1-sentence identity, top 3 facts, and any notable differences between them.',
     ].join('\n');
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    haptics.tap.medium();
     router.push({
       pathname: '/(tabs)/command',
       params: { prompt },
@@ -213,7 +213,7 @@ export default function ExploreScreen() {
           query={trimmed}
           onPress={() => handleOpenEntity(item.id)}
           onLongPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            haptics.tap.medium();
             setQuickStatsEntity(item);
           }}
         />
@@ -232,7 +232,7 @@ export default function ExploreScreen() {
         icon: 'information-circle-outline',
         tone: 'accent',
         onPress: () => {
-          Haptics.selectionAsync();
+          haptics.tap.light();
           handleOpenEntity(menuEntity.id);
         },
       },
@@ -241,7 +241,7 @@ export default function ExploreScreen() {
         icon: 'copy-outline',
         onPress: async () => {
           await Clipboard.setStringAsync(name);
-          Haptics.selectionAsync();
+          haptics.tap.light();
           showToast('Name copied', 'success');
         },
       },
@@ -249,7 +249,7 @@ export default function ExploreScreen() {
         label: 'View in Graph',
         icon: 'git-network-outline',
         onPress: () => {
-          Haptics.selectionAsync();
+          haptics.tap.light();
           handleOpenEntity(menuEntity.id);
         },
       },
@@ -317,7 +317,7 @@ export default function ExploreScreen() {
               <Pressable
                 key={key}
                 onPress={() => {
-                  Haptics.selectionAsync();
+                  haptics.tap.light();
                   setSegment(key);
                 }}
                 style={[styles.segmentBtn, active && styles.segmentBtnActive]}
@@ -551,7 +551,7 @@ export default function ExploreScreen() {
             <RefreshControl
               refreshing={refreshing}
               onRefresh={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                haptics.tap.light();
                 setRefreshing(true);
                 refreshClaims();
                 setTimeout(() => setRefreshing(false), 400);
@@ -612,7 +612,7 @@ export default function ExploreScreen() {
             <RefreshControl
               refreshing={refreshing}
               onRefresh={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                haptics.tap.light();
                 setRefreshing(true);
                 refreshSources();
                 setTimeout(() => setRefreshing(false), 400);
@@ -656,7 +656,7 @@ export default function ExploreScreen() {
         <View style={[styles.fab, { bottom: insets.bottom + 16 }]}>
           <Pressable
             onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              haptics.tap.light();
               setCompareOpen(true);
             }}
             style={({ pressed }) => [
@@ -725,7 +725,7 @@ export default function ExploreScreen() {
       {!quickNavOpen && (
         <Pressable
           onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            haptics.tap.medium();
             setQuickNavOpen(true);
           }}
           style={({ pressed }) => [
@@ -1305,7 +1305,7 @@ function EntityQuickStatsPopup({
 
           <Pressable
             onPress={() => {
-              Haptics.selectionAsync();
+              haptics.tap.light();
               onOpen(entity.id);
             }}
             style={({ pressed }) => [

@@ -13,7 +13,7 @@ import {
 import Animated from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
-import * as Haptics from 'expo-haptics';
+import { haptics } from '../lib/haptics';
 import Constants from 'expo-constants';
 import { useBrandToast } from './BrandToast';
 import { useModalTransition } from '../hooks/useModalTransition';
@@ -68,7 +68,7 @@ export function ShakeReportModal({
     ];
     try {
       await Clipboard.setStringAsync(lines.join('\n'));
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      haptics.success();
       showToast('Debug info copied to clipboard', 'success');
     } catch (e: any) {
       showToast(e?.message ?? 'Copy failed', 'error');

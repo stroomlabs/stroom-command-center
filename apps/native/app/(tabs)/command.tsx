@@ -14,7 +14,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRouter, useLocalSearchParams } from 'expo-router';
-import * as Haptics from 'expo-haptics';
+import { haptics } from '../../src/lib/haptics';
 import * as Clipboard from 'expo-clipboard';
 import { useCommandChat, type ChatMessage, type SaveState } from '../../src/hooks/useCommandChat';
 import supabase from '../../src/lib/supabase';
@@ -187,7 +187,7 @@ export default function CommandScreen() {
       runSlashCommand(text);
       return;
     }
-    Haptics.selectionAsync();
+    haptics.tap.light();
     setInput('');
     send(text);
     // Always snap to bottom when the operator submits — overrides any
@@ -204,7 +204,7 @@ export default function CommandScreen() {
       if (!trimmed.startsWith('/')) return;
       const [cmd, ...rest] = trimmed.slice(1).split(/\s+/);
       const arg = rest.join(' ').trim();
-      Haptics.selectionAsync();
+      haptics.tap.light();
       setSlashRunning(true);
       setInput('');
       try {
@@ -540,16 +540,16 @@ export default function CommandScreen() {
     ].join('\n');
     try {
       await Clipboard.setStringAsync(md);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      haptics.success();
       alert('Copied to clipboard', `${messages.length} messages exported as Markdown.`);
     } catch {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      haptics.error();
     }
   }, [messages, sessionId, alert]);
 
   const openHistory = useCallback(() => {
     Keyboard.dismiss();
-    Haptics.selectionAsync();
+    haptics.tap.light();
     history.refresh();
     setHistoryVisible(true);
   }, [history]);
@@ -565,7 +565,7 @@ export default function CommandScreen() {
           timestamp: (m.timestamp as string) ?? session.updated_at,
         }));
       loadSession(session.id, normalized);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      haptics.success();
     },
     [loadSession]
   );
@@ -585,7 +585,7 @@ export default function CommandScreen() {
           text: 'New session',
           style: 'destructive',
           onPress: () => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            haptics.tap.medium();
             resetSession();
           },
         },
@@ -596,11 +596,11 @@ export default function CommandScreen() {
   const copyMessage = useCallback(async (content: string) => {
     if (!content) return;
     await Clipboard.setStringAsync(content);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    haptics.success();
   }, []);
 
   const showMessageMenu = useCallback((message: ChatMessage) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    haptics.tap.medium();
     setMenuTarget(message);
   }, []);
 
@@ -632,7 +632,7 @@ export default function CommandScreen() {
             session_id: sessionId,
           });
         }
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        haptics.tap.light();
       },
     });
     if (canRetry) {
@@ -649,7 +649,7 @@ export default function CommandScreen() {
       tone: 'destructive',
       onPress: () => {
         deleteMessage(menuTarget.id);
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+        haptics.warning();
       },
     });
     return actions;
@@ -703,7 +703,7 @@ export default function CommandScreen() {
             <View style={styles.headerActions}>
               <Pressable
                 onPress={() => {
-                  Haptics.selectionAsync();
+                  haptics.tap.light();
                   setSearchOpen((prev) => {
                     const next = !prev;
                     if (next) history.refresh();
@@ -763,7 +763,7 @@ export default function CommandScreen() {
                 stretch any of the icon buttons. Tappable for the save-state toast. */}
             <Pressable
               onPress={() => {
-                Haptics.selectionAsync();
+                haptics.tap.light();
                 const effectiveState: SaveState =
                   !isOnline ? 'offline'
                   : messages.length === 0 ? 'unsaved'
@@ -878,7 +878,7 @@ export default function CommandScreen() {
                 <Pressable
                   key={s.id}
                   onPress={() => {
-                    Haptics.selectionAsync();
+                    haptics.tap.light();
                     setSearchOpen(false);
                     setSearchQuery('');
                     setDebouncedSearchQuery('');
@@ -1012,7 +1012,7 @@ export default function CommandScreen() {
               subtitle="Ask anything about your knowledge graph"
               actionLabel="Try: /health"
               onAction={() => {
-                Haptics.selectionAsync();
+                haptics.tap.light();
                 send('/health');
               }}
             />
@@ -1045,7 +1045,7 @@ export default function CommandScreen() {
                 <Pressable
                   key={s.kind + s.label}
                   onPress={() => {
-                    Haptics.selectionAsync();
+                    haptics.tap.light();
                     send(s.prompt);
                   }}
                   style={({ pressed }) => [
@@ -1083,7 +1083,7 @@ export default function CommandScreen() {
           <SmartSuggestions
             queueDepth={pulse?.queueDepth ?? 0}
             onSelect={(text) => {
-              Haptics.selectionAsync();
+              haptics.tap.light();
               send(text);
             }}
           />
@@ -1385,7 +1385,7 @@ function NewMessagesPill({
     >
       <Pressable
         onPress={() => {
-          Haptics.selectionAsync();
+          haptics.tap.light();
           onPress();
         }}
         style={({ pressed }) => [

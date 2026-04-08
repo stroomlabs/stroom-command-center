@@ -8,7 +8,7 @@ import Animated, {
   withTiming,
   Easing,
 } from 'react-native-reanimated';
-import * as Haptics from 'expo-haptics';
+import { haptics } from '../lib/haptics';
 import { colors, fonts, spacing, radius } from '../constants/brand';
 
 const PREFIX = 'stroom.ops.collapsed.';
@@ -40,7 +40,7 @@ export function CollapsibleSection({
   }, [sectionKey, rotate, heightScale]);
 
   const toggle = useCallback(() => {
-    Haptics.selectionAsync();
+    haptics.tap.light();
     const next = !collapsed;
     setCollapsed(next);
     rotate.value = withTiming(next ? -90 : 0, {

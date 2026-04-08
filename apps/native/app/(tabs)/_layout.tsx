@@ -3,14 +3,14 @@ import { View, StyleSheet, Platform } from 'react-native';
 import { Tabs } from 'expo-router';
 import { BottomTabBar, type BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { BlurView } from 'expo-blur';
-import * as Haptics from 'expo-haptics';
+import { haptics } from '../../src/lib/haptics';
 import { usePulseContext } from '../../src/lib/PulseContext';
 import { TabIcon } from '../../src/components/TabIcon';
 import { colors, fonts } from '../../src/constants/brand';
 
 const tabPressListeners = {
   tabPress: () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    haptics.tap.light();
   },
 };
 
@@ -155,6 +155,21 @@ export default function TabLayout() {
           tabBarIcon: ({ color, size, focused }) => (
             <TabIcon
               name="construct-outline"
+              size={size}
+              color={color}
+              focused={focused}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="verticals"
+        options={{
+          title: 'Verticals',
+          tabBarAccessibilityLabel: 'Verticals tab',
+          tabBarIcon: ({ color, size, focused }) => (
+            <TabIcon
+              name="grid-outline"
               size={size}
               color={color}
               focused={focused}

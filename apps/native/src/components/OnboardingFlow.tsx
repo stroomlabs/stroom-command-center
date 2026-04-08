@@ -17,7 +17,7 @@ import Animated, {
   Easing,
   runOnJS,
 } from 'react-native-reanimated';
-import * as Haptics from 'expo-haptics';
+import { haptics } from '../lib/haptics';
 import { usePulseData } from '../hooks/usePulseData';
 import { colors, fonts, spacing, radius, gradient } from '../constants/brand';
 
@@ -54,11 +54,11 @@ export function OnboardingFlow({ visible, onComplete }: OnboardingFlowProps) {
   };
 
   const handleNext = () => {
-    Haptics.selectionAsync();
+    haptics.tap.light();
     if (step < 2) {
       goToStep(step + 1);
     } else {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      haptics.success();
       onComplete();
     }
   };

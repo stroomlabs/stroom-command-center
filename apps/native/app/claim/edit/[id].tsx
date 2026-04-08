@@ -13,7 +13,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
+import { haptics } from '../../../src/lib/haptics';
 import { updateClaim } from '@stroom/supabase';
 import type { ClaimStatus } from '@stroom/types';
 import { useClaimDetail } from '../../../src/hooks/useClaimDetail';
@@ -113,11 +113,11 @@ export default function ClaimEditScreen() {
         status,
         confidence_score: confNum,
       });
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      haptics.success();
       router.back();
     } catch (e: any) {
       setSaveError(e.message ?? 'Failed to save');
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      haptics.error();
     } finally {
       setSaving(false);
     }
@@ -192,7 +192,7 @@ export default function ClaimEditScreen() {
                 <Pressable
                   key={s}
                   onPress={() => {
-                    Haptics.selectionAsync();
+                    haptics.tap.light();
                     setStatus(s);
                   }}
                   style={({ pressed }) => [
@@ -230,7 +230,7 @@ export default function ClaimEditScreen() {
             <Text style={styles.sectionHeader}>VALUE</Text>
             <Pressable
               onPress={() => {
-                Haptics.selectionAsync();
+                haptics.tap.light();
                 setRawMode((m) => !m);
               }}
               style={({ pressed }) => [

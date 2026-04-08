@@ -12,7 +12,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
+import { haptics } from '../src/lib/haptics';
 import type { Source } from '@stroom/types';
 import { useSourcesList } from '../src/hooks/useSourcesList';
 import { ScreenCanvas } from '../src/components/ScreenCanvas';
@@ -72,12 +72,12 @@ export default function SourcesListScreen() {
   }, [refresh]);
 
   const handleSelectSort = useCallback((key: SortKey) => {
-    Haptics.selectionAsync();
+    haptics.tap.light();
     setSort(key);
   }, []);
 
   const handleSelectFilter = useCallback((key: FilterKey) => {
-    Haptics.selectionAsync();
+    haptics.tap.light();
     setFilter(key);
   }, []);
 

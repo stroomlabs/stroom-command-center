@@ -11,7 +11,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
+import { haptics } from '../../src/lib/haptics';
 import Animated, {
   FadeIn,
   useSharedValue,
@@ -25,6 +25,7 @@ import Animated, {
   Easing,
 } from 'react-native-reanimated';
 import { usePulseContext } from '../../src/lib/PulseContext';
+import { VERTICAL_BUCKETS, VERTICAL_ORDER } from '../../src/lib/verticals';
 import { useGraphHealth } from '../../src/hooks/useGraphHealth';
 import { useWatchlist, type WatchedEntity } from '../../src/hooks/useWatchlist';
 import { useClaimSparkline } from '../../src/hooks/useClaimSparkline';
@@ -268,7 +269,22 @@ export default function PulseScreen() {
   const router = useRouter();
   const navigation = useNavigation();
   const scrollRef = React.useRef<ScrollView>(null);
-  const { data, loading, error, refresh, lastUpdatedAt } = usePulseContext();
+  const {
+    data,
+    loading,
+    error,
+    refresh,
+    lastUpdatedAt,
+    verticalKey,
+    setVertical,
+  } = usePulseContext();
+
+  // Bump the claim flash key whenever the vertical selection changes so
+  // the metric cards fire their teal glow pulse on the new values.
+  React.useEffect(() => {
+    setClaimFlashKey((k) => k + 1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [verticalKey]);
   const { health } = useGraphHealth();
 
   // Pull-down stats peek — reveals a hidden panel above the content when
@@ -308,17 +324,17 @@ export default function PulseScreen() {
 
   const handleSweep = React.useCallback(async () => {
     if (sweeping) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    haptics.tap.medium();
     setSweeping(true);
     try {
       const result = await runAutoGovernance(supabase);
       setLastSweepResult(result);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      haptics.success();
       // Pulse refetch so totalClaims + queueDepth (and the Queue tab
       // badge via PulseContext) reflect the post-sweep state.
       await refresh();
     } catch {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      haptics.error();
     } finally {
       setSweeping(false);
     }
@@ -386,7 +402,7 @@ export default function PulseScreen() {
   }, []);
 
   const handleRefresh = async () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    haptics.tap.light();
     setRefreshing(true);
     await refresh();
     setRefreshing(false);
@@ -478,6 +494,53 @@ export default function PulseScreen() {
         </View>
 
         <Text style={styles.headerSub}>StroomHelix Intelligence Graph</Text>
+
+        {/* Vertical toggle — 5 buckets, persisted to AsyncStorage. Changing
+            the selection refetches get_command_pulse with the new domains[]
+            filter and triggers a pulse-flash on the metric grid. */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.verticalScroll}
+          contentContainerStyle={styles.verticalRow}
+        >
+          {VERTICAL_ORDER.map((key) => {
+            const bucket = VERTICAL_BUCKETS[key];
+            const active = verticalKey === key;
+            return (
+              <Pressable
+                key={key}
+                onPress={() => {
+                  if (active) return;
+                  haptics.tap.light();
+                  void setVertical(key);
+                }}
+                style={({ pressed }) => [
+                  styles.verticalPill,
+                  active && styles.verticalPillActive,
+                  pressed && !active && { opacity: 0.75 },
+                ]}
+                accessibilityRole="button"
+                accessibilityState={{ selected: active }}
+                accessibilityLabel={`Filter Pulse by ${bucket.label}`}
+              >
+                <Ionicons
+                  name={bucket.icon as any}
+                  size={12}
+                  color={active ? colors.teal : colors.silver}
+                />
+                <Text
+                  style={[
+                    styles.verticalPillText,
+                    active && styles.verticalPillTextActive,
+                  ]}
+                >
+                  {bucket.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
 
         {pendingSyncCount > 0 && (
           <Pressable
@@ -639,7 +702,7 @@ export default function PulseScreen() {
                 icon="search-outline"
                 label="Explore"
                 onPress={() => {
-                  Haptics.selectionAsync();
+                  haptics.tap.light();
                   router.push('/(tabs)/explore' as any);
                 }}
               />
@@ -653,7 +716,7 @@ export default function PulseScreen() {
                 icon="share-outline"
                 label="Export"
                 onPress={async () => {
-                  Haptics.selectionAsync();
+                  haptics.tap.light();
                   try {
                     const lines = [
                       'STROOM COMMAND CENTER — GRAPH SUMMARY',
@@ -671,9 +734,7 @@ export default function PulseScreen() {
                       `Claims today:    ${data.claimsToday ?? 0}`,
                     ];
                     await Clipboard.setStringAsync(lines.join('\n'));
-                    Haptics.notificationAsync(
-                      Haptics.NotificationFeedbackType.Success
-                    );
+                    haptics.success();
                     showToast('Copied to clipboard', 'success');
                   } catch (e: any) {
                     showToast(e?.message ?? 'Export failed', 'error');
@@ -855,7 +916,40 @@ const styles = StyleSheet.create({
     fontFamily: fonts.archivo.regular,
     fontSize: 14,
     color: colors.slate,
-    marginBottom: spacing.xl,
+    marginBottom: spacing.md,
+  },
+  verticalScroll: {
+    flexGrow: 0,
+    marginBottom: spacing.lg,
+    marginHorizontal: -spacing.lg,
+  },
+  verticalRow: {
+    paddingHorizontal: spacing.lg,
+    gap: 6,
+  },
+  verticalPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    backgroundColor: colors.surfaceElevated,
+  },
+  verticalPillActive: {
+    borderColor: colors.teal,
+    backgroundColor: colors.tealDim,
+  },
+  verticalPillText: {
+    fontFamily: fonts.archivo.semibold,
+    fontSize: 11,
+    color: colors.silver,
+    letterSpacing: 0.2,
+  },
+  verticalPillTextActive: {
+    color: colors.teal,
   },
   pendingSyncBanner: {
     flexDirection: 'row',

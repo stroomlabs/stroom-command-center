@@ -14,15 +14,27 @@ interface ExtendedPulse extends PulseData {
   statusBreakdown: Record<string, number>;
 }
 
-export function usePulseData() {
+export function usePulseData(domains: string[] | null = null) {
   const [data, setData] = useState<ExtendedPulse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
+  // Stable reference to the current domains array so the refresh closure
+  // always uses the latest filter without re-creating the callback on
+  // every render.
+  const domainsRef = useRef<string[] | null>(domains);
+  useEffect(() => {
+    domainsRef.current = domains;
+  }, [domains]);
 
   const refresh = useCallback(async () => {
     try {
-      const { data: result, error: rpcError } = await supabase.schema('intel').rpc('get_command_pulse');
+      // Pass the current vertical domains filter to the RPC. NULL = no
+      // filter (all verticals); get_command_pulse(domains text[]) is
+      // defined server-side with NULL-tolerant filtering.
+      const { data: result, error: rpcError } = await supabase
+        .schema('intel')
+        .rpc('get_command_pulse', { domains: domainsRef.current });
 
       if (rpcError) throw rpcError;
 
@@ -69,9 +81,19 @@ export function usePulseData() {
     await refresh();
   }, [refresh]);
 
+  // Refetch whenever the domains filter changes — the dependency is a
+  // JSON-serialized key so reference equality of the array doesn't cause
+  // missed updates when the caller passes a fresh array each render.
+  const domainsKey = domains ? domains.join(',') : '';
+
   useEffect(() => {
     refresh();
     lastRefreshAtRef.current = Date.now();
+  }, [domainsKey, refresh]);
+
+  useEffect(() => {
+    // Legacy single-fire mount + subscription setup that only needs to
+    // run once, independent of domainsKey churn.
 
     // Re-fetch on any claim change via Realtime
     const channel = supabase

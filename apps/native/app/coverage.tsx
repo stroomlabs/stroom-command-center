@@ -11,7 +11,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
+import { haptics } from '../src/lib/haptics';
 import * as Clipboard from 'expo-clipboard';
 import type { CoverageGapEntity } from '@stroom/supabase';
 import { useCoverageGaps } from '../src/hooks/useCoverageGaps';
@@ -28,7 +28,7 @@ export default function CoverageGapsScreen() {
   const [refreshing, setRefreshing] = React.useState(false);
 
   const copyResearchPrompt = async (entity: CoverageGapEntity) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    haptics.tap.medium();
     const name = entity.canonical_name ?? 'this entity';
     const type = entity.entity_type ?? 'entity';
     const prompt = `You are researching the "${type}" entity "${name}" for a knowledge graph.
@@ -45,10 +45,10 @@ Please research this entity and return structured facts we should add. For each 
 Focus on biography, affiliations, timeline events, relationships, and recent activity. Prefer primary sources over aggregators. Return the result as a JSON array.`;
     try {
       await Clipboard.setStringAsync(prompt);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      haptics.success();
       showToast('Prompt copied to clipboard', 'success');
     } catch {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      haptics.error();
       showToast('Copy failed', 'error');
     }
   };
@@ -75,7 +75,7 @@ Focus on biography, affiliations, timeline events, relationships, and recent act
   };
 
   const research = (entity: CoverageGapEntity) => {
-    Haptics.selectionAsync();
+    haptics.tap.light();
     const name = entity.canonical_name ?? 'this entity';
     router.push({
       pathname: '/(tabs)/command',

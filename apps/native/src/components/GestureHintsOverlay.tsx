@@ -3,7 +3,7 @@ import { View, Text, Pressable, StyleSheet } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
+import { haptics } from '../lib/haptics';
 import { colors, fonts, spacing, radius } from '../constants/brand';
 
 const STORAGE_KEY = 'stroom.hasSeenGestureHints';
@@ -41,7 +41,7 @@ export function GestureHintsOverlay() {
   }, []);
 
   const dismiss = () => {
-    Haptics.selectionAsync();
+    haptics.tap.light();
     setVisible(false);
     AsyncStorage.setItem(STORAGE_KEY, '1');
   };

@@ -11,7 +11,7 @@ import {
   TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
+import { haptics } from '../../src/lib/haptics';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -23,6 +23,8 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQueueClaims } from '../../src/hooks/useQueueClaims';
+import { useAutoApprovedClaims } from '../../src/hooks/useAutoApprovedClaims';
+import { WhyAutoApprovedSheet } from '../../src/components/WhyAutoApprovedSheet';
 import supabase from '../../src/lib/supabase';
 import { useNavigation, useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
@@ -83,6 +85,11 @@ export default function QueueScreen() {
     flushPending,
   } = useQueueClaims();
   const existingClaimMap = useExistingClaimMap(claims);
+  // Pull the Set of claim ids that have a governance_decision row with
+  // decision_status = 'auto_approved'. Used by each ClaimCard to decide
+  // whether to render the "Why?" chip. Tiny query — ~1 row today.
+  const { ids: autoApprovedIds } = useAutoApprovedClaims();
+  const [whyClaimId, setWhyClaimId] = useState<string | null>(null);
 
   React.useEffect(() => {
     const unsub = (navigation as any).addListener?.('tabPress', () => {
@@ -265,14 +272,14 @@ export default function QueueScreen() {
       icon: key === sort ? 'checkmark' : undefined,
       tone: key === sort ? 'accent' : 'default',
       onPress: () => {
-        Haptics.selectionAsync();
+        haptics.tap.light();
         setSort(key);
       },
     })
   );
 
   const handleRefresh = async () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    haptics.tap.light();
     setRefreshing(true);
     await refresh();
     setRefreshing(false);
@@ -371,7 +378,7 @@ export default function QueueScreen() {
   }, [filteredClaims]);
 
   const enterSelectMode = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    haptics.tap.medium();
     setSelectMode(true);
   }, []);
 
@@ -381,7 +388,7 @@ export default function QueueScreen() {
   }, []);
 
   const toggleSelect = useCallback((id: string) => {
-    Haptics.selectionAsync();
+    haptics.tap.light();
     setSelectedIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
@@ -531,17 +538,22 @@ export default function QueueScreen() {
         claim={item}
         query={search}
         updatesExisting={existingClaimMap.has(item.id)}
+        isAutoApproved={autoApprovedIds.has(item.id)}
+        onWhyAutoApproved={() => {
+          haptics.tap.light();
+          setWhyClaimId(item.id);
+        }}
         onApprove={() => {
           recordProcessed(item.id, 'approved');
           deferApprove(item.id);
         }}
         onReject={() => setRejectTarget(item.id)}
         onLongPress={() => {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+          haptics.tap.medium();
           setMenuClaim(item);
         }}
         onDoublePress={() => {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          haptics.tap.light();
           setPreviewClaim(item);
         }}
         selectMode={selectMode}
@@ -583,7 +595,7 @@ export default function QueueScreen() {
         label: 'View Full Claim',
         icon: 'open-outline',
         onPress: () => {
-          Haptics.selectionAsync();
+          haptics.tap.light();
           router.push({
             pathname: '/claim/[id]',
             params: { id: menuClaim.id },
@@ -607,7 +619,7 @@ export default function QueueScreen() {
         icon: 'copy-outline',
         onPress: async () => {
           await Clipboard.setStringAsync(claimText);
-          Haptics.selectionAsync();
+          haptics.tap.light();
         },
       },
     ];
@@ -649,7 +661,7 @@ export default function QueueScreen() {
         <Text style={styles.headerSub}>Claims pending governance review</Text>
         <Pressable
           onPress={() => {
-            Haptics.selectionAsync();
+            haptics.tap.light();
             setShowKbLegend((v) => !v);
           }}
           style={({ pressed }) => [
@@ -697,7 +709,7 @@ export default function QueueScreen() {
         </View>
         <Pressable
           onPress={() => {
-            Haptics.selectionAsync();
+            haptics.tap.light();
             setSortSheetVisible(true);
           }}
           style={({ pressed }) => [styles.sortBtn, pressed && { opacity: 0.7 }]}
@@ -752,7 +764,7 @@ export default function QueueScreen() {
               <Pressable
                 key={s.key}
                 onPress={() => {
-                  Haptics.selectionAsync();
+                  haptics.tap.light();
                   setSort(s.key);
                 }}
                 style={({ pressed }) => [
@@ -794,7 +806,7 @@ export default function QueueScreen() {
         >
           <Pressable
             onPress={() => {
-              Haptics.selectionAsync();
+              haptics.tap.light();
               setDomainFilter(null);
             }}
             style={({ pressed }) => [
@@ -818,7 +830,7 @@ export default function QueueScreen() {
               <Pressable
                 key={d}
                 onPress={() => {
-                  Haptics.selectionAsync();
+                  haptics.tap.light();
                   setDomainFilter(active ? null : d);
                 }}
                 style={({ pressed }) => [
@@ -934,7 +946,7 @@ export default function QueueScreen() {
               entries={recentlyProcessed}
               expanded={recentExpanded}
               onToggle={() => {
-                Haptics.selectionAsync();
+                haptics.tap.light();
                 setRecentExpanded((v) => !v);
               }}
             />
@@ -1029,6 +1041,11 @@ export default function QueueScreen() {
         }
         onUndo={undoPending}
         onDismiss={flushPending}
+      />
+      <WhyAutoApprovedSheet
+        visible={whyClaimId !== null}
+        claimId={whyClaimId}
+        onDismiss={() => setWhyClaimId(null)}
       />
     </ScreenTransition>
     </View>

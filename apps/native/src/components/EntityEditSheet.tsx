@@ -14,7 +14,7 @@ import {
 import Animated from 'react-native-reanimated';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
+import { haptics } from '../lib/haptics';
 import { useModalTransition } from '../hooks/useModalTransition';
 import { useBrandToast } from './BrandToast';
 import supabase from '../lib/supabase';
@@ -129,12 +129,12 @@ export function EntityEditSheet({
         new_description: patch.description ?? null,
       });
       if (error) throw error;
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      haptics.success();
       showToast('Entity updated', 'success');
       onSaved();
       onDismiss();
     } catch (e: any) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      haptics.error();
       showToast(e?.message ?? 'Update failed', 'error');
     } finally {
       setSaving(false);
@@ -298,7 +298,7 @@ function ChipPicker({
           <Pressable
             key={opt}
             onPress={() => {
-              Haptics.selectionAsync();
+              haptics.tap.light();
               onChange(active ? '' : opt);
             }}
             style={({ pressed }) => [

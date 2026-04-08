@@ -12,7 +12,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { runAutoGovernance } from '@stroom/supabase';
-import * as Haptics from 'expo-haptics';
+import { haptics } from '../../src/lib/haptics';
 import supabase from '../../src/lib/supabase';
 import { usePulseContext } from '../../src/lib/PulseContext';
 import { useGraphHealth } from '../../src/hooks/useGraphHealth';
@@ -263,11 +263,11 @@ export default function OpsScreen() {
 
   const handleSweep = async () => {
     if (sweeping) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    haptics.tap.medium();
     setSweeping(true);
     try {
       const result = await runAutoGovernance(supabase);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      haptics.success();
       alert(
         'Sweep complete',
         `Approved ${result.approved} · Flagged ${result.flagged}${
@@ -280,7 +280,7 @@ export default function OpsScreen() {
       refreshQueue();
       refreshHealth();
     } catch (e: any) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      haptics.error();
       alert('Sweep failed', e?.message ?? 'Unknown error');
     } finally {
       setSweeping(false);
@@ -288,7 +288,7 @@ export default function OpsScreen() {
   };
 
   const handleRefresh = async () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    haptics.tap.light();
     setRefreshing(true);
     await refreshHealth();
     setRefreshing(false);
@@ -465,7 +465,7 @@ export default function OpsScreen() {
         onPress: async () => {
           if (snapshotText) {
             await Clipboard.setStringAsync(snapshotText);
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            haptics.success();
             showToast('Copied to clipboard', 'success');
           }
         },
@@ -790,7 +790,7 @@ export default function OpsScreen() {
                     } as any)
                   }
                   onLongPress={() => {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                    haptics.tap.medium();
                     setMenuSource(u.source);
                   }}
                   delayLongPress={350}
@@ -831,7 +831,7 @@ export default function OpsScreen() {
                   icon: 'information-circle-outline',
                   tone: 'accent',
                   onPress: () => {
-                    Haptics.selectionAsync();
+                    haptics.tap.light();
                     router.push({
                       pathname: '/source/[id]',
                       params: { id: menuSource.id },
@@ -844,7 +844,7 @@ export default function OpsScreen() {
                   onPress: async () => {
                     if (!menuSource.source_url) return;
                     await Clipboard.setStringAsync(menuSource.source_url);
-                    Haptics.selectionAsync();
+                    haptics.tap.light();
                     showToast('URL copied', 'success');
                   },
                 },

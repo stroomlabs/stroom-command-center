@@ -14,7 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Slider from '@react-native-community/slider';
-import * as Haptics from 'expo-haptics';
+import { haptics } from '../src/lib/haptics';
 import type { GovernancePolicy, GovernanceAction } from '@stroom/types';
 import { useGovernancePolicies } from '../src/hooks/useGovernancePolicies';
 import {
@@ -56,22 +56,22 @@ export default function PoliciesScreen() {
   };
 
   const handleSweep = async () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    haptics.tap.medium();
     try {
       const result = await sweep();
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      haptics.success();
       alert(
         'Sweep complete',
         `${result.approved} approved · ${result.flagged} flagged · ${result.rejected} rejected`,
         [{ text: 'OK' }]
       );
     } catch {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      haptics.error();
     }
   };
 
   const handleCreate = async () => {
-    Haptics.selectionAsync();
+    haptics.tap.light();
     try {
       const created = await addPolicy({
         name: 'New policy',
@@ -84,10 +84,10 @@ export default function PoliciesScreen() {
         applies_to_predicates: null,
         applies_to_entity_types: null,
       });
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      haptics.success();
       alert('Policy created', `"${created.name}" is inactive — toggle it on when ready.`);
     } catch (e: any) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      haptics.error();
     }
   };
 
@@ -133,7 +133,7 @@ export default function PoliciesScreen() {
           <ScheduleCard
             frequency={prefs.governanceSweepFrequency}
             onChange={(v) => {
-              Haptics.selectionAsync();
+              haptics.tap.light();
               updatePrefs({ governanceSweepFrequency: v });
             }}
           />
@@ -313,7 +313,7 @@ function PolicyCard({
         <Switch
           value={policy.is_active}
           onValueChange={(v) => {
-            Haptics.selectionAsync();
+            haptics.tap.light();
             onChange({ is_active: v });
           }}
           trackColor={{ false: colors.surfaceCard, true: colors.teal }}
@@ -357,7 +357,7 @@ function PolicyCard({
             <Pressable
               key={a.key}
               onPress={() => {
-                Haptics.selectionAsync();
+                haptics.tap.light();
                 onChange({ action: a.key });
               }}
               style={({ pressed }) => [
@@ -428,7 +428,7 @@ function ThresholdSlider({
         thumbTintColor={colors.teal}
         onValueChange={setLocal}
         onSlidingComplete={(v) => {
-          Haptics.selectionAsync();
+          haptics.tap.light();
           onChange(v);
         }}
         accessibilityRole="adjustable"

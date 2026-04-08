@@ -11,7 +11,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import * as Haptics from 'expo-haptics';
+import { haptics } from '../src/lib/haptics';
 import {
   useNotificationPrefs,
   type NotificationPrefs,
@@ -55,7 +55,7 @@ export default function NotificationPrefsScreen() {
   const { prefs, loading, saving, error, update } = useNotificationPrefs();
 
   const handleToggle = (key: PrefKey, value: boolean) => {
-    Haptics.selectionAsync();
+    haptics.tap.light();
     update({ [key]: value });
   };
 
