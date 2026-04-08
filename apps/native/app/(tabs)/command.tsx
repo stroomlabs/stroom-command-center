@@ -701,115 +701,118 @@ export default function CommandScreen() {
             <Text style={styles.title}>Command</Text>
             <Text style={styles.subtitle}>Query the knowledge graph</Text>
           </View>
-          <View style={styles.headerActions}>
-            <Pressable
-              onPress={() => {
-                Haptics.selectionAsync();
-                setSearchOpen((prev) => {
-                  const next = !prev;
-                  if (next) history.refresh();
-                  else {
-                    setSearchQuery('');
-                    setDebouncedSearchQuery('');
-                  }
-                  return next;
-                });
-              }}
-              style={({ pressed }) => [
-                styles.iconBtn,
-                searchOpen && styles.iconBtnActive,
-                pressed && { opacity: 0.6 },
-              ]}
-              hitSlop={8}
-              accessibilityLabel="Search sessions"
-            >
-              <Ionicons
-                name="search"
-                size={20}
-                color={searchOpen ? colors.teal : colors.silver}
-              />
-            </Pressable>
-            <View style={styles.sessionGroup}>
+          <View style={styles.headerRight}>
+            <View style={styles.headerActions}>
+              <Pressable
+                onPress={() => {
+                  Haptics.selectionAsync();
+                  setSearchOpen((prev) => {
+                    const next = !prev;
+                    if (next) history.refresh();
+                    else {
+                      setSearchQuery('');
+                      setDebouncedSearchQuery('');
+                    }
+                    return next;
+                  });
+                }}
+                style={({ pressed }) => [
+                  styles.iconBtn,
+                  searchOpen && styles.iconBtnActive,
+                  pressed && { opacity: 0.6 },
+                ]}
+                hitSlop={8}
+                accessibilityLabel="Search sessions"
+              >
+                <Ionicons
+                  name="search"
+                  size={20}
+                  color={searchOpen ? colors.teal : colors.silver}
+                />
+              </Pressable>
               <Pressable
                 onPress={openHistory}
                 style={({ pressed }) => [styles.iconBtn, pressed && { opacity: 0.6 }]}
                 hitSlop={8}
+                accessibilityLabel="Open session history"
               >
                 <Ionicons name="time-outline" size={20} color={colors.silver} />
               </Pressable>
               <Pressable
-                onPress={() => {
-                  Haptics.selectionAsync();
-                  const effectiveState: SaveState =
-                    !isOnline ? 'offline'
-                    : messages.length === 0 ? 'unsaved'
-                    : saveState;
-                  if (effectiveState === 'saved' && lastSavedAt) {
-                    const ago = Math.max(0, Math.floor((Date.now() - lastSavedAt.getTime()) / 60_000));
-                    showToast(
-                      ago < 1 ? 'Session saved just now' : `Session saved ${ago} min ago`,
-                      'success'
-                    );
-                  } else if (effectiveState === 'saving') {
-                    showToast('Saving…', 'info');
-                  } else if (effectiveState === 'offline') {
-                    showToast('Offline — will sync when reconnected', 'warn');
-                  } else {
-                    showToast('Session not yet saved', 'info');
-                  }
-                }}
+                onPress={handleExport}
+                style={({ pressed }) => [styles.iconBtn, pressed && { opacity: 0.6 }]}
                 hitSlop={8}
-                style={styles.sessionIndicator}
-                accessibilityRole="button"
-                accessibilityLabel="Session save status"
+                accessibilityLabel="Export conversation as Markdown"
               >
-                <View
-                  style={[
-                    styles.sessionDot,
-                    {
-                      backgroundColor:
-                        !isOnline
-                          ? colors.slate
-                          : saveState === 'saving'
-                          ? colors.statusPending
-                          : saveState === 'saved' && messages.length > 0
-                          ? colors.statusApprove
-                          : colors.slate,
-                    },
-                  ]}
-                />
-                <Text style={styles.sessionLabel}>
-                  {!isOnline
-                    ? 'Offline'
-                    : saveState === 'saving'
-                    ? 'Saving'
-                    : saveState === 'saved' && messages.length > 0
-                    ? 'Saved'
-                    : 'New'}
-                </Text>
+                <Ionicons name="share-outline" size={20} color={colors.silver} />
+              </Pressable>
+              <Pressable
+                onPress={handleReset}
+                style={({ pressed }) => [styles.iconBtn, pressed && { opacity: 0.6 }]}
+                hitSlop={8}
+              >
+                <Ionicons name="refresh" size={20} color={colors.silver} />
+              </Pressable>
+              <Pressable
+                onPress={() => router.push('/more' as any)}
+                style={({ pressed }) => [styles.iconBtn, pressed && { opacity: 0.6 }]}
+                hitSlop={8}
+              >
+                <Ionicons name="settings-outline" size={20} color={colors.silver} />
               </Pressable>
             </View>
+            {/* Session indicator — rendered below the icon row so it doesn't
+                stretch any of the icon buttons. Tappable for the save-state toast. */}
             <Pressable
-              onPress={handleExport}
-              style={({ pressed }) => [styles.iconBtn, pressed && { opacity: 0.6 }]}
+              onPress={() => {
+                Haptics.selectionAsync();
+                const effectiveState: SaveState =
+                  !isOnline ? 'offline'
+                  : messages.length === 0 ? 'unsaved'
+                  : saveState;
+                if (effectiveState === 'saved' && lastSavedAt) {
+                  const ago = Math.max(0, Math.floor((Date.now() - lastSavedAt.getTime()) / 60_000));
+                  showToast(
+                    ago < 1 ? 'Session saved just now' : `Session saved ${ago} min ago`,
+                    'success'
+                  );
+                } else if (effectiveState === 'saving') {
+                  showToast('Saving…', 'info');
+                } else if (effectiveState === 'offline') {
+                  showToast('Offline — will sync when reconnected', 'warn');
+                } else {
+                  showToast('Session not yet saved', 'info');
+                }
+              }}
               hitSlop={8}
-              accessibilityLabel="Export conversation as Markdown"
+              style={styles.sessionIndicator}
+              accessibilityRole="button"
+              accessibilityLabel="Session save status"
             >
-              <Ionicons name="share-outline" size={20} color={colors.silver} />
-            </Pressable>
-            <Pressable
-              onPress={handleReset}
-              style={({ pressed }) => [styles.iconBtn, pressed && { opacity: 0.6 }]}
-              hitSlop={8}
-            >
-              <Ionicons name="refresh" size={20} color={colors.silver} />
-            </Pressable>
-            <Pressable
-              onPress={() => router.push('/more' as any)}
-              style={({ pressed }) => [styles.iconBtn, pressed && { opacity: 0.6 }]}
-              hitSlop={8}
-            >
-              <Ionicons name="settings-outline" size={20} color={colors.silver} />
+              <View
+                style={[
+                  styles.sessionDot,
+                  {
+                    backgroundColor:
+                      !isOnline
+                        ? colors.slate
+                        : saveState === 'saving'
+                        ? colors.statusPending
+                        : saveState === 'saved' && messages.length > 0
+                        ? colors.statusApprove
+                        : colors.slate,
+                  },
+                ]}
+              />
+              <Text style={styles.sessionLabel}>
+                {!isOnline
+                  ? 'Offline'
+                  : saveState === 'saving'
+                  ? 'Saving'
+                  : saveState === 'saved' && messages.length > 0
+                  ? 'Saved'
+                  : 'New'}
+              </Text>
             </Pressable>
           </View>
         </View>
@@ -1875,7 +1878,7 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-end',
+    alignItems: 'flex-start',
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.md,
     borderBottomWidth: 1,
@@ -1905,28 +1908,30 @@ const styles = StyleSheet.create({
     color: colors.slate,
     marginTop: 4,
   },
+  headerRight: {
+    alignItems: 'flex-end',
+    gap: 6,
+  },
   headerActions: {
     flexDirection: 'row',
     gap: spacing.sm,
     alignItems: 'center',
   },
-  sessionGroup: {
-    alignItems: 'center',
-    gap: 3,
-  },
   sessionIndicator: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 3,
+    gap: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
   },
   sessionDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 3,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
   sessionLabel: {
     fontFamily: fonts.mono.regular,
-    fontSize: 9,
+    fontSize: 10,
     color: colors.slate,
     letterSpacing: 0.3,
   },
