@@ -866,6 +866,8 @@ export default function QueueScreen() {
         <ScrollView
           contentContainerStyle={styles.list}
           showsVerticalScrollIndicator={false}
+          contentInsetAdjustmentBehavior="never"
+          automaticallyAdjustContentInsets={false}
         >
           <SkeletonClaimCard />
           <SkeletonClaimCard />
@@ -875,6 +877,8 @@ export default function QueueScreen() {
       ) : filteredClaims.length === 0 ? (
         <ScrollView
           contentContainerStyle={styles.emptyScroll}
+          contentInsetAdjustmentBehavior="never"
+          automaticallyAdjustContentInsets={false}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -939,6 +943,8 @@ export default function QueueScreen() {
               : row.claim.id
           }
           contentContainerStyle={styles.list}
+          contentInsetAdjustmentBehavior="never"
+          automaticallyAdjustContentInsets={false}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
