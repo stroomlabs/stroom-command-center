@@ -50,19 +50,6 @@ import { ScreenWatermark } from '../../src/components/ScreenWatermark';
 import { ScreenHeader } from '../../src/components/ScreenHeader';
 import { colors, fonts, spacing, radius, gradient } from '../../src/constants/brand';
 
-// DEBUG TINTS — temporary. Hunting the queue cold-load gap. Each layer
-// of the render tree gets a faint background color so a screenshot
-// reveals which wrapper owns the dead vertical space. REVERT BEFORE THE
-// NEXT OTA — this commit is labelled "debug layer tints for gap hunt".
-const DEBUG_TINT = {
-  container: { backgroundColor: 'rgba(255, 0, 0, 0.15)' },
-  header: { backgroundColor: 'rgba(255, 165, 0, 0.15)' },
-  filterWrap: { backgroundColor: 'rgba(255, 255, 0, 0.15)' },
-  flatListOuter: { backgroundColor: 'rgba(0, 255, 0, 0.15)' },
-  flatListContent: { backgroundColor: 'rgba(0, 0, 255, 0.15)' },
-  footer: { backgroundColor: 'rgba(255, 0, 255, 0.15)' },
-} as const;
-
 type StatusFilter = 'all' | 'draft' | 'pending_review';
 type SortKey = 'smart' | 'newest' | 'oldest' | 'risk' | 'low_trust';
 
@@ -643,16 +630,11 @@ export default function QueueScreen() {
   const keyExtractor = useCallback((item: QueueClaim) => item.id, []);
 
   return (
-    // DEBUG TINTS (revert before next OTA): layer colors to hunt the
-    // queue cold-load gap. Red = outer container, orange = ScreenHeader,
-    // yellow = filter/sort wrapper, green = FlatList outer, blue =
-    // FlatList contentContainerStyle, magenta = recent footer.
-    <View style={[styles.container, DEBUG_TINT.container]}>
+    <View style={styles.container}>
       <ScreenCanvas />
       <ScreenWatermark />
       <ScreenTransition>
       <ScreenHeader
-        style={DEBUG_TINT.header}
         title="Queue"
         actions={
           <Animated.View
@@ -713,7 +695,6 @@ export default function QueueScreen() {
         )}
       </ScreenHeader>
 
-      <View style={DEBUG_TINT.filterWrap}>
       {/* Search bar + sort */}
       <View style={styles.searchRow}>
         <View style={styles.searchWrap}>
@@ -880,7 +861,6 @@ export default function QueueScreen() {
           })}
         </ScrollView>
       )}
-      </View>
 
       {loading && claims.length === 0 ? (
         <ScrollView
@@ -958,8 +938,7 @@ export default function QueueScreen() {
               ? `group-${row.groupKey}`
               : row.claim.id
           }
-          style={DEBUG_TINT.flatListOuter}
-          contentContainerStyle={[styles.list, DEBUG_TINT.flatListContent]}
+          contentContainerStyle={styles.list}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -973,16 +952,14 @@ export default function QueueScreen() {
           windowSize={5}
           ListFooterComponent={
             recentlyProcessed.length > 0 ? (
-              <View style={DEBUG_TINT.footer}>
-                <RecentlyProcessedSection
-                  entries={recentlyProcessed}
-                  expanded={recentExpanded}
-                  onToggle={() => {
-                    haptics.tap.light();
-                    setRecentExpanded((v) => !v);
-                  }}
-                />
-              </View>
+              <RecentlyProcessedSection
+                entries={recentlyProcessed}
+                expanded={recentExpanded}
+                onToggle={() => {
+                  haptics.tap.light();
+                  setRecentExpanded((v) => !v);
+                }}
+              />
             ) : undefined
           }
         />
@@ -1493,6 +1470,9 @@ const styles = StyleSheet.create({
     fontFamily: fonts.archivo.regular,
     fontSize: 14,
     color: colors.slate,
+    paddingHorizontal: spacing.lg,
+    marginTop: spacing.xs,
+    marginBottom: spacing.md,
   },
   searchRow: {
     flexDirection: 'row',
