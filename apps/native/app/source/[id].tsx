@@ -13,7 +13,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import Slider from '@react-native-community/slider';
+import { Stepper } from '../../src/components/Stepper';
 import { haptics } from '../../src/lib/haptics';
 import {
   updateSource,
@@ -305,25 +305,22 @@ export default function SourceDetailScreen() {
                     {(trustDraft ?? Number(source.trust_score)).toFixed(1)}
                   </Text>
                 </View>
-                <Slider
+                <Stepper
                   value={trustDraft ?? Number(source.trust_score)}
-                  minimumValue={0}
-                  maximumValue={10}
-                  step={0.5}
-                  minimumTrackTintColor={colors.teal}
-                  maximumTrackTintColor="rgba(255,255,255,0.08)"
-                  thumbTintColor={colors.teal}
-                  onValueChange={setTrustDraft}
-                  onSlidingComplete={(v) => {
-                    const rounded = Math.round(v * 2) / 2;
-                    setTrustDraft(rounded);
-                    if (Math.abs(rounded - Number(source.trust_score)) >= 0.05) {
-                      void commitTrustScore(rounded);
+                  min={0}
+                  max={10}
+                  step={0.1}
+                  onChange={setTrustDraft}
+                  onCommit={(v) => {
+                    // Only hit the server when the value actually moved off
+                    // the current trust score — the stepper onChange already
+                    // keeps the draft in sync, onCommit fires on every tap
+                    // release, and we don't want to spam the RPC on no-op taps.
+                    if (Math.abs(v - Number(source.trust_score)) >= 0.05) {
+                      void commitTrustScore(v);
                     }
                   }}
                   disabled={saving}
-                  accessibilityRole="adjustable"
-                  accessibilityLabel={`Trust score: ${(trustDraft ?? Number(source.trust_score)).toFixed(1)} out of 10`}
                 />
               </View>
 

@@ -38,7 +38,7 @@ import {
 } from '../../src/hooks/useFreshnessMap';
 import { useBrandToast } from '../../src/components/BrandToast';
 import { useOfflineSync } from '../../src/lib/OfflineSyncContext';
-import Slider from '@react-native-community/slider';
+import { Stepper } from '../../src/components/Stepper';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -721,28 +721,22 @@ export default function ClaimDetailScreen() {
               </Text>
               <Text style={styles.scoreSuffix}>/ 10</Text>
             </View>
-            <Slider
-              value={
-                confidenceDraft ??
-                (confidence != null ? Number(confidence) : 0)
-              }
-              minimumValue={0}
-              maximumValue={10}
-              step={0.5}
-              minimumTrackTintColor={colors.teal}
-              maximumTrackTintColor="rgba(255,255,255,0.08)"
-              thumbTintColor={colors.teal}
-              onValueChange={setConfidenceDraft}
-              onSlidingComplete={(v) => {
-                const rounded = Math.round(v * 2) / 2;
-                setConfidenceDraft(rounded);
-                void commitConfidence(rounded);
-              }}
-              disabled={confidenceSaving}
-              style={styles.confidenceSlider}
-              accessibilityRole="adjustable"
-              accessibilityLabel={`Confidence: ${(confidenceDraft ?? (confidence != null ? Number(confidence) : 0)).toFixed(1)} out of 10`}
-            />
+            <View style={styles.confidenceSlider}>
+              <Stepper
+                value={
+                  confidenceDraft ??
+                  (confidence != null ? Number(confidence) : 0)
+                }
+                min={0}
+                max={10}
+                step={0.1}
+                onChange={setConfidenceDraft}
+                onCommit={(v) => {
+                  void commitConfidence(v);
+                }}
+                disabled={confidenceSaving}
+              />
+            </View>
           </View>
           <View style={styles.scoreBox}>
             <Text style={styles.scoreLabel}>CORROBORATIONS</Text>

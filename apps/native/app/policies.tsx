@@ -13,7 +13,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import Slider from '@react-native-community/slider';
+import { Stepper } from '../src/components/Stepper';
 import { haptics } from '../src/lib/haptics';
 import type { GovernancePolicy, GovernanceAction } from '@stroom/types';
 import { useGovernancePolicies } from '../src/hooks/useGovernancePolicies';
@@ -414,25 +414,16 @@ function ThresholdSlider({
 
   return (
     <View style={styles.sliderBlock}>
-      <View style={styles.sliderHeader}>
-        <Text style={styles.sliderLabel}>{label}</Text>
-        <Text style={styles.sliderValue}>{local.toFixed(step < 1 ? 1 : 0)}</Text>
-      </View>
-      <Slider
+      <Text style={styles.sliderLabel}>{label}</Text>
+      <Stepper
         value={local}
-        minimumValue={min}
-        maximumValue={max}
+        min={min}
+        max={max}
         step={step}
-        minimumTrackTintColor={colors.teal}
-        maximumTrackTintColor="rgba(255,255,255,0.1)"
-        thumbTintColor={colors.teal}
-        onValueChange={setLocal}
-        onSlidingComplete={(v) => {
-          haptics.tap.light();
-          onChange(v);
+        onChange={setLocal}
+        onCommit={(v) => {
+          onChange(step >= 1 ? Math.round(v) : v);
         }}
-        accessibilityRole="adjustable"
-        accessibilityLabel={`${label}: ${local.toFixed(step < 1 ? 1 : 0)} out of ${max}`}
       />
     </View>
   );
@@ -574,11 +565,7 @@ const styles = StyleSheet.create({
   },
   sliderBlock: {
     marginTop: spacing.xs,
-  },
-  sliderHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'baseline',
+    gap: 6,
   },
   sliderLabel: {
     fontFamily: fonts.archivo.medium,
@@ -586,12 +573,6 @@ const styles = StyleSheet.create({
     color: colors.slate,
     letterSpacing: 0.8,
     textTransform: 'uppercase',
-  },
-  sliderValue: {
-    fontFamily: fonts.mono.semibold,
-    fontSize: 13,
-    color: colors.teal,
-    fontVariant: ['tabular-nums'],
   },
   sectionLabel: {
     fontFamily: fonts.archivo.medium,
