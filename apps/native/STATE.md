@@ -18,9 +18,14 @@ Main branch is ahead of origin/main with all 2026-04-08 work plus the 2026-04-09
 ## Pending Verification
 - DR-036 invite round-trip end-to-end. Operators screen path obstructed by Ops-under-Projects regression.
 
-## Open Regressions (blocking tomorrow's first work block)
-1. Ops tab nested under Projects instead of top-level sibling.
-2. Full-screen right-swipe-back gesture removed from Stack screens.
+## Open Regressions
+None as of 2026-04-09. Earlier in the session two regressions were suspected (Ops nested under Projects, missing swipe-back gesture). Both were verified false alarms when the foundation contract preflight ran:
+- Ops is a top-level Tabs.Screen, verified by grep against (tabs)/_layout.tsx
+- fullScreenGestureEnabled: true is set on the Stack root in app/_layout.tsx (since batch 31a / commit 176a277)
+- The "nested Ops" symptom was Command → More, which is a modal-presented Stack screen with its own dismiss gesture, not a tab routing bug
+- The "missing swipe-back" symptom was iOS standard behavior on modal-presented screens, where fullScreenGestureEnabled does not apply
+
+This is logged as a contract-validation success: STATE.md was written from operator perception without verification, and the preflight gates caught it before any code was wrongly modified.
 
 ## Server-Side State
 - DR-037 auto-governance policy v1 is live.

@@ -8,9 +8,7 @@
 - Tab order is enforced by apps/native/__tests__/tab-order.test.ts. Do not bypass.
 
 ## Gestures
-- Full-screen right-swipe-back is enabled on every Stack screen via gestureEnabled: true and a wide gestureResponseDistance set on the Stack root in apps/native/app/_layout.tsx.
-- Per-screen options blocks must NOT override gestureEnabled or gestureResponseDistance.
-- Modal screens are the only allowed exception and must be explicitly tagged with presentation: 'modal'.
+- Full-screen right-swipe-back is enabled on every Stack screen via fullScreenGestureEnabled: true on the Stack root in apps/native/app/_layout.tsx. This is the Expo Router / React Navigation 7 native iOS prop. Per-screen options blocks must NOT override fullScreenGestureEnabled. Modal screens are the only allowed exception and must be explicitly tagged with presentation: 'modal'.
 
 ## Brand & Visual
 - Watermark uses the helix double-O mark, NEVER the letter S. Component: apps/native/src/components/ScreenWatermark.tsx.
