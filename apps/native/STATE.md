@@ -9,7 +9,7 @@
 - ASC App ID: 6761855616
 
 ## Local Commits Ahead of Origin
-Main branch is ahead of origin/main with all 2026-04-08 work plus the 2026-04-09 INVARIANTS contract.
+Main branch is in sync with origin/main as of 2026-04-09. Foundation contract + canonical URL lockdown complete.
 
 ## Last Verified On Device
 - 2026-04-09 evening: Queue cold-load gap fixed and verified clean on physical iPhone.

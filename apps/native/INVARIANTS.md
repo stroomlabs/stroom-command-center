@@ -55,3 +55,4 @@
 3. If your change touches a Load-Bearing File, name the file in your response and confirm intent before proceeding.
 4. If your change could affect a Recently Fixed item, name the item and confirm intent before proceeding.
 5. After shipping, append a dated line to STATE.md describing what shipped.
+6. After shipping and pushing, smoke-test the canonical URL by curl-ing https://raw.githubusercontent.com/stroomlabs/stroom-command-center/main/apps/native/STATE.md and verifying the new dated line appears in the output. If it does not appear within 30 seconds, the push silently failed or GitHub's CDN is stale — surface to the operator.
