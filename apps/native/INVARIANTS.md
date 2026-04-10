@@ -45,9 +45,8 @@
 - 2026-04-08 Pulse vertical pills overflow — iOS Maps pattern: inactive=icon-only, active=expanded.
 - 2026-04-08 Login screen unwanted wordmark — no STROOM LABS wordmark, no Intelligence Operations subtitle.
 
-## Regressed and Pending Re-Fix (as of 2026-04-09)
-- Ops tab nested inside Projects instead of being a top-level sibling. Repair via (tabs)/_layout.tsx.
-- Full-screen right-swipe-back gesture missing. Repair via Stack root in _layout.tsx.
+## Regressed and Pending Re-Fix
+None as of 2026-04-09. STATE.md is the authority on active regressions; this section stays in sync with STATE.md's "Open Regressions" section. The two entries previously listed here (Ops tab nesting, missing swipe-back) were verified false alarms — see STATE.md "Open Regressions" for the contract-validation success log.
 
 ## Pre-Flight Checklist for Every Code Change
 1. Read this file.
