@@ -16,7 +16,7 @@ Main branch is in sync with origin/main as of 2026-04-09. Foundation contract + 
 - 2026-04-09 evening: Slider stepper verified on source/claim/policies detail screens.
 
 ## Pending Verification
-- DR-036 invite round-trip end-to-end. Operators screen path obstructed by Ops-under-Projects regression.
+- DR-036 invite round-trip end-to-end — reachable via Ops tab → Operators card → Invite. Not yet smoke-tested on device.
 
 ## Open Regressions
 None as of 2026-04-09. Earlier in the session two regressions were suspected (Ops nested under Projects, missing swipe-back gesture). Both were verified false alarms when the foundation contract preflight ran:
