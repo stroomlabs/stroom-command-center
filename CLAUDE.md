@@ -16,6 +16,10 @@ This pre-flight is non-negotiable. If you cannot read INVARIANTS.md or STATE.md 
 
 Operator-facing mobile app for the StroomHelix intelligence graph. Lets the operator monitor live Pulse metrics, review and batch-approve claims in a governance Queue, Explore entities and predicates, query the graph through a Claude-powered Command chat, and run graph health / audit / research workflows from an Ops tab.
 
+## Tooling
+
+This repo uses npm workspaces (not pnpm or yarn). The lockfile is `package-lock.json`. The package manager is `npm@10.8.0` as declared in the root `package.json`. All install/test/run commands must use npm (`npm install`, `npm test`, `npm run ios`). pnpm and yarn must never be used because they create competing lockfiles and corrupt the workspace.
+
 ## Stack
 
 - **Expo Router monorepo** — `apps/native` is the Expo app (SDK 52, RN 0.76, Hermes, new architecture enabled). Shared workspaces live in `packages/` (`@stroom/types`, `@stroom/supabase`).
