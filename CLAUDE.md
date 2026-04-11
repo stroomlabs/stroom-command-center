@@ -35,8 +35,10 @@ apps/native/
     (tabs)/             5-tab bottom bar: Pulse · Queue · Explore · Command · Ops
       _layout.tsx       Tab config; tabBarBadge bound to pulse.queueDepth,
                         light-impact haptic on every tabPress
-      index.tsx         Pulse — header+LIVE, 4 primary metrics, 3 secondary
-                        metrics, status breakdown, last-updated. Nothing else.
+      index.tsx         Pulse — header+LIVE, 4 primary/3 secondary metrics,
+                        status breakdown card, Run Sweep trigger (build queue
+                        26), Since-last-visit deltas (build queue 20),
+                        last-updated timestamp
       queue.tsx         Governance queue: search bar, status filter chips,
                         long-press badge → batch approve, swipe-right approve
       explore.tsx       Entity search + predicate explorer segment
