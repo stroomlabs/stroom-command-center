@@ -137,7 +137,7 @@ export default function TabLayout() {
             height: 18,
             lineHeight: 14,
           },
-          ...hideIfDenied('claims.review'),
+          ...hideIfDenied('queue.view'),
         }}
       />
       <Tabs.Screen
@@ -153,7 +153,7 @@ export default function TabLayout() {
               focused={focused}
             />
           ),
-          ...hideIfDenied('entities.read'),
+          ...hideIfDenied('explore.view'),
         }}
       />
       <Tabs.Screen
@@ -169,7 +169,7 @@ export default function TabLayout() {
               focused={focused}
             />
           ),
-          ...hideIfDenied('command.use'),
+          ...hideIfDenied('command.view'),
         }}
       />
       <Tabs.Screen
@@ -185,7 +185,7 @@ export default function TabLayout() {
               focused={focused}
             />
           ),
-          ...hideIfDenied('projects.read'),
+          ...hideIfDenied('projects.view'),
         }}
       />
       <Tabs.Screen
@@ -201,7 +201,7 @@ export default function TabLayout() {
               focused={focused}
             />
           ),
-          ...hideIfDenied('admin.settings'),
+          ...hideIfDenied('ops.view'),
         }}
       />
     </Tabs>
