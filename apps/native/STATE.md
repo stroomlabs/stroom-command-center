@@ -9,11 +9,12 @@
 - ASC App ID: 6761855616
 
 ## Local Commits Ahead of Origin
-Main branch is in sync with origin/main as of 2026-04-09. Foundation contract + canonical URL lockdown complete.
+Main branch is in sync with origin/main as of 2026-04-10. Latest feature commit: 2cb35f6 (fix(32a) tab gate namespace migration).
 
 ## Last Verified On Device
 - 2026-04-09 evening: Queue cold-load gap fixed and verified clean on physical iPhone.
 - 2026-04-09 evening: Slider stepper verified on source/claim/policies detail screens.
+- 2026-04-10 fix(32a) tab gate namespace migration (2cb35f6) — 5 gates in (tabs)/_layout.tsx renamed from action-level to {tab}.view, all 6 intel.operator_roles seeded with *.view keys, two-level rule documented in INVARIANTS.md. Verified on iPhone 17 Pro sim: all 6 tabs render in correct order (Pulse · Queue · Explore · Command · Projects · Ops), owner = 36 caps, /my-role catalog renders. OTA push pending.
 
 ## Pending Verification
 - DR-036 invite round-trip end-to-end — reachable via Ops tab → Operators card → Invite. Not yet smoke-tested on device.
