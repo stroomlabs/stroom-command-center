@@ -29,6 +29,9 @@ None as of 2026-04-09. Earlier in the session two regressions were suspected (Op
 
 This is logged as a contract-validation success: STATE.md was written from operator perception without verification, and the preflight gates caught it before any code was wrongly modified.
 
+## Known Gaps
+- 2026-04-11 1:08 AM — Invite smoke test attempted (streegs99@me.com as Admin). HTTP 401 from operator-admin Edge Function. Not debugged. First task next session: inspect function secrets (SUPABASE_SERVICE_ROLE_KEY presence), verify auth flow, check Amendment A partial landing. Blocker for full Gate 2 verification.
+
 ## Server-Side State
 - DR-037 auto-governance policy v1 is live.
 - Sources auto_approve flag: 119 sources flagged.
