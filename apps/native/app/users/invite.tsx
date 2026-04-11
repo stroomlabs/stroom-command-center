@@ -37,7 +37,6 @@ import { colors, fonts, spacing, radius } from '../../src/constants/brand';
 
 interface RoleOption {
   id: string;
-  name: string;
   display_name: string;
   description: string | null;
 }
@@ -86,26 +85,21 @@ export default function InviteOperatorScreen() {
         const { data, error } = await supabase
           .schema('intel')
           .from('operator_roles')
-          .select('id, name, display_name, description')
+          .select('id, display_name, description')
           .order('display_name', { ascending: true });
         if (error) throw error;
         const filtered: RoleOption[] = ((data ?? []) as any[])
-          .filter(
-            (r) => String(r.name) !== 'owner' && String(r.name) !== 'guest'
-          )
+          .filter((r) => r.id !== 'owner' && r.id !== 'guest')
           .map((r) => ({
             id: String(r.id),
-            name: String(r.name ?? ''),
-            display_name: String(
-              r.display_name ?? r.name ?? 'Operator'
-            ),
+            display_name: String(r.display_name ?? 'Operator'),
             description: (r.description as string | null) ?? null,
           }));
         setRoles(filtered);
         // Default-select the lowest-privilege role if present. We fall
         // back to whatever the first row is so the form is never stuck
         // without a selection.
-        const viewer = filtered.find((r) => r.name === 'viewer');
+        const viewer = filtered.find((r) => r.id === 'viewer');
         setSelectedRoleId((viewer ?? filtered[0])?.id ?? null);
       } catch (e: any) {
         setRolesError(e?.message ?? 'Failed to load roles');

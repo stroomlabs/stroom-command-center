@@ -21,10 +21,8 @@ import supabase from '../lib/supabase';
 
 export interface RoleMeta {
   id: string;
-  name: string;
   display_name: string;
   description: string | null;
-  icon: string | null;
 }
 
 export interface CapabilitySnapshot {
@@ -163,12 +161,8 @@ async function fetchFresh(): Promise<CapabilitySnapshot> {
   const role: RoleMeta | null = roleRow
     ? {
         id: String(roleRow.id),
-        name: String(roleRow.name ?? ''),
-        display_name: String(
-          roleRow.display_name ?? roleRow.name ?? 'Operator'
-        ),
+        display_name: String(roleRow.display_name ?? 'Operator'),
         description: (roleRow.description as string | null) ?? null,
-        icon: (roleRow.icon as string | null) ?? null,
       }
     : null;
 

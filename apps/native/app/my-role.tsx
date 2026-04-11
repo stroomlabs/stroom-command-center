@@ -141,10 +141,7 @@ export default function MyRoleScreen() {
               <View style={styles.roleHeader}>
                 <View style={styles.roleIconWrap}>
                   <Ionicons
-                    name={
-                      (role?.icon as any) ??
-                      ('shield-checkmark-outline' as const)
-                    }
+                    name="shield-checkmark-outline"
                     size={22}
                     color={colors.teal}
                   />

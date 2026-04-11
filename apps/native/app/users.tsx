@@ -34,7 +34,6 @@ interface OperatorRow {
   display_name: string | null;
   email: string | null;
   role_id: string | null;
-  role_name: string | null;
   role_display: string | null;
   last_active_at: string | null;
 }
@@ -119,16 +118,10 @@ export default function UsersScreen() {
             (p.display_name as string | null) ??
             (prefs.display_name as string | undefined) ??
             null,
-          email:
-            (p.email as string | null) ??
-            (prefs.email as string | undefined) ??
-            null,
+          email: (prefs.email as string | undefined) ?? null,
           role_id: p.role_id ? String(p.role_id) : null,
-          role_name: role?.name ? String(role.name) : null,
           role_display: role?.display_name
             ? String(role.display_name)
-            : role?.name
-            ? String(role.name)
             : null,
           last_active_at:
             (p.last_active_at as string | null) ??
@@ -253,7 +246,7 @@ export default function UsersScreen() {
                     styles.rolePill,
                     {
                       borderColor:
-                        ROLE_COLOR[item.role_name ?? ''] ?? colors.slate,
+                        ROLE_COLOR[item.role_id ?? ''] ?? colors.slate,
                     },
                   ]}
                 >
@@ -262,7 +255,7 @@ export default function UsersScreen() {
                       styles.rolePillText,
                       {
                         color:
-                          ROLE_COLOR[item.role_name ?? ''] ?? colors.slate,
+                          ROLE_COLOR[item.role_id ?? ''] ?? colors.slate,
                       },
                     ]}
                   >

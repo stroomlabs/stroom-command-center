@@ -50,7 +50,6 @@ interface ProfileRow {
 
 interface RoleRow {
   id: string;
-  name: string;
   display_name: string;
   description: string | null;
 }
@@ -91,7 +90,7 @@ export default function UserDetailScreen() {
   const [allRolesLoading, setAllRolesLoading] = useState(false);
 
   const isSelf = !!callerUserId && callerUserId === id;
-  const isCallerOwner = callerRole?.name === 'owner';
+  const isCallerOwner = callerRole?.id === 'owner';
 
   // Pull the target's profile + joined role + inviter display name.
   const load = useCallback(async () => {
@@ -117,10 +116,7 @@ export default function UserDetailScreen() {
           (p.display_name as string | null) ??
           (prefs.display_name as string | undefined) ??
           null,
-        email:
-          (p.email as string | null) ??
-          (prefs.email as string | undefined) ??
-          null,
+        email: (prefs.email as string | undefined) ?? null,
         role_id: p.role_id ? String(p.role_id) : null,
         allowed_verticals:
           (p.allowed_verticals as string[] | null) ?? null,
@@ -138,17 +134,14 @@ export default function UserDetailScreen() {
         const { data: roleRow } = await supabase
           .schema('intel')
           .from('operator_roles')
-          .select('id, name, display_name, description')
+          .select('id, display_name, description')
           .eq('id', normalized.role_id)
           .maybeSingle();
         if (roleRow) {
           setRole({
             id: String((roleRow as any).id),
-            name: String((roleRow as any).name ?? ''),
             display_name: String(
-              (roleRow as any).display_name ??
-                (roleRow as any).name ??
-                'Operator'
+              (roleRow as any).display_name ?? 'Operator'
             ),
             description:
               ((roleRow as any).description as string | null) ?? null,
@@ -162,7 +155,7 @@ export default function UserDetailScreen() {
         const { data: inviterRow } = await supabase
           .schema('intel')
           .from('operator_profiles')
-          .select('display_name, email, preferences')
+          .select('display_name, preferences')
           .eq('user_id', normalized.invited_by)
           .maybeSingle();
         if (inviterRow) {
@@ -175,10 +168,7 @@ export default function UserDetailScreen() {
               ((inviterRow as any).display_name as string | null) ??
               (iPrefs.display_name as string | undefined) ??
               null,
-            email:
-              ((inviterRow as any).email as string | null) ??
-              (iPrefs.email as string | undefined) ??
-              null,
+            email: (iPrefs.email as string | undefined) ?? null,
           });
         }
       } else {
@@ -205,12 +195,11 @@ export default function UserDetailScreen() {
       const { data } = await supabase
         .schema('intel')
         .from('operator_roles')
-        .select('id, name, display_name, description')
+        .select('id, display_name, description')
         .order('display_name', { ascending: true });
       const mapped: RoleRow[] = ((data ?? []) as any[]).map((r) => ({
         id: String(r.id),
-        name: String(r.name ?? ''),
-        display_name: String(r.display_name ?? r.name ?? 'Operator'),
+        display_name: String(r.display_name ?? 'Operator'),
         description: (r.description as string | null) ?? null,
       }));
       setAllRoles(mapped);
@@ -554,7 +543,7 @@ export default function UserDetailScreen() {
             ) : (
               <View style={styles.sheetList}>
                 {allRoles
-                  .filter((r) => (isCallerOwner ? true : r.name !== 'owner'))
+                  .filter((r) => (isCallerOwner ? true : r.id !== 'owner'))
                   .map((r) => {
                     const selected = r.id === role?.id;
                     return (
