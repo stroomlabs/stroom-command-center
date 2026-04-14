@@ -17,6 +17,7 @@
       "supportsTablet": false,
       "requireFullScreen": true,
       "bundleIdentifier": "com.stroomlabs.commandcenter",
+      "buildNumber": "1",
       "infoPlist": {
         "NSFaceIDUsageDescription": "Authenticate to access the Stroom Command Center",
         "NSCameraUsageDescription": "Stroom Command uses the camera to capture source material for suggestions and claim evidence.",
