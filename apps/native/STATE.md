@@ -42,3 +42,4 @@ This is logged as a contract-validation success: STATE.md was written from opera
 - 2026-04-08 OTA group 008f29bd-b583-4021-8527-f030950cd911 — batch 31 + 32a + tab gate fix
 - 2026-04-08 OTA group 677c39fb-e96a-4147-8274-e9769f67e482 — batch 32b + queue partial fix + header density + schema alignment
 - 2026-04-09 OTA group f163ad76-7aa0-4d3f-8c70-46ccb59ca7ec — queue cold-load gap final fix + slider stepper
+- 2026-04-14 chore(ios): added `"buildNumber": "1"` to apps/native/app.json ios section for TestFlight prep (97d8d57).
